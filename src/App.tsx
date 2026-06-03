@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Bot, Crown, Play, Plus, Shield, Sparkles, Swords, Zap } from 'lucide-react';
+import { Bot, Crown, HelpCircle, Play, Plus, RotateCcw, Shield, Sparkles, Swords, Zap } from 'lucide-react';
 import type { Card, GameConfig, GameState, Hero, Loot, Player, Tile } from './types';
 
 const tileNames: Record<string, string> = {
@@ -29,41 +29,62 @@ const tileGlyphs: Record<string, string> = {
   scorch: '☄'
 };
 
+function heroPortraitUrl(heroId: string) {
+  return `/assets/heroes/${heroId}-portrait-v1.png`;
+}
+
+function heroSpriteUrl(heroId: string) {
+  return `/assets/sprites/${heroId}-sprite-v2.png`;
+}
+
 function statLine(hero: Hero) {
   return `${hero.maxHp} HP · ${hero.power} POW · ${hero.guard} GRD · ${hero.speed} SPD`;
 }
 
 function App() {
   const socket = useMemo<Socket>(() => io(), []);
-  const [socketId, setSocketId] = useState('');
+  const [playerToken, setPlayerToken] = useState(() => localStorage.getItem('loopduel.playerToken') ?? '');
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
   const [name, setName] = useState(() => `Player ${Math.floor(Math.random() * 900 + 100)}`);
+  const [roomId, setRoomId] = useState(() => localStorage.getItem('loopduel.roomId') ?? 'main');
   const [heroId, setHeroId] = useState('ember-knight');
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
-    socket.on('connect', () => setSocketId(socket.id ?? ''));
+    socket.on('connect', () => {
+      const savedToken = localStorage.getItem('loopduel.playerToken');
+      const savedRoom = localStorage.getItem('loopduel.roomId') ?? 'main';
+      if (savedToken) socket.emit('join', { name, heroId, roomId: savedRoom, playerToken: savedToken });
+    });
     socket.on('config', (payload: GameConfig) => {
       setConfig(payload);
       setHeroId(payload.heroes[0]?.id ?? 'ember-knight');
     });
     socket.on('state', (payload: GameState) => setGame(payload));
+    socket.on('session', ({ playerToken: nextToken, roomId: nextRoomId }: { playerToken: string; roomId: string }) => {
+      localStorage.setItem('loopduel.playerToken', nextToken);
+      localStorage.setItem('loopduel.roomId', nextRoomId);
+      setPlayerToken(nextToken);
+      setRoomId(nextRoomId);
+    });
     socket.on('notice', (message: string) => setNotice(message));
     return () => {
       socket.off('connect');
       socket.off('config');
       socket.off('state');
+      socket.off('session');
       socket.off('notice');
     };
-  }, [socket]);
+  }, [heroId, name, socket]);
 
-  const me = game?.players.find((player) => player.id === socketId) ?? null;
+  const me = game?.players.find((player) => player.id === playerToken) ?? null;
   const selectedCard = me?.hand.find((card) => card.instanceId === selectedCardId) ?? null;
 
   function join() {
-    socket.emit('join', { name, heroId });
+    socket.emit('join', { name, heroId, roomId, playerToken: playerToken || undefined });
     setSelectedCardId(null);
   }
 
@@ -91,6 +112,11 @@ function App() {
     socket.emit('chooseTrait', { traitId });
   }
 
+  function resetRoom() {
+    socket.emit('resetRoom');
+    setSelectedCardId(null);
+  }
+
   if (!config || !game) {
     return <div className="boot">Loopduel</div>;
   }
@@ -115,9 +141,20 @@ function App() {
               maxLength={20}
               onChange={(event) => setName(event.target.value)}
             />
+            <label htmlFor="room-code">Room</label>
+            <input
+              id="room-code"
+              value={roomId}
+              maxLength={20}
+              onChange={(event) => setRoomId(event.target.value)}
+            />
             <button className="primary-action" onClick={join}>
               <Play size={18} />
               Enter
+            </button>
+            <button className="icon-action" onClick={() => setShowHelp(true)} title="Rules">
+              <HelpCircle size={18} />
+              Rules
             </button>
           </div>
 
@@ -129,15 +166,21 @@ function App() {
                 style={{ '--hero-color': hero.color } as React.CSSProperties}
                 onClick={() => setHeroId(hero.id)}
               >
-                <span className="hero-icon">{hero.icon}</span>
-                <strong>{hero.name}</strong>
-                <small>{hero.title}</small>
-                <span>{statLine(hero)}</span>
-                <p>{hero.text}</p>
+                <span className="hero-portrait-wrap">
+                  <img src={heroPortraitUrl(hero.id)} alt="" />
+                  <span className="hero-sigil">{hero.icon}</span>
+                </span>
+                <span className="hero-copy">
+                  <strong>{hero.name}</strong>
+                  <small>{hero.title}</small>
+                  <span>{statLine(hero)}</span>
+                  <p>{hero.text}</p>
+                </span>
               </button>
             ))}
           </div>
         </section>
+        {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}
       </main>
     );
   }
@@ -147,16 +190,37 @@ function App() {
       <header className="topbar">
         <div>
           <h1>Loopduel</h1>
-          <p>{game.players.length}/4 runners · tick {game.tick}</p>
+          <p>Room {game.id} · {game.players.length}/{game.maxPlayers} runners · first to {game.goalScore} · tick {game.tick}</p>
         </div>
         <div className="top-actions">
           {notice && <span className="notice">{notice}</span>}
+          <button className="icon-action" onClick={() => setShowHelp(true)} title="Rules">
+            <HelpCircle size={18} />
+            Rules
+          </button>
           <button className="icon-action" onClick={addBot} title="Add bot">
             <Bot size={18} />
             Bot
           </button>
+          <button className="icon-action" onClick={resetRoom} title="Reset room">
+            <RotateCcw size={18} />
+            Reset
+          </button>
         </div>
       </header>
+
+      {game.status === 'finished' && game.winner && (
+        <section className="winner-strip" style={{ '--hero-color': game.winner.color } as React.CSSProperties}>
+          <div>
+            <strong>{game.winner.name} claimed the loop</strong>
+            <span>{game.winner.score} points · Lv {game.winner.level} · {game.winner.laps} laps</span>
+          </div>
+          <button className="primary-action" onClick={resetRoom}>
+            <RotateCcw size={18} />
+            Rematch
+          </button>
+        </section>
+      )}
 
       <section className="arena-grid">
         {game.players.map((player, index) => (
@@ -206,6 +270,7 @@ function App() {
           <LogPanel lines={game.log} />
         </div>
       </section>
+      {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}
     </main>
   );
 }
@@ -238,12 +303,13 @@ function PlayerPanel({
   return (
     <article className={`player-panel ${active ? 'active' : ''}`} style={{ '--hero-color': player.color } as React.CSSProperties}>
       <div className="player-head">
-        <div className="avatar-ring">
-          <span>{rank === 1 ? <Crown size={18} /> : rank}</span>
+        <div className="player-portrait">
+          <img src={heroPortraitUrl(player.heroId)} alt="" />
+          <span>{rank === 1 ? <Crown size={16} /> : rank}</span>
         </div>
         <div>
           <h2>{player.name}</h2>
-          <p>Lv {player.level} · Lap {player.laps} · {player.score} pts</p>
+          <p>Lv {player.level} · Lap {player.laps} · {player.score} pts{!player.connected ? ' · offline' : ''}</p>
         </div>
       </div>
 
@@ -265,7 +331,11 @@ function PlayerPanel({
             title={tileNames[tile.type] ?? tile.type}
           >
             <span className="tile-glyph">{tileGlyphs[tile.type] ?? '?'}</span>
-            {player.position === tile.index && <span className="runner">●</span>}
+            {player.position === tile.index && (
+              <span className="runner">
+                <img src={heroSpriteUrl(player.heroId)} alt="" />
+              </span>
+            )}
           </button>
         ))}
         <div className="board-core">
@@ -348,6 +418,53 @@ function LogPanel({ lines }: { lines: string[] }) {
       {lines.slice(0, 7).map((line, index) => (
         <p key={`${line}-${index}`}>{line}</p>
       ))}
+    </div>
+  );
+}
+
+function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => void }) {
+  const terrain = config.cards.filter((card) => card.kind === 'terrain');
+  const rivals = config.cards.filter((card) => card.kind === 'rival');
+
+  return (
+    <div className="help-overlay" role="dialog" aria-modal="true">
+      <div className="help-panel">
+        <div className="help-head">
+          <div>
+            <strong>Rules</strong>
+            <span>First player to {config.goalScore} points wins.</span>
+          </div>
+          <button className="icon-action" onClick={onClose}>Close</button>
+        </div>
+        <div className="help-grid">
+          <section>
+            <h2>Loop</h2>
+            <p>Runners move automatically. Speed shortens movement delay. Camp heals; road can fight, heal, or sprint.</p>
+          </section>
+          <section>
+            <h2>Cards</h2>
+            <p>Terrain cards alter your own loop. Rival cards target another runner. Hands fill over time up to 7 cards.</p>
+          </section>
+          <section>
+            <h2>Progress</h2>
+            <p>XP levels you up and offers traits. Loot rolls from fights and forges, then equips into weapon, armor, or charm slots.</p>
+          </section>
+          <section>
+            <h2>Scoring</h2>
+            <p>Level, laps, fights, loot, and banked XP all add points. Knockouts revive at camp with a trimmed hand.</p>
+          </section>
+        </div>
+        <div className="help-lists">
+          <div>
+            <strong>Terrain</strong>
+            {terrain.map((card) => <span key={card.id}>{card.icon} {card.name}: {card.text}</span>)}
+          </div>
+          <div>
+            <strong>Rivals</strong>
+            {rivals.map((card) => <span key={card.id}>{card.icon} {card.name}: {card.text}</span>)}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

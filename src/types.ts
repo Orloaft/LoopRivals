@@ -85,11 +85,18 @@ export type GameConfig = {
   cards: Omit<Card, 'instanceId'>[];
   boardPath: [number, number][];
   traits: Trait[];
+  maxPlayers: number;
+  goalScore: number;
 };
 
 export type GameState = {
-  status: 'lobby' | 'running';
+  id: string;
+  status: 'lobby' | 'running' | 'finished';
   tick: number;
   log: string[];
+  maxPlayers: number;
+  goalScore: number;
+  winnerId: string | null;
+  winner: Player | null;
   players: Player[];
 };
