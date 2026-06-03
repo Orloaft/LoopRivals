@@ -55,7 +55,7 @@ async function startServer() {
 
   if (isProduction) {
     app.use(express.static(path.join(root, 'dist')));
-    app.get('*', (_req, res) => res.sendFile(path.join(root, 'dist', 'index.html')));
+    app.use((_req, res) => res.sendFile(path.join(root, 'dist', 'index.html')));
   } else {
     const { createServer } = await import('vite');
     const vite = await createServer({

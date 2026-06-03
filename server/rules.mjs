@@ -1,5 +1,29 @@
 export const maxPlayers = 4;
 export const goalScore = 600;
+const combatDisplayMs = 1800;
+
+const combatEncounters = {
+  'wolf grove': {
+    enemyId: 'thorn-wolf',
+    enemyName: 'Thorn Wolf',
+    backgroundId: 'grove'
+  },
+  'crypt duel': {
+    enemyId: 'crypt-wraith',
+    enemyName: 'Crypt Wraith',
+    backgroundId: 'crypt'
+  },
+  'bandit ambush': {
+    enemyId: 'brigand',
+    enemyName: 'Road Brigand',
+    backgroundId: 'road'
+  },
+  'road skirmish': {
+    enemyId: 'brigand',
+    enemyName: 'Road Brigand',
+    backgroundId: 'road'
+  }
+};
 
 export const heroes = [
   {
@@ -190,7 +214,8 @@ export function createPlayer(id, name, heroId, isBot = false) {
     nextDrawAt: now() + 2200,
     event: 'entered the loop',
     message: 'entered the loop',
-    lastEventAt: now()
+    lastEventAt: now(),
+    combat: null
   };
 }
 
@@ -313,6 +338,7 @@ export function runRoomStep(room) {
   if (room.status !== 'running') return;
   room.tick += 1;
   for (const player of Object.values(room.players)) {
+    clearExpiredCombat(player);
     maybeDraw(player);
     if (now() >= player.nextMoveAt) advancePlayer(room, player);
     botThink(room, player);
@@ -346,6 +372,11 @@ function clamp(value, min, max) {
 
 function now() {
   return Date.now();
+}
+
+function clearExpiredCombat(player) {
+  if (!player.combat || now() < player.combat.expiresAt) return;
+  player.combat = null;
 }
 
 function blankBoard() {
@@ -447,6 +478,7 @@ function addXp(room, player, amount) {
 }
 
 function fight(room, player, label, threat, reward) {
+  const hpBefore = player.hp;
   const cursePenalty = player.curse > 0 ? 3 : 0;
   const damage = clamp(threat + cursePenalty - Math.floor(player.guard / 2) - player.armor, 1, 18);
   player.hp -= damage;
@@ -454,6 +486,27 @@ function fight(room, player, label, threat, reward) {
   addXp(room, player, reward);
   player.kos += 1;
   player.event = `${label}: -${damage} hp, +${reward} xp`;
+  const encounter = combatEncounters[label] ?? {
+    enemyId: 'ash-imp',
+    enemyName: 'Ash Imp',
+    backgroundId: 'forge'
+  };
+  const enemyMaxHp = clamp(threat + reward + player.level * 3, 16, 64);
+  const timestamp = now();
+  player.combat = {
+    ...encounter,
+    label,
+    damage,
+    reward,
+    heroHpBefore: hpBefore,
+    heroHpAfter: player.hp,
+    heroMaxHp: player.maxHp,
+    enemyHpBefore: enemyMaxHp,
+    enemyHpAfter: 0,
+    enemyMaxHp,
+    startedAt: timestamp,
+    expiresAt: timestamp + combatDisplayMs
+  };
   if (Math.random() < 0.17 + player.lootLuck + reward / 180) drawLoot(room, player);
   if (player.curse > 0) player.curse -= 1;
 }
@@ -476,6 +529,7 @@ function resolveDefeat(room, player) {
 
 function triggerTile(room, player, tile) {
   if (resolveDefeat(room, player)) return;
+  player.combat = null;
   if (tile.type === 'camp') {
     player.hp = clamp(player.hp + 9 + player.lapHeal, 0, player.maxHp);
     player.event = 'campfire recovery';

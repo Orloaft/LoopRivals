@@ -55,6 +55,21 @@ test('a player already at zero HP revives before resolving the next tile', () =>
   assert.equal(player.hp, Math.ceil(player.maxHp * 0.58));
 });
 
+test('combat events expose encounter details for the board overlay', () => {
+  const player = testApi.createPlayer('fighter', 'Fighter', 'ember-knight');
+  player.board[1].type = 'crypt';
+  player.position = 1;
+
+  testApi.triggerTile(room, player, player.board[player.position]);
+
+  assert.equal(player.combat.enemyId, 'crypt-wraith');
+  assert.equal(player.combat.backgroundId, 'crypt');
+  assert.equal(player.combat.enemyHpAfter, 0);
+  assert.equal(player.combat.heroHpAfter, player.hp);
+  assert.ok(player.combat.damage > 0);
+  assert.ok(player.combat.expiresAt > player.combat.startedAt);
+});
+
 test('joining with the same player token reconnects instead of adding a new slot', () => {
   const firstJoin = testApi.joinRoom(room, { playerId: 'stable-token', name: 'Alex', heroId: 'ember-knight' });
   firstJoin.player.connected = false;

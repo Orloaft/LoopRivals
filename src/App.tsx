@@ -37,6 +37,14 @@ function heroSpriteUrl(heroId: string) {
   return `/assets/sprites/${heroId}-sprite-v2.png`;
 }
 
+function combatEnemyUrl(enemyId: string) {
+  return `/assets/combat/enemy-${enemyId}.png`;
+}
+
+function combatBackgroundUrl(backgroundId: string) {
+  return `/assets/combat/bg-${backgroundId}.png`;
+}
+
 function statLine(hero: Hero) {
   return `${hero.maxHp} HP · ${hero.power} POW · ${hero.guard} GRD · ${hero.speed} SPD`;
 }
@@ -342,6 +350,7 @@ function PlayerPanel({
           <strong>{player.event}</strong>
           <span>{player.hand.length} cards · {player.loot.length} loot</span>
         </div>
+        {player.combat && <CombatOverlay player={player} />}
       </div>
 
       <div className="stat-strip">
@@ -351,6 +360,51 @@ function PlayerPanel({
         <span>{Math.ceil(player.hp)}/{player.maxHp}</span>
       </div>
     </article>
+  );
+}
+
+function CombatOverlay({ player }: { player: Player }) {
+  const combat = player.combat;
+  if (!combat) return null;
+
+  const heroBefore = Math.max(0, Math.min(100, (combat.heroHpBefore / combat.heroMaxHp) * 100));
+  const heroAfter = Math.max(0, Math.min(100, (combat.heroHpAfter / combat.heroMaxHp) * 100));
+  const enemyBefore = Math.max(0, Math.min(100, (combat.enemyHpBefore / combat.enemyMaxHp) * 100));
+  const enemyAfter = Math.max(0, Math.min(100, (combat.enemyHpAfter / combat.enemyMaxHp) * 100));
+
+  return (
+    <div className="combat-overlay" style={{ '--combat-bg': `url(${combatBackgroundUrl(combat.backgroundId)})` } as React.CSSProperties}>
+      <div className="combat-vignette" />
+      <div className="combatant hero-combat">
+        <img src={heroSpriteUrl(player.heroId)} alt="" />
+        <div className="combat-name">{player.name}</div>
+        <CombatBar
+          current={Math.ceil(Math.max(0, combat.heroHpAfter))}
+          max={combat.heroMaxHp}
+          before={heroBefore}
+          after={heroAfter}
+        />
+      </div>
+      <div className="combat-impact">
+        <strong>{combat.label}</strong>
+        <span>-{combat.damage} HP</span>
+        <small>+{combat.reward} XP</small>
+      </div>
+      <div className="combatant enemy-combat">
+        <img src={combatEnemyUrl(combat.enemyId)} alt="" />
+        <div className="combat-name">{combat.enemyName}</div>
+        <CombatBar current={combat.enemyHpAfter} max={combat.enemyMaxHp} before={enemyBefore} after={enemyAfter} />
+      </div>
+    </div>
+  );
+}
+
+function CombatBar({ current, max, before, after }: { current: number; max: number; before: number; after: number }) {
+  return (
+    <div className="combat-hp">
+      <span style={{ '--hp-before': `${before}%`, '--hp-after': `${after}%` } as React.CSSProperties} />
+      <small>{current}/{max}</small>
+    </div>
   );
 }
 

@@ -45,6 +45,23 @@ export type Tile = {
   charges: number;
 };
 
+export type Combat = {
+  enemyId: string;
+  enemyName: string;
+  backgroundId: string;
+  label: string;
+  damage: number;
+  reward: number;
+  heroHpBefore: number;
+  heroHpAfter: number;
+  heroMaxHp: number;
+  enemyHpBefore: number;
+  enemyHpAfter: number;
+  enemyMaxHp: number;
+  startedAt: number;
+  expiresAt: number;
+};
+
 export type Player = {
   id: string;
   name: string;
@@ -77,6 +94,7 @@ export type Player = {
   armor: number;
   event: string;
   message: string;
+  combat: Combat | null;
   score: number;
 };
 
