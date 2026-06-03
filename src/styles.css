@@ -501,6 +501,43 @@ input:focus {
 .tile.ambush { --tile-x: 75%; --tile-y: 100%; }
 .tile.scorch { --tile-x: 100%; --tile-y: 100%; }
 
+.road-shape {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.98;
+  background-image: url('/assets/roads/loopduel-road-tiles-retro-gothic-dirt-v2.png');
+  background-repeat: no-repeat;
+  background-size: 600% 100%;
+  background-position: var(--road-x, 0%) 0;
+  filter: drop-shadow(1px 2px 0 rgba(0, 0, 0, 0.72)) saturate(0.96) contrast(1.04);
+}
+
+.road-shape-ew {
+  --road-x: 0%;
+}
+
+.road-shape-ns {
+  --road-x: 20%;
+}
+
+.road-shape-en {
+  --road-x: 40%;
+}
+
+.road-shape-es {
+  --road-x: 60%;
+}
+
+.road-shape-nw {
+  --road-x: 80%;
+}
+
+.road-shape-sw {
+  --road-x: 100%;
+}
+
 .tile-glyph {
   position: absolute;
   width: 1px;
@@ -586,19 +623,23 @@ input:focus {
 
 .combat-overlay {
   position: absolute;
-  inset: 18%;
+  left: 50%;
+  top: 50%;
   z-index: 5;
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) auto minmax(0, 1fr);
   align-items: end;
   gap: 6px;
+  width: min(86%, 360px);
+  aspect-ratio: 16 / 9;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--hero-color) 42%, var(--gold));
   border-radius: 4px;
   padding: 10px 10px 8px;
+  translate: -50% -50%;
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.58)),
-    var(--combat-bg) center / cover,
+    var(--combat-bg) center / contain no-repeat,
     #15110d;
   box-shadow:
     inset 0 0 0 1px rgba(0, 0, 0, 0.72),
@@ -638,7 +679,6 @@ input:focus {
 
 .hero-combat img {
   width: min(100%, 54px);
-  transform: scaleX(-1);
 }
 
 .enemy-combat img {
@@ -668,7 +708,52 @@ input:focus {
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.9);
 }
 
+.combat-fx-sprite {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 0;
+  width: clamp(74px, 24vw, 112px);
+  aspect-ratio: 1;
+  pointer-events: none;
+  background-image: url('/assets/combat/combat-fx-spritesheet-v1.png');
+  background-repeat: no-repeat;
+  background-size: 800% 400%;
+  image-rendering: pixelated;
+  opacity: 0;
+  filter: drop-shadow(2px 3px 0 rgba(0, 0, 0, 0.72));
+  transform: translate(-50%, -50%) scale(0.82);
+  animation: combat-fx-sheet 1.8s steps(7, end) both;
+}
+
+.combat-fx-sword {
+  background-position-y: 0%;
+  filter:
+    drop-shadow(2px 3px 0 rgba(0, 0, 0, 0.72))
+    drop-shadow(0 0 6px rgba(244, 213, 127, 0.38));
+}
+
+.combat-fx-claw {
+  background-position-y: 33.333%;
+}
+
+.combat-fx-spectral {
+  background-position-y: 66.667%;
+  filter:
+    drop-shadow(2px 3px 0 rgba(0, 0, 0, 0.72))
+    drop-shadow(0 0 7px rgba(126, 98, 255, 0.44));
+}
+
+.combat-fx-ember {
+  background-position-y: 100%;
+  filter:
+    drop-shadow(2px 3px 0 rgba(0, 0, 0, 0.72))
+    drop-shadow(0 0 7px rgba(255, 115, 37, 0.48));
+}
+
 .combat-impact strong {
+  position: relative;
+  z-index: 1;
   max-width: 68px;
   overflow: hidden;
   font-size: 0.58rem;
@@ -678,12 +763,16 @@ input:focus {
 }
 
 .combat-impact span {
+  position: relative;
+  z-index: 1;
   color: #ffb2a4;
   font-size: 0.78rem;
   font-weight: 950;
 }
 
 .combat-impact small {
+  position: relative;
+  z-index: 1;
   color: #cfe8b8;
   font-size: 0.62rem;
   font-weight: 900;
@@ -746,6 +835,27 @@ input:focus {
   42%,
   100% {
     width: var(--hp-after);
+  }
+}
+
+@keyframes combat-fx-sheet {
+  0%,
+  14% {
+    opacity: 0;
+    background-position-x: 0%;
+    transform: translate(-58%, -44%) scale(0.72);
+  }
+
+  18%,
+  46% {
+    opacity: 1;
+  }
+
+  58%,
+  100% {
+    opacity: 0;
+    background-position-x: 100%;
+    transform: translate(-42%, -58%) scale(1.04);
   }
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { Bot, Crown, HelpCircle, Play, Plus, RotateCcw, Shield, Sparkles, Swords, Zap } from 'lucide-react';
-import type { Card, GameConfig, GameState, Hero, Loot, Player, Tile } from './types';
+import type { Card, Combat, GameConfig, GameState, Hero, Loot, Player, Tile } from './types';
 
 const tileNames: Record<string, string> = {
   road: 'Road',
@@ -43,6 +43,27 @@ function combatEnemyUrl(enemyId: string) {
 
 function combatBackgroundUrl(backgroundId: string) {
   return `/assets/combat/bg-${backgroundId}.png`;
+}
+
+function combatFxClass(effect: Combat['effect']) {
+  return `combat-fx-sprite combat-fx-${effect}`;
+}
+
+function roadShapeClass(board: Tile[], tile: Tile) {
+  const previous = board[(tile.index - 1 + board.length) % board.length];
+  const next = board[(tile.index + 1) % board.length];
+  const connections = [previous, next].map((neighbor) => {
+    const dx = neighbor.coord[0] - tile.coord[0];
+    const dy = neighbor.coord[1] - tile.coord[1];
+
+    if (dx === 1) return 'e';
+    if (dx === -1) return 'w';
+    if (dy === 1) return 's';
+    if (dy === -1) return 'n';
+    return '';
+  }).filter(Boolean).sort().join('');
+
+  return `road-shape-${connections}`;
 }
 
 function statLine(hero: Hero) {
@@ -338,6 +359,7 @@ function PlayerPanel({
             disabled={!onTile || !selectedCard || selectedCard.kind !== 'terrain' || tile.type === 'camp'}
             title={tileNames[tile.type] ?? tile.type}
           >
+            {tile.type === 'road' && <span className={`road-shape ${roadShapeClass(player.board, tile)}`} aria-hidden="true" />}
             <span className="tile-glyph">{tileGlyphs[tile.type] ?? '?'}</span>
             {player.position === tile.index && (
               <span className="runner">
@@ -386,6 +408,7 @@ function CombatOverlay({ player }: { player: Player }) {
         />
       </div>
       <div className="combat-impact">
+        <div className={combatFxClass(combat.effect)} aria-hidden="true" />
         <strong>{combat.label}</strong>
         <span>-{combat.damage} HP</span>
         <small>+{combat.reward} XP</small>

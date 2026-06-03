@@ -64,6 +64,7 @@ test('combat events expose encounter details for the board overlay', () => {
 
   assert.equal(player.combat.enemyId, 'crypt-wraith');
   assert.equal(player.combat.backgroundId, 'crypt');
+  assert.equal(player.combat.effect, 'spectral');
   assert.equal(player.combat.enemyHpAfter, 0);
   assert.equal(player.combat.heroHpAfter, player.hp);
   assert.ok(player.combat.damage > 0);

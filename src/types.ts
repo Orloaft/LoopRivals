@@ -49,6 +49,7 @@ export type Combat = {
   enemyId: string;
   enemyName: string;
   backgroundId: string;
+  effect: 'sword' | 'claw' | 'spectral' | 'ember';
   label: string;
   damage: number;
   reward: number;

@@ -6,22 +6,26 @@ const combatEncounters = {
   'wolf grove': {
     enemyId: 'thorn-wolf',
     enemyName: 'Thorn Wolf',
-    backgroundId: 'grove'
+    backgroundId: 'grove',
+    effect: 'claw'
   },
   'crypt duel': {
     enemyId: 'crypt-wraith',
     enemyName: 'Crypt Wraith',
-    backgroundId: 'crypt'
+    backgroundId: 'crypt',
+    effect: 'spectral'
   },
   'bandit ambush': {
     enemyId: 'brigand',
     enemyName: 'Road Brigand',
-    backgroundId: 'road'
+    backgroundId: 'road',
+    effect: 'sword'
   },
   'road skirmish': {
     enemyId: 'brigand',
     enemyName: 'Road Brigand',
-    backgroundId: 'road'
+    backgroundId: 'road',
+    effect: 'sword'
   }
 };
 
@@ -489,7 +493,8 @@ function fight(room, player, label, threat, reward) {
   const encounter = combatEncounters[label] ?? {
     enemyId: 'ash-imp',
     enemyName: 'Ash Imp',
-    backgroundId: 'forge'
+    backgroundId: 'forge',
+    effect: 'ember'
   };
   const enemyMaxHp = clamp(threat + reward + player.level * 3, 16, 64);
   const timestamp = now();
