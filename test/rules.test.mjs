@@ -233,7 +233,7 @@ test('talent tree budgets stay in a tight balance band', () => {
   }
 });
 
-test('room finishes when a player reaches the goal score', () => {
+test('reaching the goal score starts a claim lap instead of ending immediately', () => {
   const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
   room.players.leader = player;
   room.status = 'running';
@@ -242,9 +242,70 @@ test('room finishes when a player reaches the goal score', () => {
   const winner = testApi.checkWinner(room);
   const snapshot = testApi.roomSnapshot(room);
 
+  assert.equal(winner, null);
+  assert.equal(snapshot.status, 'running');
+  assert.equal(snapshot.winnerId, null);
+  assert.equal(snapshot.claim.playerId, player.id);
+  assert.equal(snapshot.tier.id, 4);
+  assert.equal(player.marked, true);
+});
+
+test('claim lap finishes after the claimant completes another lap', () => {
+  const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
+  room.players.leader = player;
+  room.status = 'running';
+  player.level = 20;
+  player.laps = 3;
+
+  testApi.checkWinner(room);
+  player.laps = 4;
+  const winner = testApi.checkWinner(room);
+  const snapshot = testApi.roomSnapshot(room);
+
   assert.equal(winner.id, player.id);
   assert.equal(snapshot.status, 'finished');
   assert.equal(snapshot.winnerId, player.id);
+});
+
+test('unstable loop marks the leader and rival cards hit marked runners harder', () => {
+  const leader = testApi.createPlayer('leader', 'Leader', 'moss-warden');
+  const attacker = testApi.createPlayer('attacker', 'Attacker', 'ember-knight');
+  const meteor = {
+    id: 'meteor',
+    instanceId: 'marked-meteor',
+    name: 'Meteor',
+    kind: 'rival',
+    icon: '☄',
+    text: 'Damages a rival and scorches a tile.'
+  };
+
+  leader.level = 12;
+  attacker.hand = [meteor];
+  room.players.leader = leader;
+  room.players.attacker = attacker;
+  room.status = 'running';
+
+  testApi.checkWinner(room);
+
+  assert.equal(testApi.roomSnapshot(room).tier.id, 3);
+  assert.equal(leader.marked, true);
+
+  const hpBefore = leader.hp;
+  testApi.playRival(room, attacker, meteor.instanceId, leader.id);
+
+  assert.equal(leader.hp, hpBefore - 11);
+});
+
+test('solo tier gates trigger before the crown claim', () => {
+  const player = testApi.createPlayer('solo', 'Solo', 'ember-knight');
+  room.players.solo = player;
+  room.status = 'running';
+  player.level = 5;
+
+  testApi.checkWinner(room);
+
+  assert.deepEqual(player.soloGatesCleared, [1800]);
+  assert.equal(player.combat.enemyName, 'Loop Warden');
 });
 
 test('fillCpuOpponents fills open seats without exceeding capacity', () => {

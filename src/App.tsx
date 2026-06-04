@@ -375,6 +375,8 @@ function App() {
       <audio ref={bgmRef} src="/assets/audio/crypt-of-neon-glass.mp3" preload="auto" loop />
       {notice && <div className="notice-toast">{notice}</div>}
 
+      {game.status !== 'finished' && <PhaseStrip game={game} />}
+
       {game.status === 'finished' && game.winner && (
         <section className="winner-strip" style={{ '--hero-color': game.winner.color } as React.CSSProperties}>
           <div>
@@ -485,6 +487,38 @@ function App() {
   );
 }
 
+function PhaseStrip({ game }: { game: GameState }) {
+  const claim = game.claim;
+  const progress = Math.max(0, Math.min(100, ((game.tier?.minScore ?? 0) / game.goalScore) * 100));
+  const claimRemaining = claim ? Math.ceil(claim.remainingMs / 1000) : null;
+
+  return (
+    <section
+      className={`phase-strip ${claim ? 'claiming' : ''}`}
+      style={{ '--hero-color': claim?.claimantColor ?? '#d2b15c', '--phase-progress': `${progress}%` } as React.CSSProperties}
+    >
+      <div className="phase-copy">
+        <strong>{claim ? 'Claim the Loop' : game.tier.name}</strong>
+        <span>{claim ? `${claim.claimantName} must complete one marked lap` : game.tier.text}</span>
+      </div>
+      <div className="phase-meter" aria-hidden="true"><i /></div>
+      <div className="phase-meta">
+        {claim ? (
+          <>
+            <Crown size={16} />
+            <span>{claimRemaining}s</span>
+          </>
+        ) : (
+          <>
+            <Sparkles size={16} />
+            <span>{game.leaderboard[0]?.score ?? 0}/{game.goalScore}</span>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function GameMenu({
   game,
   isHost,
@@ -508,7 +542,7 @@ function GameMenu({
         <div className="help-head">
           <div>
             <strong>Menu</strong>
-            <span>Room {game.id} · {game.players.length}/{game.maxPlayers} runners · first to {game.goalScore} · {isHost ? 'host controls' : 'guest view'} · tick {game.tick}</span>
+            <span>Room {game.id} · {game.players.length}/{game.maxPlayers} runners · {game.tier.name} · {isHost ? 'host controls' : 'guest view'} · tick {game.tick}</span>
           </div>
           <button className="icon-action" onClick={onClose}>Close · Esc</button>
         </div>
@@ -666,7 +700,7 @@ function PlayerSideDock({
         <img src={heroPortraitUrl(player.heroId)} alt="" />
         <div>
           <strong>{player.name}</strong>
-          <span>{hero?.name ?? 'Runner'} · Rank {player.rank}</span>
+          <span>{hero?.name ?? 'Runner'} · Rank {player.rank} · {game.tier.name}</span>
         </div>
         {player.rank === 1 && <Crown size={18} />}
       </div>
@@ -676,6 +710,14 @@ function PlayerSideDock({
         <b>{Math.ceil(player.hp)}/{player.maxHp}</b>
         <em>{player.score}</em>
         <small><Coins size={12} /> {player.gold ?? 0}</small>
+      </div>
+
+      <div className={`phase-card ${game.claim?.playerId === player.id ? 'claimant' : ''}`}>
+        <div>
+          <strong>{game.claim?.playerId === player.id ? 'Claim lap active' : game.tier.name}</strong>
+          <span>{game.claim ? `${game.claim.claimantName} has ${Math.ceil(game.claim.remainingMs / 1000)}s to close the loop.` : game.tier.text}</span>
+        </div>
+        <small>{player.soloGatesCleared.length}/3 gates</small>
       </div>
 
       {dockMode === 'talents' ? (
@@ -1044,6 +1086,7 @@ function PlayerPanel({
             <span>SPD {player.speed}</span>
           </div>
           <div className="bc-event">{player.event}</div>
+          {player.marked && <div className="bc-claim">marked</div>}
           <div className="bc-cards">{player.hand.length} cards · {player.loot.length} loot · {player.gold ?? 0} gold</div>
           <InfoPopover
             title={player.name}
@@ -1131,7 +1174,7 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
         <div className="help-head">
           <div>
             <strong>Rules</strong>
-            <span>First player to {config.goalScore} points wins.</span>
+            <span>Reach {config.goalScore}, then close a claim lap.</span>
           </div>
           <button className="icon-action" onClick={onClose}>Close</button>
         </div>
@@ -1150,7 +1193,11 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
           </section>
           <section>
             <h2>Scoring</h2>
-            <p>Level, laps, fights, loot, and banked XP all add points. Knockouts revive at camp with a trimmed hand.</p>
+            <p>Level, laps, fights, loot, and banked XP unlock tiers. At {config.goalScore} points the leader must complete one marked claim lap.</p>
+          </section>
+          <section>
+            <h2>Solo</h2>
+            <p>Solo runs add gate fights at each tier. Break the crown gate, then finish the crown lap to win.</p>
           </section>
         </div>
         <div className="help-lists">

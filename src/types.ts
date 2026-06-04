@@ -67,6 +67,25 @@ export type Tile = {
   charges: number;
 };
 
+export type MatchTier = {
+  id: number;
+  name: string;
+  minScore: number;
+  text: string;
+};
+
+export type ClaimState = {
+  playerId: string;
+  claimantName: string;
+  claimantColor: string;
+  startedAt: number;
+  expiresAt: number;
+  remainingMs: number;
+  startLap: number;
+  deathsAtStart: number;
+  mode: 'solo-crown-lap' | 'marked-claim-lap';
+};
+
 export type Combat = {
   enemyId: string;
   enemyName: string;
@@ -120,6 +139,8 @@ export type Player = {
   cardsPlayed: number;
   tilesPlaced: number;
   deaths: number;
+  soloGatesCleared: number[];
+  marked: boolean;
   curse: number;
   armor: number;
   event: string;
@@ -138,6 +159,7 @@ export type GameConfig = {
   talentTrees: Record<string, Trait[]>;
   maxPlayers: number;
   goalScore: number;
+  matchTiers: MatchTier[];
 };
 
 export type GameState = {
@@ -147,6 +169,8 @@ export type GameState = {
   log: string[];
   maxPlayers: number;
   goalScore: number;
+  tier: MatchTier;
+  claim: ClaimState | null;
   hostId: string | null;
   winnerId: string | null;
   winner: Player | null;

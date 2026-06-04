@@ -3,6 +3,14 @@ export const goalScore = 7200;
 // Global pacing multiplier. >1 slows the game down (all timed delays get longer).
 // 2.4 keeps the board readable while restoring the "always moving" pressure.
 const timeScale = 2.4;
+export const matchTiers = [
+  { id: 1, name: 'Opening Loop', minScore: 0, text: 'Shape your road and find an identity.' },
+  { id: 2, name: 'Rivals Awaken', minScore: 1800, text: 'Disruption and engine tiles start to matter.' },
+  { id: 3, name: 'Unstable Loop', minScore: 4500, text: 'The leader is marked and the loop pushes back.' },
+  { id: 4, name: 'Claim Phase', minScore: goalScore, text: 'Complete a marked claim lap to win.' }
+];
+const claimTimeoutMs = 52000 * timeScale;
+const soloGateScores = [1800, 4500, goalScore];
 const combatDisplayMs = 1800 * timeScale;
 
 const combatEncounters = {
@@ -33,6 +41,18 @@ const combatEncounters = {
   'obelisk shade': {
     enemyId: 'ash-imp',
     enemyName: 'Obelisk Shade',
+    backgroundId: 'forge',
+    effect: 'ember'
+  },
+  'gate warden': {
+    enemyId: 'crypt-wraith',
+    enemyName: 'Loop Warden',
+    backgroundId: 'crypt',
+    effect: 'spectral'
+  },
+  'crown gate': {
+    enemyId: 'ash-imp',
+    enemyName: 'Crown Gate',
     backgroundId: 'forge',
     effect: 'ember'
   }
@@ -197,7 +217,7 @@ export const boardPath = [
 ];
 
 export function publicConfig() {
-  return { heroes, cards: [...terrainCards, ...rivalCards], boardPath, traits, talentTrees, maxPlayers, goalScore };
+  return { heroes, cards: [...terrainCards, ...rivalCards], boardPath, traits, talentTrees, maxPlayers, goalScore, matchTiers };
 }
 
 export function createRoom(id, options = {}) {
@@ -217,7 +237,9 @@ export function createRoom(id, options = {}) {
     log: ['Loopduel lobby is open. Join, pick a hero, then keep up.'],
     botCounter: 1,
     nextSeatIndex: 0,
-    winnerId: null
+    winnerId: null,
+    tier: matchTiers[0],
+    claim: null
   };
 }
 
@@ -287,6 +309,13 @@ export function roomSnapshot(room) {
       level: player.level,
       laps: player.laps
     })),
+    tier: room.tier ?? matchTiers[0],
+    claim: room.claim ? {
+      ...room.claim,
+      remainingMs: Math.max(0, room.claim.expiresAt - now(room)),
+      claimantName: room.players[room.claim.playerId]?.name ?? 'Runner',
+      claimantColor: room.players[room.claim.playerId]?.color ?? '#d2b15c'
+    } : null,
     players
   };
 }
@@ -329,6 +358,11 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     cardsPlayed: 0,
     tilesPlaced: 0,
     deaths: 0,
+    soloGatesCleared: [],
+    claimStartedAt: null,
+    claimStartLap: null,
+    claimDeathsAtStart: 0,
+    marked: false,
     curse: 0,
     armor: 0,
     nextMoveAt: now(room) + 1000 * timeScale,
@@ -434,7 +468,8 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
   const targetedTile = hasTileTarget ? target.board[tileIndex] : null;
   if (hasTileTarget && (!targetedTile || targetedTile.type !== 'road' || targetedTile.index === target.position)) return;
   player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
-  const bonus = player.sabotage;
+  const markedBonus = target.marked ? 3 : 0;
+  const bonus = player.sabotage + markedBonus;
 
   if (targetedTile) {
     if (card.id === 'meteor') {
@@ -493,6 +528,10 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
   }
   player.cardsPlayed += 1;
   player.rivalHits += 1;
+  if (target.marked) {
+    target.nextMoveAt += 420 * timeScale;
+    if (room.claim?.playerId === target.id) room.claim.expiresAt -= 2600;
+  }
   room.lastActivityAt = now(room);
   resolveDefeat(room, target);
   addXp(room, player, 7);
@@ -562,19 +601,140 @@ export function runRoomStep(room, options = {}) {
     if (now(room) >= player.nextMoveAt) advancePlayer(room, player);
     botThink(room, player);
   }
-  checkWinner(room);
+  updateEndgame(room);
 }
 
 export function checkWinner(room) {
-  if (room.status !== 'running') return null;
-  const winner = Object.values(room.players).find((player) => score(player) >= goalScore);
-  if (!winner) return null;
+  return updateEndgame(room);
+}
+
+function leader(room) {
+  return Object.values(room.players)
+    .sort((a, b) => {
+      const scoreDiff = score(b) - score(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return (a.seatIndex ?? 0) - (b.seatIndex ?? 0);
+    })[0] ?? null;
+}
+
+function tierForScore(value) {
+  return [...matchTiers].reverse().find((tier) => value >= tier.minScore) ?? matchTiers[0];
+}
+
+function isSoloRoom(room) {
+  return activePlayerCount(room) === 1;
+}
+
+function updateTier(room) {
+  const top = leader(room);
+  const nextTier = tierForScore(top ? score(top) : 0);
+  if ((room.tier?.id ?? 1) === nextTier.id) return;
+  room.tier = nextTier;
+  addLog(room, `${nextTier.name}: ${nextTier.text}`);
+}
+
+function maybeTriggerSoloGate(room, player) {
+  if (!isSoloRoom(room)) return false;
+  const cleared = new Set(player.soloGatesCleared ?? []);
+  const nextGate = soloGateScores.find((gateScore) => score(player) >= gateScore && !cleared.has(gateScore));
+  if (!nextGate) return false;
+
+  player.soloGatesCleared = [...cleared, nextGate];
+  const finalGate = nextGate >= goalScore;
+  fight(room, player, finalGate ? 'crown gate' : 'gate warden', finalGate ? 17 : 12 + player.soloGatesCleared.length * 2, finalGate ? 28 : 18);
+  player.event = finalGate ? 'broke the crown gate' : `cleared gate ${player.soloGatesCleared.length}`;
+  addLog(room, `${player.name} ${finalGate ? 'broke the crown gate' : `defeated solo gate ${player.soloGatesCleared.length}`}.`);
+  return true;
+}
+
+function startClaim(room, player) {
+  room.tier = matchTiers[3];
+  room.claim = {
+    playerId: player.id,
+    startedAt: now(room),
+    expiresAt: now(room) + claimTimeoutMs,
+    startLap: player.laps,
+    deathsAtStart: player.deaths,
+    mode: isSoloRoom(room) ? 'solo-crown-lap' : 'marked-claim-lap'
+  };
+  for (const candidate of Object.values(room.players)) candidate.marked = candidate.id === player.id;
+  player.claimStartedAt = room.claim.startedAt;
+  player.claimStartLap = player.laps;
+  player.claimDeathsAtStart = player.deaths;
+  player.event = isSoloRoom(room) ? 'started the crown lap' : 'marked for the claim lap';
+  addLog(room, `${player.name} reached ${goalScore} and started the ${isSoloRoom(room) ? 'crown lap' : 'claim lap'}.`);
+}
+
+function clearClaim(room, reason) {
+  if (!room.claim) return;
+  const claimant = room.players[room.claim.playerId];
+  if (claimant) {
+    claimant.marked = false;
+    claimant.claimStartedAt = null;
+    claimant.claimStartLap = null;
+    claimant.event = reason;
+  }
+  room.claim = null;
+}
+
+function updateMarks(room) {
+  if (room.claim) {
+    for (const player of Object.values(room.players)) player.marked = player.id === room.claim.playerId;
+    return;
+  }
+  const top = leader(room);
+  for (const player of Object.values(room.players)) {
+    player.marked = Boolean(top && room.tier?.id >= 3 && player.id === top.id);
+  }
+}
+
+function finishClaim(room, player) {
   room.status = 'finished';
   room.finishedAt = now(room);
-  room.winnerId = winner.id;
-  winner.event = 'claimed the loop';
-  addLog(room, `${winner.name} won the duel with ${score(winner)} points.`);
-  return winner;
+  room.winnerId = player.id;
+  player.marked = false;
+  player.event = 'claimed the loop';
+  addLog(room, `${player.name} claimed the loop with ${score(player)} points.`);
+  return player;
+}
+
+function updateClaim(room) {
+  if (!room.claim) return null;
+  const claimant = room.players[room.claim.playerId];
+  if (!claimant) {
+    room.claim = null;
+    return null;
+  }
+  if (claimant.deaths > room.claim.deathsAtStart) {
+    addLog(room, `${claimant.name}'s claim was interrupted by a knockout.`);
+    clearClaim(room, 'claim interrupted');
+    return null;
+  }
+  if (now(room) >= room.claim.expiresAt) {
+    addLog(room, `${claimant.name}'s claim expired before the loop closed.`);
+    clearClaim(room, 'claim expired');
+    return null;
+  }
+  if (claimant.laps > room.claim.startLap) return finishClaim(room, claimant);
+  return null;
+}
+
+function updateEndgame(room) {
+  if (room.status !== 'running') return null;
+  updateTier(room);
+  updateMarks(room);
+  const claimantResult = updateClaim(room);
+  if (claimantResult) return claimantResult;
+  if (room.claim) return null;
+
+  for (const player of Object.values(room.players)) maybeTriggerSoloGate(room, player);
+  const contender = Object.values(room.players)
+    .filter((player) => score(player) >= goalScore)
+    .sort((a, b) => score(b) - score(a))[0];
+  if (!contender) return null;
+  startClaim(room, contender);
+  updateMarks(room);
+  return null;
 }
 
 function normalizeSeed(seed) {
@@ -635,11 +795,13 @@ function xpNeeded(player) {
 }
 
 function drawCard(room = null, preferredKind = null) {
+  const tierId = room?.tier?.id ?? 1;
+  const rivalChance = tierId >= 3 ? 0.52 : tierId === 2 ? 0.44 : 0.36;
   const pool = preferredKind === 'terrain'
     ? terrainCards
     : preferredKind === 'rival'
       ? rivalCards
-      : random(room) < 0.64
+      : random(room) < 1 - rivalChance
         ? terrainCards
         : rivalCards;
   const card = sample(room, pool);
@@ -965,7 +1127,9 @@ export const testApi = {
   fillCpuOpponents,
   hasRoomForPlayer,
   joinRoom,
+  matchTiers,
   maxPlayers,
+  goalScore,
   playRival,
   resetRoom,
   refreshPendingTraits,

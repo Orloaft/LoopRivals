@@ -334,6 +334,88 @@ input:focus {
   color: #d5c394;
 }
 
+.phase-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 22vw) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(210, 177, 92, 0.28);
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--hero-color) 14%, rgba(0, 0, 0, 0.84)), rgba(17, 16, 14, 0.92));
+}
+
+.phase-strip.claiming {
+  border-color: color-mix(in srgb, var(--hero-color) 62%, var(--gold-bright));
+  box-shadow: 0 0 0 1px rgba(246, 207, 107, 0.12), 0 12px 34px rgba(0, 0, 0, 0.34);
+}
+
+.phase-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.phase-copy strong {
+  overflow: hidden;
+  color: var(--parchment);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phase-copy span,
+.phase-meta {
+  color: #d5c394;
+  font-size: 0.78rem;
+}
+
+.phase-meter {
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(210, 177, 92, 0.24);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.34);
+}
+
+.phase-meter i {
+  display: block;
+  width: var(--phase-progress);
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--hero-color));
+}
+
+.phase-strip.claiming .phase-meter i {
+  width: 100%;
+  animation: claimPulse 1.1s ease-in-out infinite alternate;
+}
+
+.phase-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: end;
+  gap: 5px;
+  min-width: 72px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.phase-meta svg {
+  color: var(--gold-bright);
+}
+
+@keyframes claimPulse {
+  from {
+    opacity: 0.48;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
 .play-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(286px, 22vw, 356px);
@@ -721,6 +803,18 @@ input:focus {
   font-style: italic;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.bc-claim {
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--hero-color) 65%, var(--gold-bright));
+  border-radius: 999px;
+  color: var(--parchment);
+  background: rgba(0, 0, 0, 0.36);
+  font-size: 0.62rem;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .bc-cards {
@@ -1535,6 +1629,51 @@ input:focus {
   color: var(--gold);
   font-size: 0.72rem;
   font-weight: 900;
+}
+
+.phase-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(210, 177, 92, 0.18);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.phase-card.claimant {
+  border-color: color-mix(in srgb, var(--hero-color) 62%, var(--gold-bright));
+  background: color-mix(in srgb, var(--hero-color) 14%, rgba(0, 0, 0, 0.34));
+}
+
+.phase-card div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.phase-card strong {
+  overflow: hidden;
+  color: var(--parchment);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phase-card span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phase-card small {
+  color: var(--gold-bright);
+  font-size: 0.7rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
 }
 
 .paperdoll {
@@ -2354,8 +2493,13 @@ input:focus {
   .play-layout,
   .control-dock,
   .side-panels,
+  .phase-strip,
   .help-grid {
     grid-template-columns: 1fr;
+  }
+
+  .phase-meta {
+    justify-content: start;
   }
 
   .player-side-dock {
@@ -2404,7 +2548,7 @@ input:focus {
 
   .player-panel.focused {
     grid-column: 1 / -1;
-    grid-row: auto;
+    grid-row: span 3;
     justify-self: center;
   }
 
