@@ -154,6 +154,7 @@ function App() {
   const [dragCardId, setDragCardId] = useState<string | null>(null);
   const [dragLootId, setDragLootId] = useState<string | null>(null);
   const [bgmOn, setBgmOn] = useState(() => localStorage.getItem('loopduel.bgm') !== 'off');
+  const [mobileDrawer, setMobileDrawer] = useState<'loot' | 'talents' | 'log' | 'menu' | null>(null);
 
   useEffect(() => {
     socket.on('connect', () => {
@@ -376,6 +377,7 @@ function App() {
       {notice && <div className="notice-toast">{notice}</div>}
 
       {game.status !== 'finished' && <PhaseStrip game={game} />}
+      <MobileStatusBar player={me} game={game} />
 
       {game.status === 'finished' && game.winner && (
         <section className="winner-strip" style={{ '--hero-color': game.winner.color } as React.CSSProperties}>
@@ -409,7 +411,32 @@ function App() {
             />
           ))}
         </section>
+        <MobileRivalStrip
+          players={game.players.filter((player) => player.id !== me.id)}
+          focusedId={focusedPlayerId}
+          activeCard={rivalTargetCard}
+          onFocus={focusBoard}
+          onTarget={(targetId) => playRival(targetId)}
+        />
         <section className="control-dock">
+          <div className="mobile-tray-head">
+            <button className="mobile-drawer-tab" onClick={() => setMobileDrawer((mode) => mode === 'loot' ? null : 'loot')}>
+              <Shield size={15} />
+              Loot
+            </button>
+            <button className="mobile-drawer-tab" onClick={() => setMobileDrawer((mode) => mode === 'talents' ? null : 'talents')}>
+              <GitBranch size={15} />
+              Talents
+            </button>
+            <button className="mobile-drawer-tab" onClick={() => setMobileDrawer((mode) => mode === 'log' ? null : 'log')}>
+              <ScrollText size={15} />
+              Log
+            </button>
+            <button className="mobile-drawer-tab" onClick={() => setMobileDrawer((mode) => mode === 'menu' ? null : 'menu')}>
+              <Bot size={15} />
+              Menu
+            </button>
+          </div>
           <HandBar
             hand={me.hand}
             selectedId={selectedCardId}
@@ -468,6 +495,24 @@ function App() {
           bgmOn={bgmOn}
           onToggleBgm={() => setBgmOn((on) => !on)}
         />
+        <MobileDrawer
+          mode={mobileDrawer}
+          player={me}
+          config={config}
+          game={game}
+          lines={game.log}
+          onClose={() => setMobileDrawer(null)}
+          onEquip={equip}
+          onChoose={chooseTrait}
+          onLootDragStart={(id) => setDragLootId(id)}
+          onLootDragEnd={() => setDragLootId(null)}
+          onMenu={() => setShowMenu(true)}
+          onAddBot={addBot}
+          onFillCpu={fillCpu}
+          isHost={isHost}
+          bgmOn={bgmOn}
+          onToggleBgm={() => setBgmOn((on) => !on)}
+        />
       </section>
       <SellZone active={Boolean(dragCardId || dragLootId)} onDrop={handleSellDrop} />
       {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}
@@ -514,6 +559,69 @@ function PhaseStrip({ game }: { game: GameState }) {
           </>
         )}
       </div>
+    </section>
+  );
+}
+
+function MobileStatusBar({ player, game }: { player: Player; game: GameState }) {
+  const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+  const claimRemaining = game.claim ? Math.ceil(game.claim.remainingMs / 1000) : null;
+
+  return (
+    <section className="mobile-status-bar" style={{ '--hero-color': player.color, '--hp-ratio': `${hpRatio}%` } as React.CSSProperties}>
+      <div className="mobile-status-hero">
+        <img src={heroPortraitUrl(player.heroId)} alt="" />
+        <span>
+          <strong>{player.name}</strong>
+          <small>{game.claim?.playerId === player.id ? `claim ${claimRemaining}s` : game.tier.name}</small>
+        </span>
+      </div>
+      <div className="mobile-status-chips">
+        <b>HP {Math.ceil(player.hp)}/{player.maxHp}</b>
+        <b>{player.score} pts</b>
+        <b>Lap {player.laps}</b>
+        <b>{player.soloGatesCleared.length}/3 gates</b>
+        <b><Coins size={12} /> {player.gold ?? 0}</b>
+      </div>
+    </section>
+  );
+}
+
+function MobileRivalStrip({
+  players,
+  focusedId,
+  activeCard,
+  onFocus,
+  onTarget
+}: {
+  players: Player[];
+  focusedId: string;
+  activeCard: Card | null;
+  onFocus: (id: string) => void;
+  onTarget: (id: string) => void;
+}) {
+  if (players.length === 0) return null;
+
+  return (
+    <section className="mobile-rival-strip" aria-label="Rivals">
+      {players.map((player) => {
+        const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+        return (
+          <button
+            key={player.id}
+            className={`mobile-rival-chip ${focusedId === player.id ? 'selected' : ''} ${activeCard ? 'armed' : ''}`}
+            style={{ '--hero-color': player.color, '--hp-ratio': `${hpRatio}%` } as React.CSSProperties}
+            onClick={() => activeCard ? onTarget(player.id) : onFocus(player.id)}
+          >
+            <img src={heroPortraitUrl(player.heroId)} alt="" />
+            <span>
+              <strong>{player.name}</strong>
+              <small>{activeCard ? 'target' : `${player.score} pts · Lv ${player.level}`}</small>
+            </span>
+            {player.rank === 1 && <Crown size={13} />}
+          </button>
+        );
+      })}
     </section>
   );
 }
@@ -836,6 +944,156 @@ function PlayerSideDock({
             </button>
           </div>
         </>
+      )}
+    </aside>
+  );
+}
+
+function MobileDrawer({
+  mode,
+  player,
+  config,
+  game,
+  lines,
+  onClose,
+  onEquip,
+  onChoose,
+  onLootDragStart,
+  onLootDragEnd,
+  onMenu,
+  onAddBot,
+  onFillCpu,
+  isHost,
+  bgmOn,
+  onToggleBgm
+}: {
+  mode: 'loot' | 'talents' | 'log' | 'menu' | null;
+  player: Player;
+  config: GameConfig;
+  game: GameState;
+  lines: string[];
+  onClose: () => void;
+  onEquip: (item: Loot) => void;
+  onChoose: (traitId: string) => void;
+  onLootDragStart: (itemId: string) => void;
+  onLootDragEnd: () => void;
+  onMenu: () => void;
+  onAddBot: () => void;
+  onFillCpu: () => void;
+  isHost: boolean;
+  bgmOn: boolean;
+  onToggleBgm: () => void;
+}) {
+  if (!mode) return null;
+
+  const hero = config.heroes.find((item) => item.id === player.heroId);
+  const tree = config.talentTrees[player.heroId] ?? [];
+  const pending = tree.filter((trait) => player.pendingTraits.includes(trait.id));
+  const learned = tree.filter((trait) => player.traits.includes(trait.id));
+  const equippedIds = new Set(Object.values(player.loadout).filter(Boolean).map((item) => item?.id));
+  const looseLoot = player.loot.filter((item) => !equippedIds.has(item.id));
+
+  return (
+    <aside className="mobile-drawer" style={{ '--hero-color': player.color } as React.CSSProperties}>
+      <div className="mobile-drawer-head">
+        <div>
+          <strong>{mode}</strong>
+          <span>{hero?.name ?? 'Runner'} · {game.tier.name}</span>
+        </div>
+        <button className="icon-action" onClick={onClose}>Close</button>
+      </div>
+
+      {mode === 'loot' && (
+        <div className="mobile-drawer-body">
+          <div className="mobile-loadout">
+            {(['weapon', 'armor', 'charm'] as const).map((slot) => {
+              const item = player.loadout[slot];
+              return (
+                <div key={slot} className={`mobile-loadout-slot ${slot} ${item ? 'filled' : ''}`}>
+                  {slotIcon(slot, 16)}
+                  <span>
+                    <strong>{item?.name ?? slot}</strong>
+                    <small>{item ? itemStatLine(item) : 'empty'}</small>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mobile-loot-grid">
+            {looseLoot.slice(0, 10).map((item) => (
+              <button
+                key={item.id}
+                className={`mobile-loot-item ${item.slot} ${item.rarity}`}
+                draggable
+                onClick={() => onEquip(item)}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('application/x-loopduel-kind', 'loot');
+                  event.dataTransfer.setData('application/x-loopduel-loot-id', item.id);
+                  event.dataTransfer.setData('text/plain', item.id);
+                  onLootDragStart(item.id);
+                }}
+                onDragEnd={onLootDragEnd}
+              >
+                {slotIcon(item.slot, 17)}
+                <span>
+                  <strong>{item.name}</strong>
+                  <small>{itemStatLine(item)}</small>
+                </span>
+              </button>
+            ))}
+            {looseLoot.length === 0 && <span className="mobile-empty">No loose loot.</span>}
+          </div>
+        </div>
+      )}
+
+      {mode === 'talents' && (
+        <div className="mobile-drawer-body mobile-talent-list">
+          {[...pending, ...learned].slice(0, 8).map((trait) => {
+            const ready = player.pendingTraits.includes(trait.id);
+            return (
+              <button
+                key={trait.id}
+                className={`mobile-talent-item ${ready ? 'ready' : 'learned'}`}
+                disabled={!ready}
+                onClick={() => onChoose(trait.id)}
+              >
+                <span>{traitGlyph(trait.name)}</span>
+                <b>{trait.name}</b>
+                <small>{trait.text}</small>
+              </button>
+            );
+          })}
+          {pending.length === 0 && learned.length === 0 && <span className="mobile-empty">Level up to awaken the first node.</span>}
+        </div>
+      )}
+
+      {mode === 'log' && (
+        <div className="mobile-drawer-body mobile-log-list">
+          {lines.slice(0, 12).map((line, index) => <span key={`${line}-${index}`}>{line}</span>)}
+          {lines.length === 0 && <span className="mobile-empty">The loop is quiet.</span>}
+        </div>
+      )}
+
+      {mode === 'menu' && (
+        <div className="mobile-drawer-body mobile-menu-grid">
+          <button className="menu-item" onClick={onMenu}>
+            <Bot size={19} />
+            Room Menu
+          </button>
+          <button className="menu-item" onClick={onAddBot} disabled={!isHost}>
+            <Bot size={19} />
+            Add Bot
+          </button>
+          <button className="menu-item" onClick={onFillCpu} disabled={!isHost}>
+            <Users size={19} />
+            Fill CPU
+          </button>
+          <button className="menu-item" onClick={onToggleBgm}>
+            {bgmOn ? <Volume2 size={19} /> : <VolumeX size={19} />}
+            BGM
+          </button>
+        </div>
       )}
     </aside>
   );
