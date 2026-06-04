@@ -1,8 +1,8 @@
 export const maxPlayers = 4;
-export const goalScore = 60000;
+export const goalScore = 7200;
 // Global pacing multiplier. >1 slows the game down (all timed delays get longer).
-// 4 = quarter speed, giving plenty of time to read events and play cards each loop.
-const timeScale = 4;
+// 2.4 keeps the board readable while restoring the "always moving" pressure.
+const timeScale = 2.4;
 const combatDisplayMs = 1800 * timeScale;
 
 const combatEncounters = {
@@ -29,6 +29,12 @@ const combatEncounters = {
     enemyName: 'Road Brigand',
     backgroundId: 'road',
     effect: 'sword'
+  },
+  'obelisk shade': {
+    enemyId: 'ash-imp',
+    enemyName: 'Obelisk Shade',
+    backgroundId: 'forge',
+    effect: 'ember'
   }
 };
 
@@ -39,11 +45,12 @@ export const heroes = [
     title: 'tempo bruiser',
     icon: '🔥',
     color: '#f45d43',
-    maxHp: 42,
-    power: 8,
-    guard: 4,
+    maxHp: 46,
+    power: 9,
+    guard: 5,
     speed: 5,
-    text: 'Burns through weak encounters and spikes after taking damage.'
+    revivePower: 1,
+    text: 'A direct fighter with steady tempo and bonus pressure after knockdowns.'
   },
   {
     id: 'moss-warden',
@@ -51,11 +58,13 @@ export const heroes = [
     title: 'board shaper',
     icon: '🌿',
     color: '#45b36b',
-    maxHp: 52,
-    power: 6,
+    maxHp: 50,
+    power: 7,
     guard: 6,
-    speed: 3,
-    text: 'Heals from land cards and turns long loops into pressure.'
+    speed: 5,
+    lapHeal: 4,
+    terrainScore: 6,
+    text: 'A resilient shaper who converts healing terrain into reliable scoring.'
   },
   {
     id: 'night-vagrant',
@@ -66,8 +75,9 @@ export const heroes = [
     maxHp: 36,
     power: 7,
     guard: 2,
-    speed: 8,
-    text: 'Fast laps, more loot rolls, fragile under direct sabotage.'
+    speed: 5,
+    lootLuck: 0.06,
+    text: 'A fast looter with the best lap economy but fragile under focused attacks.'
   },
   {
     id: 'rune-archer',
@@ -75,11 +85,12 @@ export const heroes = [
     title: 'rival control',
     icon: '🏹',
     color: '#4ab9ef',
-    maxHp: 38,
+    maxHp: 42,
     power: 7,
-    guard: 3,
-    speed: 6,
-    text: 'Scores bonus damage when rivals are slowed or cursed.'
+    guard: 4,
+    speed: 5,
+    sabotage: 1,
+    text: 'A control specialist who scores by disrupting whoever is leading.'
   },
   {
     id: 'grave-singer',
@@ -87,11 +98,13 @@ export const heroes = [
     title: 'risk engine',
     icon: '💀',
     color: '#d8d1b0',
-    maxHp: 34,
+    maxHp: 39,
     power: 9,
-    guard: 1,
+    guard: 2,
     speed: 5,
-    text: 'Turns danger into XP and recovers when crossing ruins.'
+    revivePower: 1,
+    terrainScore: 2,
+    text: 'A risky XP engine that thrives on dangerous tiles and comeback traits.'
   }
 ];
 
@@ -101,14 +114,19 @@ export const terrainCards = [
   { id: 'crypt', name: 'Crypt', kind: 'terrain', tile: 'crypt', icon: '☗', text: 'Hard fight. Better loot.' },
   { id: 'forge', name: 'Forge', kind: 'terrain', tile: 'forge', icon: '⚒', text: 'Loot and temporary armor.' },
   { id: 'shrine', name: 'Shrine', kind: 'terrain', tile: 'shrine', icon: '✚', text: 'XP burst and trait tempo.' },
-  { id: 'mire', name: 'Mire', kind: 'terrain', tile: 'mire', icon: '≈', text: 'Slows hero, but pays cards.' }
+  { id: 'mire', name: 'Mire', kind: 'terrain', tile: 'mire', icon: '≈', text: 'Slows hero, but pays cards.' },
+  { id: 'village', name: 'Village', kind: 'terrain', tile: 'village', icon: '⌂', text: 'Safe heal, small score, small loot chance.' },
+  { id: 'obelisk', name: 'Obelisk', kind: 'terrain', tile: 'obelisk', icon: '◆', text: 'Power spike and XP, but attracts fights.' },
+  { id: 'watchtower', name: 'Watchtower', kind: 'terrain', tile: 'watchtower', icon: '◈', text: 'Draws rival cards and grants control score.' }
 ];
 
 export const rivalCards = [
   { id: 'bandits', name: 'Bandits', kind: 'rival', icon: '⚔', text: 'Adds an ambush to a rival loop.' },
   { id: 'hex', name: 'Hex', kind: 'rival', icon: '☾', text: 'Curses a rival for 3 events.' },
   { id: 'meteor', name: 'Meteor', kind: 'rival', icon: '☄', text: 'Damages a rival and scorches a tile.' },
-  { id: 'tax', name: 'Tithe Trap', kind: 'rival', icon: '$', text: 'Steals tempo: rival loses a card or HP.' }
+  { id: 'tax', name: 'Tithe Trap', kind: 'rival', icon: '$', text: 'Steals tempo: rival loses a card or HP.' },
+  { id: 'landslide', name: 'Landslide', kind: 'rival', icon: '⬖', text: 'Turns an upcoming rival tile into mire.' },
+  { id: 'cutpurse', name: 'Cutpurse', kind: 'rival', icon: '✂', text: 'Steals a loose loot tempo or wounds instead.' }
 ];
 
 export const traits = [
@@ -117,7 +135,9 @@ export const traits = [
   { id: 'cardsharp', name: 'Cardsharp', text: 'Draw cards faster.', bonus: { drawRate: 0.82 } },
   { id: 'duelist', name: 'Duelist', text: '+3 rival damage.', bonus: { sabotage: 3 } },
   { id: 'reclaimer', name: 'Reclaimer', text: 'Heal after every lap.', bonus: { lapHeal: 6 } },
-  { id: 'prospector', name: 'Prospector', text: 'More loot from fights.', bonus: { lootLuck: 0.22 } }
+  { id: 'prospector', name: 'Prospector', text: 'More loot from fights.', bonus: { lootLuck: 0.22 } },
+  { id: 'pathwright', name: 'Pathwright', text: 'Terrain cards score more.', bonus: { terrainScore: 5 } },
+  { id: 'vengeful', name: 'Vengeful', text: 'Revive stronger after a knockout.', bonus: { revivePower: 2 } }
 ];
 
 const lootNames = {
@@ -137,12 +157,16 @@ export function publicConfig() {
   return { heroes, cards: [...terrainCards, ...rivalCards], boardPath, traits, maxPlayers, goalScore };
 }
 
-export function createRoom(id) {
+export function createRoom(id, options = {}) {
+  const startTime = options.now ?? Date.now();
   return {
     id,
     status: 'lobby',
-    startedAt: Date.now(),
+    startedAt: startTime,
     finishedAt: null,
+    now: startTime,
+    simulated: Boolean(options.simulated),
+    rngState: normalizeSeed(options.seed ?? id),
     tick: 0,
     players: {},
     log: ['Loopduel lobby is open. Join, pick a hero, then keep up.'],
@@ -153,7 +177,7 @@ export function createRoom(id) {
 
 export function resetRoom(room) {
   const id = room.id;
-  Object.assign(room, createRoom(id));
+  Object.assign(room, createRoom(id, { seed: room.rngState, simulated: room.simulated, now: now(room) }));
 }
 
 export function activePlayerCount(room) {
@@ -165,7 +189,16 @@ export function hasRoomForPlayer(room) {
 }
 
 export function score(player) {
-  return player.level * 100 + player.laps * 32 + player.kos * 18 + player.loot.length * 5 + player.xp;
+  return (
+    player.level * 390 +
+    player.laps * 130 +
+    player.kos * 64 +
+    player.rivalHits * 72 +
+    player.tilesPlaced * 44 +
+    player.cardsPlayed * 9 +
+    player.loot.length * 24 +
+    player.xp
+  );
 }
 
 export function roomSnapshot(room) {
@@ -185,8 +218,8 @@ export function roomSnapshot(room) {
   };
 }
 
-export function createPlayer(id, name, heroId, isBot = false) {
-  const hero = heroes.find((item) => item.id === heroId) ?? sample(heroes);
+export function createPlayer(id, name, heroId, isBot = false, room = null) {
+  const hero = heroes.find((item) => item.id === heroId) ?? sample(room, heroes);
   return {
     id,
     name: name?.trim().slice(0, 20) || hero.name,
@@ -195,7 +228,7 @@ export function createPlayer(id, name, heroId, isBot = false) {
     connected: !isBot,
     color: hero.color,
     board: blankBoard(),
-    hand: [drawCard(), drawCard(), drawCard()],
+    hand: [drawCard(room), drawCard(room), drawCard(room)],
     loot: [],
     loadout: { weapon: null, charm: null, armor: null },
     traits: [],
@@ -206,22 +239,27 @@ export function createPlayer(id, name, heroId, isBot = false) {
     guard: hero.guard,
     speed: hero.speed,
     drawRate: 1,
-    sabotage: 0,
-    lootLuck: 0,
-    lapHeal: 0,
+    sabotage: hero.sabotage ?? 0,
+    lootLuck: hero.lootLuck ?? 0,
+    lapHeal: hero.lapHeal ?? 0,
+    terrainScore: hero.terrainScore ?? 0,
+    revivePower: hero.revivePower ?? 0,
     position: 0,
     laps: 0,
     level: 1,
     xp: 0,
     kos: 0,
+    rivalHits: 0,
+    cardsPlayed: 0,
+    tilesPlaced: 0,
     deaths: 0,
     curse: 0,
     armor: 0,
-    nextMoveAt: now() + 1000 * timeScale,
-    nextDrawAt: now() + 2200 * timeScale,
+    nextMoveAt: now(room) + 1000 * timeScale,
+    nextDrawAt: now(room) + 2200 * timeScale,
     event: 'entered the loop',
     message: 'entered the loop',
-    lastEventAt: now(),
+    lastEventAt: now(room),
     combat: null
   };
 }
@@ -245,7 +283,7 @@ export function joinRoom(room, { playerId, name, heroId }) {
     return { player: null, created: false, full: true };
   }
 
-  const player = createPlayer(playerId, name, heroId);
+  const player = createPlayer(playerId, name, heroId, false, room);
   room.players[player.id] = player;
   room.status = room.status === 'finished' ? 'finished' : 'running';
   addLog(room, `${player.name} joined as ${heroes.find((hero) => hero.id === player.heroId)?.name}.`);
@@ -262,13 +300,25 @@ export function disconnectPlayer(room, playerId) {
 
 export function addBot(room) {
   if (!hasRoomForPlayer(room) || room.status === 'finished') return null;
-  const hero = sample(heroes);
+  const hero = sample(room, heroes);
   const botId = `bot-${room.botCounter++}`;
-  const bot = createPlayer(botId, `Bot ${room.botCounter - 1}`, hero.id, true);
+  const botNames = ['Cinder CPU', 'Mire CPU', 'Hex CPU', 'Grove CPU'];
+  const bot = createPlayer(botId, botNames[(room.botCounter - 2) % botNames.length], hero.id, true, room);
   room.players[botId] = bot;
   room.status = 'running';
   addLog(room, `${bot.name} entered as ${hero.name}.`);
   return bot;
+}
+
+export function fillCpuOpponents(room, targetCount = maxPlayers) {
+  const added = [];
+  while (activePlayerCount(room) < Math.min(targetCount, maxPlayers)) {
+    const bot = addBot(room);
+    if (!bot) break;
+    added.push(bot);
+  }
+  if (added.length > 0) addLog(room, `CPU opponents filled ${added.length} open seat${added.length === 1 ? '' : 's'}.`);
+  return added;
 }
 
 export function playTerrain(room, player, cardInstanceId, tileIndex) {
@@ -280,8 +330,10 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
   tile.type = card.tile;
   tile.charges = card.tile === 'mire' ? 5 : 0;
   player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
+  player.cardsPlayed += 1;
+  player.tilesPlaced += 1;
   player.event = `placed ${card.name}`;
-  addXp(room, player, 2);
+  addXp(room, player, 3 + player.terrainScore);
   addLog(room, `${player.name} placed ${card.name}.`);
   checkWinner(room);
 }
@@ -294,7 +346,7 @@ export function playRival(room, player, cardInstanceId, targetId) {
   player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
   const bonus = player.sabotage;
   if (card.id === 'bandits') {
-    const tile = target.board[(target.position + 3 + rand(5)) % target.board.length];
+    const tile = target.board[(target.position + 3 + rand(room, 5)) % target.board.length];
     if (tile.type !== 'camp') {
       tile.type = 'ambush';
       tile.charges = 2;
@@ -313,12 +365,33 @@ export function playRival(room, player, cardInstanceId, targetId) {
     }
     target.event = 'meteor strike';
   } else if (card.id === 'tax') {
-    if (target.hand.length > 0) target.hand.splice(rand(target.hand.length), 1);
+    if (target.hand.length > 0) target.hand.splice(rand(room, target.hand.length), 1);
     else target.hp -= 5 + bonus;
     target.event = 'tempo stolen';
+  } else if (card.id === 'landslide') {
+    const tile = target.board[(target.position + 1 + rand(room, 6)) % target.board.length];
+    if (tile.type !== 'camp') {
+      tile.type = 'mire';
+      tile.charges = 4;
+    }
+    target.event = 'landslide on the path';
+  } else if (card.id === 'cutpurse') {
+    const unequipped = target.loot.filter((item) => !Object.values(target.loadout).some((equipped) => equipped?.id === item.id));
+    if (unequipped.length > 0) {
+      const stolen = unequipped[rand(room, unequipped.length)];
+      target.loot = target.loot.filter((item) => item.id !== stolen.id);
+      player.loot.unshift(stolen);
+      player.loot = player.loot.slice(0, 10);
+      target.event = 'loot stolen';
+    } else {
+      target.hp -= 6 + bonus;
+      target.event = 'cutpurse wound';
+    }
   }
+  player.cardsPlayed += 1;
+  player.rivalHits += 1;
   resolveDefeat(room, target);
-  addXp(room, player, 4);
+  addXp(room, player, 7);
   player.event = `hit ${target.name} with ${card.name}`;
   addLog(room, `${player.name} played ${card.name} on ${target.name}.`);
   checkWinner(room);
@@ -341,13 +414,14 @@ export function equip(player, itemId) {
   player.event = `equipped ${item.name}`;
 }
 
-export function runRoomStep(room) {
+export function runRoomStep(room, options = {}) {
   if (room.status !== 'running') return;
+  if (room.simulated || options.advanceMs) room.now += options.advanceMs ?? 260;
   room.tick += 1;
   for (const player of Object.values(room.players)) {
-    clearExpiredCombat(player);
-    maybeDraw(player);
-    if (now() >= player.nextMoveAt) advancePlayer(room, player);
+    clearExpiredCombat(room, player);
+    maybeDraw(room, player);
+    if (now(room) >= player.nextMoveAt) advancePlayer(room, player);
     botThink(room, player);
   }
   checkWinner(room);
@@ -358,31 +432,54 @@ export function checkWinner(room) {
   const winner = Object.values(room.players).find((player) => score(player) >= goalScore);
   if (!winner) return null;
   room.status = 'finished';
-  room.finishedAt = Date.now();
+  room.finishedAt = now(room);
   room.winnerId = winner.id;
   winner.event = 'claimed the loop';
   addLog(room, `${winner.name} won the duel with ${score(winner)} points.`);
   return winner;
 }
 
-function rand(max) {
-  return Math.floor(Math.random() * max);
+function normalizeSeed(seed) {
+  if (typeof seed === 'number' && Number.isFinite(seed)) return seed >>> 0;
+  const text = String(seed ?? 'loopduel');
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
-function sample(list) {
-  return list[rand(list.length)];
+function random(room = null) {
+  if (!room) return Math.random();
+  room.rngState = (Math.imul(room.rngState, 1664525) + 1013904223) >>> 0;
+  return room.rngState / 4294967296;
+}
+
+function rand(room, max) {
+  return Math.floor(random(room) * max);
+}
+
+function sample(room, list) {
+  if (!list || list.length === 0) return null;
+  return list[rand(room, list.length)];
 }
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function now() {
-  return Date.now();
+function now(room = null) {
+  return room?.simulated ? room.now : Date.now();
 }
 
-function clearExpiredCombat(player) {
-  if (!player.combat || now() < player.combat.expiresAt) return;
+function randomId(room, prefix = 'id') {
+  if (!room) return crypto.randomUUID();
+  return `${prefix}-${room.tick}-${Math.floor(random(room) * 1e12).toString(36)}`;
+}
+
+function clearExpiredCombat(room, player) {
+  if (!player.combat || now(room) < player.combat.expiresAt) return;
   player.combat = null;
 }
 
@@ -399,24 +496,30 @@ function xpNeeded(player) {
   return 24 + player.level * 13;
 }
 
-function drawCard() {
-  const pool = Math.random() < 0.7 ? terrainCards : rivalCards;
-  const card = sample(pool);
-  return { ...card, instanceId: crypto.randomUUID() };
+function drawCard(room = null, preferredKind = null) {
+  const pool = preferredKind === 'terrain'
+    ? terrainCards
+    : preferredKind === 'rival'
+      ? rivalCards
+      : random(room) < 0.64
+        ? terrainCards
+        : rivalCards;
+  const card = sample(room, pool);
+  return { ...card, instanceId: randomId(room, 'card') };
 }
 
 function drawLoot(room, player) {
-  const slot = sample(['weapon', 'charm', 'armor']);
-  const rarityRoll = Math.random() + player.level * 0.04 + player.lootLuck;
+  const slot = sample(room, ['weapon', 'charm', 'armor']);
+  const rarityRoll = random(room) + player.level * 0.04 + player.lootLuck;
   const rarity = rarityRoll > 1.08 ? 'relic' : rarityRoll > 0.76 ? 'rare' : 'common';
   const scale = rarity === 'relic' ? 3 : rarity === 'rare' ? 2 : 1;
   const item = {
-    id: crypto.randomUUID(),
+    id: randomId(room, 'loot'),
     slot,
-    name: `${rarity === 'relic' ? 'Relic ' : rarity === 'rare' ? 'Bright ' : ''}${sample(lootNames[slot])}`,
+    name: `${rarity === 'relic' ? 'Relic ' : rarity === 'rare' ? 'Bright ' : ''}${sample(room, lootNames[slot])}`,
     rarity,
-    power: slot === 'weapon' ? scale + rand(2) : rand(2),
-    guard: slot === 'armor' ? scale + rand(2) : rand(2),
+    power: slot === 'weapon' ? scale + rand(room, 2) : rand(room, 2),
+    guard: slot === 'armor' ? scale + rand(room, 2) : rand(room, 2),
     speed: slot === 'charm' ? scale : 0,
     maxHp: slot === 'armor' ? scale * 3 : 0
   };
@@ -433,9 +536,11 @@ function recalcStats(player) {
   let guard = hero.guard;
   let speed = hero.speed;
   let drawRate = 1;
-  let sabotage = 0;
-  let lootLuck = 0;
-  let lapHeal = 0;
+  let sabotage = hero.sabotage ?? 0;
+  let lootLuck = hero.lootLuck ?? 0;
+  let lapHeal = hero.lapHeal ?? 0;
+  let terrainScore = hero.terrainScore ?? 0;
+  let revivePower = hero.revivePower ?? 0;
 
   for (const traitId of player.traits) {
     const trait = traits.find((item) => item.id === traitId);
@@ -448,6 +553,8 @@ function recalcStats(player) {
     sabotage += trait.bonus.sabotage ?? 0;
     lootLuck += trait.bonus.lootLuck ?? 0;
     lapHeal += trait.bonus.lapHeal ?? 0;
+    terrainScore += trait.bonus.terrainScore ?? 0;
+    revivePower += trait.bonus.revivePower ?? 0;
   }
 
   for (const item of Object.values(player.loadout)) {
@@ -467,6 +574,8 @@ function recalcStats(player) {
   player.sabotage = sabotage;
   player.lootLuck = lootLuck;
   player.lapHeal = lapHeal;
+  player.terrainScore = terrainScore;
+  player.revivePower = revivePower;
   if (hpGain > 0) player.hp += hpGain;
   player.hp = clamp(player.hp, 0, player.maxHp);
 }
@@ -478,7 +587,10 @@ function addXp(room, player, amount) {
     player.level += 1;
     player.hp = clamp(player.hp + 10, 0, player.maxHp);
     const available = traits.filter((trait) => !player.traits.includes(trait.id) && !player.pendingTraits.includes(trait.id));
-    player.pendingTraits = [sample(available), sample(available)].filter(Boolean).map((trait) => trait.id);
+    const first = sample(room, available);
+    const secondPool = available.filter((trait) => trait?.id !== first?.id);
+    const second = sample(room, secondPool);
+    player.pendingTraits = [first, second].filter(Boolean).map((trait) => trait.id);
     player.event = `hit level ${player.level}`;
     addLog(room, `${player.name} reached level ${player.level}.`);
   }
@@ -487,12 +599,14 @@ function addXp(room, player, amount) {
 function fight(room, player, label, threat, reward) {
   const hpBefore = player.hp;
   const cursePenalty = player.curse > 0 ? 3 : 0;
+  const heroBonus = player.heroId === 'ember-knight' && player.hp < player.maxHp * 0.45 ? 2 : 0;
+  const graveBonus = player.heroId === 'grave-singer' && threat >= 10 ? 4 : 0;
   const damage = clamp(threat + cursePenalty - Math.floor(player.guard / 2) - player.armor, 1, 18);
   player.hp -= damage;
   player.armor = Math.max(0, player.armor - 1);
-  addXp(room, player, reward);
+  addXp(room, player, reward + heroBonus + graveBonus);
   player.kos += 1;
-  player.event = `${label}: -${damage} hp, +${reward} xp`;
+  player.event = `${label}: -${damage} hp, +${reward + heroBonus + graveBonus} xp`;
   const encounter = combatEncounters[label] ?? {
     enemyId: 'ash-imp',
     enemyName: 'Ash Imp',
@@ -500,12 +614,12 @@ function fight(room, player, label, threat, reward) {
     effect: 'ember'
   };
   const enemyMaxHp = clamp(threat + reward + player.level * 3, 16, 64);
-  const timestamp = now();
+  const timestamp = now(room);
   player.combat = {
     ...encounter,
     label,
     damage,
-    reward,
+    reward: reward + heroBonus + graveBonus,
     heroHpBefore: hpBefore,
     heroHpAfter: player.hp,
     heroMaxHp: player.maxHp,
@@ -515,17 +629,19 @@ function fight(room, player, label, threat, reward) {
     startedAt: timestamp,
     expiresAt: timestamp + combatDisplayMs
   };
-  if (Math.random() < 0.17 + player.lootLuck + reward / 180) drawLoot(room, player);
+  const vagrantLuck = player.heroId === 'night-vagrant' ? 0.1 : 0;
+  if (random(room) < 0.17 + player.lootLuck + vagrantLuck + reward / 180) drawLoot(room, player);
   if (player.curse > 0) player.curse -= 1;
 }
 
 function revivePlayer(room, player) {
   player.deaths += 1;
   player.hp = Math.ceil(player.maxHp * 0.58);
+  player.power += player.revivePower;
   player.position = 0;
   player.hand = player.hand.slice(0, 3);
   player.event = 'fell, then revived at camp';
-  player.lastEventAt = now();
+  player.lastEventAt = now(room);
   addLog(room, `${player.name} got knocked back to camp.`);
 }
 
@@ -551,7 +667,7 @@ function triggerTile(room, player, tile) {
     fight(room, player, 'crypt duel', 11, 16);
   } else if (tile.type === 'forge') {
     player.armor += 3;
-    if (Math.random() < 0.55 + player.lootLuck) drawLoot(room, player);
+    if (random(room) < 0.55 + player.lootLuck) drawLoot(room, player);
     addXp(room, player, 5);
     player.event = 'forge sparks: armor and loot';
   } else if (tile.type === 'shrine') {
@@ -560,8 +676,22 @@ function triggerTile(room, player, tile) {
     player.event = 'shrine surge: +14 xp';
   } else if (tile.type === 'mire') {
     player.nextMoveAt += 450 * timeScale;
-    if (player.hand.length < 7) player.hand.push(drawCard());
+    if (player.hand.length < 7) player.hand.push(drawCard(room));
     player.event = 'mire drag: slowed, drew a card';
+  } else if (tile.type === 'village') {
+    player.hp = clamp(player.hp + 7, 0, player.maxHp);
+    addXp(room, player, 6);
+    if (random(room) < 0.2 + player.lootLuck) drawLoot(room, player);
+    player.event = 'village rest: healed and supplied';
+  } else if (tile.type === 'obelisk') {
+    player.armor += 1;
+    addXp(room, player, player.heroId === 'grave-singer' ? 18 : 12);
+    if (random(room) < 0.5) fight(room, player, 'obelisk shade', 9, 11);
+    else player.event = 'obelisk surge: power in the stones';
+  } else if (tile.type === 'watchtower') {
+    if (player.hand.length < 7) player.hand.push(drawCard(room, 'rival'));
+    addXp(room, player, 7);
+    player.event = 'watchtower spotted a rival opening';
   } else if (tile.type === 'ambush') {
     fight(room, player, 'bandit ambush', 13, 13);
     tile.charges -= 1;
@@ -572,7 +702,7 @@ function triggerTile(room, player, tile) {
     player.event = 'meteor scorch: -7 hp';
     if (tile.charges <= 0) tile.type = 'road';
   } else {
-    const roll = Math.random();
+    const roll = random(room);
     if (roll < 0.38) fight(room, player, 'road skirmish', 4, 6);
     else if (roll < 0.52) {
       player.hp = clamp(player.hp + 3, 0, player.maxHp);
@@ -581,7 +711,7 @@ function triggerTile(room, player, tile) {
   }
 
   resolveDefeat(room, player);
-  player.lastEventAt = now();
+  player.lastEventAt = now(room);
 }
 
 function movementDelay(player) {
@@ -595,34 +725,81 @@ function advancePlayer(room, player) {
     player.laps += 1;
     player.hp = clamp(player.hp + player.lapHeal, 0, player.maxHp);
     addXp(room, player, 4);
-    if (player.hand.length < 7) player.hand.push(drawCard());
+    if (player.hand.length < 7) player.hand.push(drawCard(room));
     addLog(room, `${player.name} completed lap ${player.laps}.`);
   }
   triggerTile(room, player, player.board[player.position]);
-  player.nextMoveAt = now() + movementDelay(player);
+  player.nextMoveAt = now(room) + movementDelay(player);
 }
 
-function maybeDraw(player) {
-  if (now() < player.nextDrawAt) return;
+function maybeDraw(room, player) {
+  if (now(room) < player.nextDrawAt) return;
   if (player.hand.length < 7) {
-    player.hand.push(drawCard());
+    player.hand.push(drawCard(room));
     player.event = 'drew a card';
   }
-  player.nextDrawAt = now() + Math.round((3600 + rand(1000)) * player.drawRate * timeScale);
+  player.nextDrawAt = now(room) + Math.round((3100 + rand(room, 850)) * player.drawRate * timeScale);
+}
+
+function bestItemScore(item) {
+  return item.power * 4 + item.guard * 3 + item.speed * 4 + item.maxHp * 0.7 + (item.rarity === 'relic' ? 8 : item.rarity === 'rare' ? 4 : 0);
+}
+
+function chooseBotTrait(player) {
+  const priorities = {
+    'night-vagrant': ['cardsharp', 'prospector', 'quick-circuit', 'duelist'],
+    'moss-warden': ['pathwright', 'reclaimer', 'iron-will', 'cardsharp'],
+    'rune-archer': ['duelist', 'cardsharp', 'quick-circuit', 'pathwright'],
+    'grave-singer': ['vengeful', 'iron-will', 'prospector', 'quick-circuit'],
+    'ember-knight': ['quick-circuit', 'duelist', 'iron-will', 'vengeful']
+  }[player.heroId] ?? [];
+  return priorities.find((traitId) => player.pendingTraits.includes(traitId)) ?? player.pendingTraits[0];
+}
+
+function chooseBotTerrainTile(room, player, card) {
+  const candidates = player.board.filter((tile) => tile.type !== 'camp');
+  const emptyRoads = candidates.filter((tile) => tile.type === 'road');
+  const ahead = emptyRoads.find((tile) => tile.index > player.position) ?? emptyRoads[0] ?? candidates[rand(room, candidates.length)];
+  if (card.tile === 'crypt' && player.hp < player.maxHp * 0.55) {
+    return emptyRoads.find((tile) => tile.index > player.position + 5) ?? ahead;
+  }
+  if (card.tile === 'meadow' || card.tile === 'village') {
+    return emptyRoads.find((tile) => Math.abs(tile.index - player.position) <= 4) ?? ahead;
+  }
+  return ahead;
+}
+
+function chooseRivalTarget(room, player) {
+  const rivals = Object.values(room.players).filter((candidate) => candidate.id !== player.id);
+  if (rivals.length === 0) return null;
+  return rivals
+    .map((candidate) => ({ candidate, value: score(candidate) + (candidate.hp / candidate.maxHp) * 80 - candidate.deaths * 40 }))
+    .sort((a, b) => b.value - a.value)[0].candidate;
 }
 
 function botThink(room, player) {
   if (!player.isBot || room.tick % 3 !== 0 || room.status === 'finished') return;
-  if (player.pendingTraits.length > 0) chooseTrait(player, sample(player.pendingTraits));
-  if (player.loot.length > 0 && Math.random() < 0.4) equip(player, sample(player.loot).id);
-  const card = sample(player.hand);
+  if (player.pendingTraits.length > 0) chooseTrait(player, chooseBotTrait(player));
+
+  for (const slot of ['weapon', 'armor', 'charm']) {
+    const current = player.loadout[slot];
+    const best = player.loot
+      .filter((item) => item.slot === slot)
+      .sort((a, b) => bestItemScore(b) - bestItemScore(a))[0];
+    if (best && (!current || bestItemScore(best) > bestItemScore(current))) equip(player, best.id);
+  }
+
+  const wantsAttack = random(room) < 0.52 || score(player) < Math.max(...Object.values(room.players).map(score)) - 250;
+  const card = wantsAttack
+    ? player.hand.find((item) => item.kind === 'rival') ?? player.hand.find((item) => item.kind === 'terrain')
+    : player.hand.find((item) => item.kind === 'terrain') ?? player.hand.find((item) => item.kind === 'rival');
   if (!card) return;
   if (card.kind === 'terrain') {
-    const tileIndex = 1 + rand(boardPath.length - 1);
+    const tileIndex = chooseBotTerrainTile(room, player, card)?.index ?? (1 + rand(room, boardPath.length - 1));
     playTerrain(room, player, card.instanceId, tileIndex);
   } else {
-    const rivals = Object.values(room.players).filter((candidate) => candidate.id !== player.id);
-    if (rivals.length > 0) playRival(room, player, card.instanceId, sample(rivals).id);
+    const target = chooseRivalTarget(room, player);
+    if (target) playRival(room, player, card.instanceId, target.id);
   }
 }
 
@@ -632,6 +809,7 @@ export const testApi = {
   checkWinner,
   createPlayer,
   createRoom,
+  fillCpuOpponents,
   hasRoomForPlayer,
   joinRoom,
   maxPlayers,

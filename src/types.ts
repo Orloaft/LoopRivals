@@ -8,6 +8,11 @@ export type Hero = {
   power: number;
   guard: number;
   speed: number;
+  sabotage?: number;
+  lootLuck?: number;
+  lapHeal?: number;
+  terrainScore?: number;
+  revivePower?: number;
   text: string;
 };
 
@@ -90,6 +95,9 @@ export type Player = {
   level: number;
   xp: number;
   kos: number;
+  rivalHits: number;
+  cardsPlayed: number;
+  tilesPlaced: number;
   deaths: number;
   curse: number;
   armor: number;

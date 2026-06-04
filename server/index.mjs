@@ -9,6 +9,7 @@ import {
   createRoom,
   disconnectPlayer,
   equip,
+  fillCpuOpponents,
   joinRoom,
   playRival,
   playTerrain,
@@ -93,6 +94,12 @@ async function startServer() {
     socket.on('addBot', () => {
       const { room } = getSocketPlayer(socket);
       addBot(room);
+      emitRoom(io, room);
+    });
+
+    socket.on('fillCpu', () => {
+      const { room } = getSocketPlayer(socket);
+      fillCpuOpponents(room);
       emitRoom(io, room);
     });
 

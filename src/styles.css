@@ -53,7 +53,7 @@ input {
 }
 
 button {
-  cursor: pointer;
+  cursor: url('/assets/ui/cursor-hand-v1.png') 16 8, pointer;
 }
 
 h1,
@@ -423,6 +423,9 @@ input:focus {
 .tile.forge { --tile-x: 0%; --tile-y: 100%; }
 .tile.shrine { --tile-x: 25%; --tile-y: 100%; }
 .tile.mire { --tile-x: 50%; --tile-y: 100%; }
+.tile.village { --tile-x: 25%; --tile-y: 0%; }
+.tile.obelisk { --tile-x: 100%; --tile-y: 0%; }
+.tile.watchtower { --tile-x: 25%; --tile-y: 100%; }
 .tile.ambush { --tile-x: 75%; --tile-y: 100%; }
 .tile.scorch { --tile-x: 100%; --tile-y: 100%; }
 
@@ -915,16 +918,20 @@ input:focus {
   display: flex;
   align-items: flex-end;
   flex-wrap: wrap;
-  gap: 10px 16px;
+  gap: 12px 18px;
 }
 
-/* ===== COMPACT SYMBOL DOCK (hand tiles + equip/trait/feed clusters) ===== */
+/* ===== CARD HAND + compact equipment/trait/feed clusters ===== */
 .hand-bar {
   display: flex;
   flex: 1 1 auto;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0;
   min-width: 0;
+  min-height: 164px;
+  padding: 14px 10px 8px;
+  perspective: 900px;
 }
 
 .hand-empty {
@@ -934,47 +941,163 @@ input:focus {
   font-style: italic;
 }
 
-/* A hand card as a small 2D-RPG item tile. */
-.hand-slot {
+.hand-card {
+  --card-w: clamp(86px, 9vw, 116px);
+  --card-h: calc(var(--card-w) * 1.4);
   position: relative;
   display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  padding: 0;
-  border: 2px solid rgba(210, 177, 92, 0.3);
-  border-radius: 5px;
+  grid-template-rows: 1fr auto;
+  align-items: stretch;
+  width: var(--card-w);
+  height: var(--card-h);
+  margin-left: clamp(-24px, -2.4vw, -12px);
+  padding: 9px 9px 10px;
+  border: 1px solid rgba(245, 219, 144, 0.72);
+  border-radius: 8px;
+  color: #281a0f;
+  text-align: left;
   background:
-    linear-gradient(180deg, rgba(78, 125, 76, 0.22), rgba(10, 10, 9, 0.92)),
-    #11110f;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
-  cursor: pointer;
-  transition: transform 100ms ease, border-color 100ms ease, box-shadow 100ms ease;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.02)),
+    url('/assets/ui/card-terrain-v1.png') center / 100% 100% no-repeat;
+  box-shadow:
+    0 12px 20px rgba(0, 0, 0, 0.48),
+    inset 0 0 0 2px rgba(0, 0, 0, 0.28);
+  cursor: url('/assets/ui/cursor-hand-v1.png') 16 8, grab;
+  transform:
+    translateY(var(--card-lift))
+    rotate(var(--card-tilt));
+  transform-origin: 50% 115%;
+  transition:
+    transform 150ms ease,
+    filter 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
 }
 
-.hand-slot.rival {
-  background:
-    linear-gradient(180deg, rgba(159, 61, 53, 0.26), rgba(10, 10, 9, 0.92)),
-    #15100f;
+.hand-card:first-child {
+  margin-left: 0;
 }
 
-.hand-slot:hover,
-.hand-slot:focus-visible {
-  transform: translateY(-3px);
+.hand-card.rival {
+  color: #f8e5d8;
+  background:
+    linear-gradient(180deg, rgba(85, 19, 25, 0.12), rgba(0, 0, 0, 0.1)),
+    url('/assets/ui/card-rival-v1.png') center / 100% 100% no-repeat;
+}
+
+.hand-card:hover,
+.hand-card:focus-visible {
+  transform: translateY(-22px) rotate(0deg) scale(1.07);
   border-color: var(--gold-bright);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5), 0 4px 14px rgba(0, 0, 0, 0.55);
+  filter: saturate(1.08) brightness(1.06);
+  box-shadow:
+    0 18px 32px rgba(0, 0, 0, 0.62),
+    0 0 18px color-mix(in srgb, var(--gold) 35%, transparent),
+    inset 0 0 0 2px rgba(0, 0, 0, 0.28);
   z-index: 6;
 }
 
-.hand-slot.selected {
+.hand-card.selected {
+  transform: translateY(-30px) rotate(0deg) scale(1.08);
   border-color: var(--gold-bright);
-  box-shadow: inset 0 0 0 1px var(--gold), 0 0 14px color-mix(in srgb, var(--gold) 55%, transparent);
+  box-shadow:
+    0 20px 36px rgba(0, 0, 0, 0.66),
+    0 0 0 2px rgba(240, 217, 140, 0.35),
+    0 0 24px color-mix(in srgb, var(--gold) 58%, transparent),
+    inset 0 0 0 2px rgba(0, 0, 0, 0.28);
+  z-index: 7;
 }
 
-.hand-glyph {
-  font-size: 1.5rem;
+.hand-card.dragging {
+  opacity: 0.62;
+  cursor: url('/assets/ui/cursor-hand-large-v1.png') 22 10, grabbing;
+}
+
+.card-art {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  margin: 4px 3px 7px;
+  border: 1px solid rgba(69, 41, 18, 0.28);
+  border-radius: 5px;
+  background:
+    radial-gradient(circle at 50% 34%, rgba(255, 235, 168, 0.75), rgba(98, 59, 24, 0.22) 45%, rgba(30, 16, 8, 0.14) 72%),
+    rgba(255, 245, 203, 0.18);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.18);
+}
+
+.hand-card.rival .card-art {
+  border-color: rgba(255, 198, 186, 0.26);
+  background:
+    radial-gradient(circle at 50% 32%, rgba(255, 197, 174, 0.32), rgba(94, 20, 30, 0.32) 48%, rgba(8, 3, 5, 0.26) 74%),
+    rgba(90, 18, 27, 0.18);
+}
+
+.card-art span {
+  color: inherit;
+  font-size: clamp(1.6rem, 3vw, 2.5rem);
   line-height: 1;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8));
+  filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.42));
+}
+
+.card-face-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.card-face-copy strong {
+  overflow: hidden;
+  color: inherit;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(0.74rem, 1.25vw, 0.88rem);
+  line-height: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-face-copy em {
+  color: currentColor;
+  font-size: 0.56rem;
+  font-style: normal;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  opacity: 0.72;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.card-face-copy span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: currentColor;
+  font-size: clamp(0.56rem, 1vw, 0.66rem);
+  line-height: 1.12;
+  opacity: 0.84;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.card-grab {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: rgba(255, 245, 208, 0.86);
+  background: rgba(14, 8, 4, 0.48);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.hand-card:hover .card-grab,
+.hand-card.selected .card-grab {
+  opacity: 1;
 }
 
 /* Shared retro hover tooltip. */
@@ -1001,8 +1124,6 @@ input:focus {
   transition: opacity 110ms ease, transform 110ms ease;
 }
 
-.hand-slot:hover .hover-pop,
-.hand-slot:focus-visible .hover-pop,
 .equip-slot:hover .hover-pop,
 .equip-slot:focus-visible .hover-pop,
 .loot-chip:hover .hover-pop,
@@ -1088,6 +1209,28 @@ input:focus {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.dock-menu-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(210, 177, 92, 0.34);
+  border-radius: 5px;
+  color: var(--gold-bright);
+  background:
+    linear-gradient(180deg, rgba(210, 177, 92, 0.1), rgba(0, 0, 0, 0.28)),
+    #11100e;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.dock-menu-button:hover,
+.dock-menu-button:focus-visible {
+  border-color: var(--gold-bright);
+  box-shadow: 0 0 14px rgba(210, 177, 92, 0.22);
 }
 
 .equip-slots {

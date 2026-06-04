@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 import { testApi } from '../server/rules.mjs';
+import { runBalanceSuite, simulateMatch } from '../scripts/balance-sim.mjs';
 
 let room;
 
@@ -86,7 +87,7 @@ test('room finishes when a player reaches the goal score', () => {
   const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
   room.players.leader = player;
   room.status = 'running';
-  player.level = 6;
+  player.level = 20;
 
   const winner = testApi.checkWinner(room);
   const snapshot = testApi.roomSnapshot(room);
@@ -94,4 +95,32 @@ test('room finishes when a player reaches the goal score', () => {
   assert.equal(winner.id, player.id);
   assert.equal(snapshot.status, 'finished');
   assert.equal(snapshot.winnerId, player.id);
+});
+
+test('fillCpuOpponents fills open seats without exceeding capacity', () => {
+  testApi.joinRoom(room, { playerId: 'human', name: 'Human', heroId: 'ember-knight' });
+  const added = testApi.fillCpuOpponents(room);
+
+  assert.equal(added.length, 3);
+  assert.equal(testApi.activePlayerCount(room), testApi.maxPlayers);
+  assert.equal(testApi.fillCpuOpponents(room).length, 0);
+});
+
+test('seeded simulations are deterministic', () => {
+  const first = simulateMatch(42);
+  const second = simulateMatch(42);
+
+  assert.deepEqual(first.players, second.players);
+  assert.equal(first.winnerHero, second.winnerHero);
+  assert.equal(first.finished, true);
+});
+
+test('CPU balance suite keeps heroes inside a playable win-rate band', () => {
+  const report = runBalanceSuite(60);
+  const rates = report.heroes.map((hero) => hero.winRate);
+
+  assert.equal(report.finishedRate, 1);
+  assert.ok(report.avgSeconds >= 70 && report.avgSeconds <= 150);
+  assert.ok(Math.max(...rates) <= 0.42);
+  assert.ok(Math.min(...rates) >= 0.05);
 });

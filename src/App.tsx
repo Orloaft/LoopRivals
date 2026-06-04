@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Bot, Crown, HelpCircle, Play, Plus, RotateCcw, ScrollText, Shield, Sparkles, Swords, Zap } from 'lucide-react';
+import { Bot, Crown, Hand, HelpCircle, Play, Plus, RotateCcw, ScrollText, Shield, Sparkles, Swords, Users, Zap } from 'lucide-react';
 import type { Card, Combat, GameConfig, GameState, Hero, Loot, Player, Tile } from './types';
 
 const tileNames: Record<string, string> = {
@@ -12,6 +12,9 @@ const tileNames: Record<string, string> = {
   forge: 'Forge',
   shrine: 'Shrine',
   mire: 'Mire',
+  village: 'Village',
+  obelisk: 'Obelisk',
+  watchtower: 'Watchtower',
   ambush: 'Ambush',
   scorch: 'Scorch'
 };
@@ -25,6 +28,9 @@ const tileGlyphs: Record<string, string> = {
   forge: '⚒',
   shrine: '✚',
   mire: '≈',
+  village: '⌂',
+  obelisk: '◆',
+  watchtower: '◈',
   ambush: '⚔',
   scorch: '☄'
 };
@@ -83,6 +89,7 @@ function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [dragCardId, setDragCardId] = useState<string | null>(null);
 
   useEffect(() => {
     socket.on('connect', () => {
@@ -138,6 +145,10 @@ function App() {
     socket.emit('addBot');
   }
 
+  function fillCpu() {
+    socket.emit('fillCpu');
+  }
+
   function placeCard(tile: Tile) {
     if (!selectedCard || selectedCard.kind !== 'terrain') return;
     socket.emit('placeCard', { cardId: selectedCard.instanceId, tileIndex: tile.index });
@@ -161,6 +172,7 @@ function App() {
   function resetRoom() {
     socket.emit('resetRoom');
     setSelectedCardId(null);
+    setDragCardId(null);
   }
 
   if (!config || !game) {
@@ -267,6 +279,7 @@ function App() {
             active={player.id === me.id}
             focused={player.id === focusedPlayerId}
             selectedCard={player.id === me.id ? selectedCard : null}
+            draggingCard={player.id === me.id && dragCardId ? selectedCard : null}
             onTile={player.id === me.id ? placeCard : undefined}
             onFocus={() => focusBoard(player.id)}
           />
@@ -277,7 +290,13 @@ function App() {
         <HandBar
           hand={me.hand}
           selectedId={selectedCardId}
+          draggingId={dragCardId}
           onSelect={(id) => setSelectedCardId(id === selectedCardId ? null : id)}
+          onDragStart={(id) => {
+            setSelectedCardId(id);
+            setDragCardId(id);
+          }}
+          onDragEnd={() => setDragCardId(null)}
         />
         {selectedCard?.kind === 'rival' && (
           <div className="target-row">
@@ -288,6 +307,11 @@ function App() {
                 className="target-chip"
                 style={{ '--hero-color': target.color } as React.CSSProperties}
                 onClick={() => playRival(target.id)}
+                onDragOver={(event) => selectedCard?.kind === 'rival' && event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  playRival(target.id);
+                }}
                 title={`Hit ${target.name}`}
               >
                 <img src={heroPortraitUrl(target.heroId)} alt={target.name} />
@@ -296,6 +320,10 @@ function App() {
           </div>
         )}
         <div className="dock-cluster">
+          <button className="dock-menu-button" onClick={() => setShowMenu(true)} title="Menu">
+            <Bot size={16} />
+            <span>Menu</span>
+          </button>
           <EquipCluster player={me} onEquip={equip} />
           <TraitCluster player={me} config={config} onChoose={chooseTrait} />
           <FeedCluster lines={game.log} />
@@ -306,6 +334,7 @@ function App() {
         <GameMenu
           game={game}
           onAddBot={addBot}
+          onFillCpu={fillCpu}
           onReset={() => { resetRoom(); setShowMenu(false); }}
           onRules={() => { setShowMenu(false); setShowHelp(true); }}
           onClose={() => setShowMenu(false)}
@@ -318,12 +347,14 @@ function App() {
 function GameMenu({
   game,
   onAddBot,
+  onFillCpu,
   onReset,
   onRules,
   onClose
 }: {
   game: GameState;
   onAddBot: () => void;
+  onFillCpu: () => void;
   onReset: () => void;
   onRules: () => void;
   onClose: () => void;
@@ -342,6 +373,10 @@ function GameMenu({
           <button className="menu-item" onClick={onAddBot}>
             <Bot size={20} />
             Add Bot
+          </button>
+          <button className="menu-item" onClick={onFillCpu}>
+            <Users size={20} />
+            Fill CPU Match
           </button>
           <button className="menu-item" onClick={onRules}>
             <HelpCircle size={20} />
@@ -367,26 +402,48 @@ function slotIcon(slot: string, size = 14) {
 function HandBar({
   hand,
   selectedId,
-  onSelect
+  draggingId,
+  onSelect,
+  onDragStart,
+  onDragEnd
 }: {
   hand: Card[];
   selectedId: string | null;
+  draggingId: string | null;
   onSelect: (id: string) => void;
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
 }) {
   return (
     <div className="hand-bar">
-      {hand.map((card) => (
+      {hand.map((card, index) => (
         <button
           key={card.instanceId}
-          className={`hand-slot ${card.kind} ${selectedId === card.instanceId ? 'selected' : ''}`}
+          draggable
+          className={`hand-card ${card.kind} ${selectedId === card.instanceId ? 'selected' : ''} ${draggingId === card.instanceId ? 'dragging' : ''}`}
+          style={{
+            '--card-index': index,
+            '--hand-count': Math.max(hand.length, 1),
+            '--card-tilt': `${(index - (hand.length - 1) / 2) * 4.5}deg`,
+            '--card-lift': `${Math.abs(index - (hand.length - 1) / 2) * 2}px`
+          } as React.CSSProperties}
           onClick={() => onSelect(card.instanceId)}
+          onDragStart={(event) => {
+            event.dataTransfer.effectAllowed = card.kind === 'terrain' ? 'move' : 'link';
+            event.dataTransfer.setData('text/plain', card.instanceId);
+            onDragStart(card.instanceId);
+          }}
+          onDragEnd={onDragEnd}
         >
-          <span className="hand-glyph">{card.icon}</span>
-          <span className="hover-pop">
+          <span className="card-art">
+            <span>{card.icon}</span>
+          </span>
+          <span className="card-face-copy">
             <strong>{card.name}</strong>
             <em>{card.kind}</em>
             <span>{card.text}</span>
           </span>
+          <span className="card-grab"><Hand size={14} /></span>
         </button>
       ))}
       {hand.length === 0 && <span className="hand-empty">drawing…</span>}
@@ -489,6 +546,7 @@ function PlayerPanel({
   active,
   focused,
   selectedCard,
+  draggingCard,
   onTile,
   onFocus
 }: {
@@ -497,6 +555,7 @@ function PlayerPanel({
   active: boolean;
   focused: boolean;
   selectedCard: Card | null;
+  draggingCard: Card | null;
   onTile?: (tile: Tile) => void;
   onFocus: () => void;
 }) {
@@ -523,6 +582,13 @@ function PlayerPanel({
               gridRow: tile.coord[1] + 1
             }}
             onClick={() => onTile?.(tile)}
+            onDragOver={(event) => {
+              if (draggingCard?.kind === 'terrain' && tile.type !== 'camp') event.preventDefault();
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (draggingCard?.kind === 'terrain') onTile?.(tile);
+            }}
             disabled={!onTile || !selectedCard || selectedCard.kind !== 'terrain' || tile.type === 'camp'}
             title={tileNames[tile.type] ?? tile.type}
           >

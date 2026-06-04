@@ -9,6 +9,7 @@
     "preview": "NODE_ENV=production node server/index.mjs",
     "lint": "eslint .",
     "test": "NODE_ENV=test node --test",
+    "test:balance": "node scripts/balance-sim.mjs",
     "test:ws-load": "node scripts/ws-load.mjs"
   },
   "dependencies": {
