@@ -795,15 +795,16 @@ function xpNeeded(player) {
 }
 
 function drawCard(room = null, preferredKind = null) {
+  const soloPool = room ? activePlayerCount(room) <= 1 : false;
   const tierId = room?.tier?.id ?? 1;
   const rivalChance = tierId >= 3 ? 0.52 : tierId === 2 ? 0.44 : 0.36;
   const pool = preferredKind === 'terrain'
     ? terrainCards
     : preferredKind === 'rival'
-      ? rivalCards
+      ? soloPool ? terrainCards : rivalCards
       : random(room) < 1 - rivalChance
         ? terrainCards
-        : rivalCards;
+        : soloPool ? terrainCards : rivalCards;
   const card = sample(room, pool);
   return { ...card, instanceId: randomId(room, 'card') };
 }

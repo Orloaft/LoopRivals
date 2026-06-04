@@ -1123,6 +1123,41 @@ input:focus {
   font-style: italic;
 }
 
+.action-hint {
+  display: grid;
+  align-self: center;
+  gap: 3px;
+  flex: 0 0 180px;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid rgba(210, 177, 92, 0.25);
+  border-radius: 6px;
+  color: var(--parchment);
+  background: rgba(12, 11, 10, 0.9);
+}
+
+.action-hint.rival {
+  border-color: color-mix(in srgb, var(--blood) 54%, var(--gold));
+}
+
+.action-hint strong,
+.action-hint span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action-hint strong {
+  color: var(--gold-bright);
+  font-size: 0.78rem;
+}
+
+.action-hint span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
 .hand-card {
   --card-w: clamp(86px, 9vw, 116px);
   --card-h: calc(var(--card-w) * 1.4);
@@ -2625,7 +2660,7 @@ input:focus {
 
   .mobile-status-chips {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: 4px;
     overflow-x: auto;
     scrollbar-width: none;
@@ -2828,10 +2863,35 @@ input:focus {
     padding-block: 2px 0;
   }
 
+  .action-hint {
+    order: -1;
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 28px;
+    padding: 5px 8px;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+
+  .action-hint strong {
+    font-size: 0.68rem;
+  }
+
+  .action-hint span {
+    font-size: 0.58rem;
+  }
+
   .hand-card {
     --card-w: clamp(58px, 17vw, 72px);
     margin-left: clamp(-28px, -7.4vw, -18px);
     padding: 7px;
+  }
+
+  .hand-card:hover,
+  .hand-card:focus-visible,
+  .hand-card.selected {
+    transform: translateY(-12px) rotate(0deg) scale(1.04);
   }
 
   .card-corner {
@@ -2855,11 +2915,7 @@ input:focus {
   .tile-pop,
   .player-pop,
   .feed-pop {
-    position: fixed;
-    inset: auto 10px 10px;
-    width: auto;
-    max-width: none;
-    transform: translateY(4px);
+    display: none;
   }
 
   .hand-card:hover .hover-pop,

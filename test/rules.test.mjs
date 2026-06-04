@@ -308,6 +308,32 @@ test('solo tier gates trigger before the crown claim', () => {
   assert.equal(player.combat.enemyName, 'Loop Warden');
 });
 
+test('solo rooms draw terrain cards instead of unusable rival cards', () => {
+  const join = testApi.joinRoom(room, { playerId: 'solo', name: 'Solo', heroId: 'ember-knight' });
+  const player = join.player;
+
+  assert.equal(player.hand.every((card) => card.kind === 'terrain'), true);
+
+  player.hand = [];
+  room.status = 'running';
+  player.nextDrawAt = room.now;
+  for (let index = 0; index < 12; index += 1) {
+    player.nextDrawAt = room.now;
+    testApi.runRoomStep(room, { advanceMs: 1 });
+  }
+
+  assert.ok(player.hand.length > 0);
+  assert.equal(player.hand.every((card) => card.kind === 'terrain'), true);
+
+  player.hand = [];
+  player.board[1].type = 'watchtower';
+  player.position = 1;
+  testApi.triggerTile(room, player, player.board[player.position]);
+
+  assert.equal(player.hand.length, 1);
+  assert.equal(player.hand[0].kind, 'terrain');
+});
+
 test('fillCpuOpponents fills open seats without exceeding capacity', () => {
   testApi.joinRoom(room, { playerId: 'human', name: 'Human', heroId: 'ember-knight' });
   const added = testApi.fillCpuOpponents(room);

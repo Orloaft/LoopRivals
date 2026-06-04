@@ -132,9 +132,13 @@ async function startServer() {
     app.use((_req, res) => res.sendFile(path.join(root, 'dist', 'index.html')));
   } else {
     const { createServer } = await import('vite');
+    const hmrPort = Number(process.env.LOOPDUEL_VITE_HMR_PORT);
     const vite = await createServer({
       root,
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: Number.isFinite(hmrPort) && hmrPort > 0 ? { port: hmrPort } : undefined
+      },
       appType: 'spa'
     });
     app.use(vite.middlewares);
