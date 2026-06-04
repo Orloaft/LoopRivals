@@ -76,6 +76,63 @@ function statLine(hero: Hero) {
   return `${hero.maxHp} HP · ${hero.power} POW · ${hero.guard} GRD · ${hero.speed} SPD`;
 }
 
+function tileDescription(tile: Tile) {
+  const descriptions: Record<string, string> = {
+    road: 'Can trigger a skirmish, a breather, or a sprint.',
+    camp: 'Safe reset point. Crossing camp heals the runner.',
+    grove: 'A steady fight tile with XP and loot pressure.',
+    meadow: 'Healing terrain. Moss Warden gains extra value here.',
+    crypt: 'Dangerous fight tile with better loot odds.',
+    forge: 'Grants armor and has strong loot tempo.',
+    shrine: 'XP burst that accelerates trait choices.',
+    mire: 'Slows movement but draws cards.',
+    village: 'Safe heal, small XP, and supply chance.',
+    obelisk: 'XP spike that may wake a hard encounter.',
+    watchtower: 'Draws rival cards and enables control play.',
+    ambush: 'Temporary rival trap that creates a hard fight.',
+    scorch: 'Temporary hazard left by a meteor strike.'
+  };
+  return descriptions[tile.type] ?? 'Unknown loop tile.';
+}
+
+function cardSuit(card: Card) {
+  if (card.kind === 'rival') return 'Doom';
+  if (card.tile === 'meadow' || card.tile === 'village') return 'Haven';
+  if (card.tile === 'crypt' || card.tile === 'obelisk') return 'Peril';
+  if (card.tile === 'forge' || card.tile === 'watchtower') return 'Engine';
+  return 'Path';
+}
+
+function cardFaceClass(card: Card) {
+  return card.kind === 'rival' ? 'rival' : `terrain ${card.tile ?? 'road'}`;
+}
+
+function InfoPopover({
+  title,
+  eyebrow,
+  body,
+  lines,
+  hint,
+  className = ''
+}: {
+  title: string;
+  eyebrow?: string;
+  body?: string;
+  lines?: string[];
+  hint?: string;
+  className?: string;
+}) {
+  return (
+    <span className={`hover-pop ${className}`}>
+      {eyebrow && <em>{eyebrow}</em>}
+      <strong>{title}</strong>
+      {body && <span>{body}</span>}
+      {lines?.map((line) => <span key={line}>{line}</span>)}
+      {hint && <small>{hint}</small>}
+    </span>
+  );
+}
+
 function App() {
   const socket = useMemo<Socket>(() => io(), []);
   const [playerToken, setPlayerToken] = useState(() => localStorage.getItem('loopduel.playerToken') ?? '');
@@ -210,7 +267,7 @@ function App() {
               <Play size={18} />
               Enter
             </button>
-            <button className="icon-action" onClick={() => setShowHelp(true)} title="Rules">
+            <button className="icon-action" onClick={() => setShowHelp(true)}>
               <HelpCircle size={18} />
               Rules
             </button>
@@ -312,17 +369,24 @@ function App() {
                   event.preventDefault();
                   playRival(target.id);
                 }}
-                title={`Hit ${target.name}`}
               >
                 <img src={heroPortraitUrl(target.heroId)} alt={target.name} />
+                <InfoPopover
+                  title={target.name}
+                  eyebrow="Rival target"
+                  body={`Lv ${target.level} · ${target.score} pts · ${Math.ceil(target.hp)}/${target.maxHp} HP`}
+                  lines={[`${target.hand.length} cards`, `${target.loot.length} loot`, `${target.deaths} knockdowns`]}
+                  hint="Drop a rival card here"
+                />
               </button>
             ))}
           </div>
         )}
         <div className="dock-cluster">
-          <button className="dock-menu-button" onClick={() => setShowMenu(true)} title="Menu">
+          <button className="dock-menu-button" onClick={() => setShowMenu(true)}>
             <Bot size={16} />
             <span>Menu</span>
+            <InfoPopover title="Menu" eyebrow="Room controls" body="Add CPU opponents, view rules, or reset the room." />
           </button>
           <EquipCluster player={me} onEquip={equip} />
           <TraitCluster player={me} config={config} onChoose={chooseTrait} />
@@ -420,7 +484,8 @@ function HandBar({
         <button
           key={card.instanceId}
           draggable
-          className={`hand-card ${card.kind} ${selectedId === card.instanceId ? 'selected' : ''} ${draggingId === card.instanceId ? 'dragging' : ''}`}
+          aria-label={`${card.name}: ${card.text}`}
+          className={`hand-card ${cardFaceClass(card)} ${selectedId === card.instanceId ? 'selected' : ''} ${draggingId === card.instanceId ? 'dragging' : ''}`}
           style={{
             '--card-index': index,
             '--hand-count': Math.max(hand.length, 1),
@@ -435,15 +500,24 @@ function HandBar({
           }}
           onDragEnd={onDragEnd}
         >
+          <span className="card-corner top">{card.icon}</span>
           <span className="card-art">
             <span>{card.icon}</span>
           </span>
-          <span className="card-face-copy">
-            <strong>{card.name}</strong>
-            <em>{card.kind}</em>
-            <span>{card.text}</span>
+          <span className="card-pips" aria-hidden="true">
+            <i />
+            <i />
+            <i />
           </span>
+          <span className="card-corner bottom">{card.icon}</span>
           <span className="card-grab"><Hand size={14} /></span>
+          <InfoPopover
+            title={card.name}
+            eyebrow={`${cardSuit(card)} ${card.kind}`}
+            body={card.text}
+            hint={card.kind === 'terrain' ? 'Drag onto your loop or click, then choose a tile' : 'Drag onto a rival portrait or click, then choose a target'}
+            className="card-pop"
+          />
         </button>
       ))}
       {hand.length === 0 && <span className="hand-empty">drawing…</span>}
@@ -590,10 +664,20 @@ function PlayerPanel({
               if (draggingCard?.kind === 'terrain') onTile?.(tile);
             }}
             disabled={!onTile || !selectedCard || selectedCard.kind !== 'terrain' || tile.type === 'camp'}
-            title={tileNames[tile.type] ?? tile.type}
           >
             {tile.type === 'road' && <span className={`road-shape ${roadShapeClass(player.board, tile)}`} aria-hidden="true" />}
             <span className="tile-glyph">{tileGlyphs[tile.type] ?? '?'}</span>
+            <InfoPopover
+              title={tileNames[tile.type] ?? tile.type}
+              eyebrow={`Tile ${tile.index}`}
+              body={tileDescription(tile)}
+              lines={[
+                tile.charges > 0 ? `${tile.charges} charge${tile.charges === 1 ? '' : 's'} left` : 'Permanent tile',
+                player.position === tile.index ? `${player.name} is here` : 'Loop path'
+              ]}
+              hint={selectedCard?.kind === 'terrain' && tile.type !== 'camp' ? `Drop ${selectedCard.name} here` : undefined}
+              className="tile-pop"
+            />
           </button>
         ))}
         <span className="runner" style={{ left: `${runnerLeft}%`, top: `${runnerTop}%` }}>
@@ -620,6 +704,17 @@ function PlayerPanel({
           </div>
           <div className="bc-event">{player.event}</div>
           <div className="bc-cards">{player.hand.length} cards · {player.loot.length} loot</div>
+          <InfoPopover
+            title={player.name}
+            eyebrow={active ? 'Your runner' : 'Runner'}
+            body={`Lv ${player.level} · ${player.score} points · ${player.laps} laps`}
+            lines={[
+              `${Math.ceil(player.hp)}/${player.maxHp} HP`,
+              `${player.power} power · ${player.guard} guard · ${player.speed} speed`,
+              `${player.cardsPlayed} cards played · ${player.rivalHits} rival hits`
+            ]}
+            className="player-pop"
+          />
         </div>
         {player.combat && <CombatOverlay key={player.combat.startedAt} player={player} />}
       </div>
@@ -648,6 +743,12 @@ function CombatOverlay({ player }: { player: Player }) {
           before={heroBefore}
           after={heroAfter}
         />
+        <InfoPopover
+          title={player.name}
+          eyebrow="Combatant"
+          body={`${Math.ceil(Math.max(0, combat.heroHpAfter))}/${combat.heroMaxHp} HP after impact`}
+          lines={[`${player.power} power`, `${player.guard} guard`, `${player.speed} speed`]}
+        />
       </div>
       <div className="combat-impact">
         <div className={combatFxClass(combat.effect)} aria-hidden="true" />
@@ -659,6 +760,12 @@ function CombatOverlay({ player }: { player: Player }) {
         <img src={combatEnemyUrl(combat.enemyId)} alt="" />
         <div className="combat-name">{combat.enemyName}</div>
         <CombatBar current={combat.enemyHpAfter} max={combat.enemyMaxHp} before={enemyBefore} after={enemyAfter} />
+        <InfoPopover
+          title={combat.enemyName}
+          eyebrow="Enemy"
+          body={combat.label}
+          lines={[`${combat.damage} damage dealt`, `${combat.reward} XP reward`]}
+        />
       </div>
     </div>
   );

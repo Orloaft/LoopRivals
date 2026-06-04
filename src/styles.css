@@ -369,7 +369,7 @@ input:focus {
 
 .tile {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   min-width: 0;
   min-height: 0;
   border: 1px solid rgba(221, 199, 134, 0.28);
@@ -383,6 +383,8 @@ input:focus {
   content: '';
   position: absolute;
   inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
   background-image: url('/assets/tiles/loopduel-tiles-retro-gothic-v1.png');
   background-repeat: no-repeat;
   background-size: 500% 200%;
@@ -396,6 +398,7 @@ input:focus {
   inset: 0;
   pointer-events: none;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(0, 0, 0, 0.08));
+  border-radius: inherit;
 }
 
 .tile:disabled {
@@ -404,6 +407,11 @@ input:focus {
 
 .tile:not(:disabled):hover {
   outline: 2px solid var(--gold-bright);
+}
+
+.tile:hover,
+.tile:focus-visible {
+  z-index: 8;
 }
 
 /* Current runner position: clear hero-tinted highlight so you can see where you are. */
@@ -528,6 +536,7 @@ input:focus {
 
 /* Center of the loop = the player's compact dashboard (name, HP, stats, event). */
 .board-core {
+  position: relative;
   grid-column: 2 / 5;
   grid-row: 2 / 5;
   display: flex;
@@ -946,7 +955,7 @@ input:focus {
   --card-h: calc(var(--card-w) * 1.4);
   position: relative;
   display: grid;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: 1fr;
   align-items: stretch;
   width: var(--card-w);
   height: var(--card-h);
@@ -974,6 +983,31 @@ input:focus {
     box-shadow 150ms ease;
 }
 
+.hand-card::before,
+.hand-card::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.hand-card::before {
+  inset: 5px;
+  border: 1px solid rgba(255, 246, 197, 0.44);
+  box-shadow:
+    inset 0 0 0 1px rgba(37, 20, 8, 0.24),
+    inset 0 0 22px rgba(255, 239, 169, 0.16);
+}
+
+.hand-card::after {
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 12%, rgba(255, 252, 215, 0.34), transparent 26%),
+    linear-gradient(110deg, transparent 24%, rgba(255, 255, 255, 0.16) 42%, transparent 58%);
+  mix-blend-mode: screen;
+  opacity: 0.48;
+}
+
 .hand-card:first-child {
   margin-left: 0;
 }
@@ -983,6 +1017,41 @@ input:focus {
   background:
     linear-gradient(180deg, rgba(85, 19, 25, 0.12), rgba(0, 0, 0, 0.1)),
     url('/assets/ui/card-rival-v1.png') center / 100% 100% no-repeat;
+}
+
+.hand-card.grove {
+  color: #17301b;
+}
+
+.hand-card.mire {
+  color: #14353a;
+}
+
+.hand-card.shrine,
+.hand-card.watchtower {
+  color: #13283f;
+}
+
+.hand-card.crypt,
+.hand-card.obelisk {
+  background:
+    linear-gradient(180deg, rgba(21, 10, 30, 0.14), rgba(0, 0, 0, 0.12)),
+    url('/assets/ui/card-terrain-v1.png') center / 100% 100% no-repeat;
+}
+
+.hand-card.meadow,
+.hand-card.village {
+  filter: saturate(1.08);
+}
+
+.hand-card.crypt,
+.hand-card.obelisk {
+  color: #f5dfc9;
+}
+
+.hand-card.forge,
+.hand-card.watchtower {
+  color: #241709;
 }
 
 .hand-card:hover,
@@ -1014,10 +1083,12 @@ input:focus {
 }
 
 .card-art {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
   min-height: 0;
-  margin: 4px 3px 7px;
+  margin: 12px 7px 15px;
   border: 1px solid rgba(69, 41, 18, 0.28);
   border-radius: 5px;
   background:
@@ -1035,49 +1106,9 @@ input:focus {
 
 .card-art span {
   color: inherit;
-  font-size: clamp(1.6rem, 3vw, 2.5rem);
+  font-size: clamp(2rem, 3.8vw, 3.15rem);
   line-height: 1;
   filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.42));
-}
-
-.card-face-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  padding: 0 4px;
-}
-
-.card-face-copy strong {
-  overflow: hidden;
-  color: inherit;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(0.74rem, 1.25vw, 0.88rem);
-  line-height: 1;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-face-copy em {
-  color: currentColor;
-  font-size: 0.56rem;
-  font-style: normal;
-  font-weight: 950;
-  letter-spacing: 0.08em;
-  opacity: 0.72;
-  text-align: center;
-  text-transform: uppercase;
-}
-
-.card-face-copy span {
-  display: -webkit-box;
-  overflow: hidden;
-  color: currentColor;
-  font-size: clamp(0.56rem, 1vw, 0.66rem);
-  line-height: 1.12;
-  opacity: 0.84;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .card-grab {
@@ -1093,6 +1124,61 @@ input:focus {
   background: rgba(14, 8, 4, 0.48);
   opacity: 0;
   transition: opacity 120ms ease;
+  z-index: 2;
+}
+
+.card-corner {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  color: currentColor;
+  background: rgba(255, 245, 204, 0.3);
+  font-size: 0.9rem;
+  line-height: 1;
+  box-shadow: inset 0 0 0 1px rgba(55, 28, 7, 0.22);
+  z-index: 2;
+}
+
+.hand-card.rival .card-corner {
+  background: rgba(20, 4, 7, 0.38);
+}
+
+.card-corner.top {
+  left: 8px;
+  top: 8px;
+}
+
+.card-corner.bottom {
+  right: 8px;
+  bottom: 8px;
+  transform: rotate(180deg);
+}
+
+.card-pips {
+  position: absolute;
+  inset: 36px 10px 34px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: end;
+  pointer-events: none;
+  opacity: 0.38;
+  z-index: 1;
+}
+
+.card-pips i {
+  justify-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px rgba(255, 244, 194, 0.35);
+}
+
+.card-pips i:nth-child(2) {
+  align-self: start;
 }
 
 .hand-card:hover .card-grab,
@@ -1111,8 +1197,8 @@ input:focus {
   flex-direction: column;
   gap: 3px;
   width: max-content;
-  max-width: 210px;
-  padding: 8px 10px;
+  max-width: 240px;
+  padding: 9px 11px;
   border: 1px solid var(--gold);
   border-radius: 4px;
   background: rgba(9, 9, 8, 0.98);
@@ -1124,6 +1210,18 @@ input:focus {
   transition: opacity 110ms ease, transform 110ms ease;
 }
 
+.hand-card:hover .hover-pop,
+.hand-card:focus-visible .hover-pop,
+.tile:hover .hover-pop,
+.tile:focus-visible .hover-pop,
+.board-core:hover .hover-pop,
+.board-core:focus-visible .hover-pop,
+.target-chip:hover .hover-pop,
+.target-chip:focus-visible .hover-pop,
+.dock-menu-button:hover .hover-pop,
+.dock-menu-button:focus-visible .hover-pop,
+.combatant:hover .hover-pop,
+.combatant:focus-visible .hover-pop,
 .equip-slot:hover .hover-pop,
 .equip-slot:focus-visible .hover-pop,
 .loot-chip:hover .hover-pop,
@@ -1133,6 +1231,20 @@ input:focus {
   opacity: 1;
   visibility: visible;
   transform: translateX(-50%) translateY(0);
+}
+
+.card-pop {
+  bottom: calc(100% + 14px);
+  max-width: 250px;
+}
+
+.tile-pop {
+  bottom: calc(100% + 10px);
+  max-width: 230px;
+}
+
+.player-pop {
+  bottom: calc(100% + 12px);
 }
 
 .hover-pop strong {
@@ -1177,10 +1289,11 @@ input:focus {
 }
 
 .target-chip {
+  position: relative;
   width: 40px;
   height: 40px;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   border: 2px solid color-mix(in srgb, var(--hero-color) 70%, var(--blood));
   border-radius: 5px;
   background: #15100f;
@@ -1190,6 +1303,7 @@ input:focus {
 .target-chip img {
   width: 100%;
   height: 100%;
+  border-radius: 3px;
   object-fit: cover;
 }
 
@@ -1212,6 +1326,7 @@ input:focus {
 }
 
 .dock-menu-button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
