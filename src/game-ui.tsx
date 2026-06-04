@@ -15,6 +15,11 @@ const tileNames: Record<string, string> = {
   grove: 'Grove',
   meadow: 'Meadow',
   crypt: 'Crypt',
+  wolfden: 'Wolf Den',
+  bonepit: 'Bone Pit',
+  ruinedkeep: 'Ruined Keep',
+  bloodmoon: 'Blood Moon',
+  wyrmgate: 'Wyrm Gate',
   forge: 'Forge',
   shrine: 'Shrine',
   mire: 'Mire',
@@ -31,6 +36,11 @@ const tileGlyphs: Record<string, string> = {
   grove: '♣',
   meadow: '✦',
   crypt: '☗',
+  wolfden: '♣',
+  bonepit: '☗',
+  ruinedkeep: '⚔',
+  bloodmoon: '☾',
+  wyrmgate: '◆',
   forge: '⚒',
   shrine: '✚',
   mire: '≈',
@@ -69,6 +79,11 @@ function tileDescription(tile: Tile) {
     grove: 'A steady fight tile with XP and loot pressure.',
     meadow: 'Healing terrain. Moss Warden gains extra value here.',
     crypt: 'Dangerous fight tile with better loot odds.',
+    wolfden: 'A pack fight tile that stacks hard beside danger.',
+    bonepit: 'A two-enemy undead fight with stronger loot pressure.',
+    ruinedkeep: 'An elite raider encounter with high XP and loot odds.',
+    bloodmoon: 'A danger aura that makes nearby fights stack larger.',
+    wyrmgate: 'A boss-class fight tile for powered-up runners.',
     forge: 'Grants armor and has strong loot tempo.',
     shrine: 'XP burst that accelerates trait choices.',
     mire: 'Slows movement but draws cards.',
@@ -84,7 +99,7 @@ function tileDescription(tile: Tile) {
 function cardSuit(card: Card) {
   if (card.kind === 'rival') return 'Doom';
   if (card.tile === 'meadow' || card.tile === 'village') return 'Haven';
-  if (card.tile === 'crypt' || card.tile === 'obelisk') return 'Peril';
+  if (card.tile === 'crypt' || card.tile === 'obelisk' || card.tile === 'wolfden' || card.tile === 'bonepit' || card.tile === 'ruinedkeep' || card.tile === 'bloodmoon' || card.tile === 'wyrmgate') return 'Peril';
   if (card.tile === 'forge' || card.tile === 'watchtower') return 'Engine';
   return 'Path';
 }
@@ -836,7 +851,7 @@ function PlayerPanel({
 
   return (
     <article
-      className={`player-panel ${active ? 'active' : ''} ${focused ? 'focused' : 'dimmed'} ${canRivalTarget ? 'rival-drop-target' : ''}`}
+      className={`player-panel ${active ? 'active' : ''} ${focused ? 'focused' : 'dimmed'} ${canRivalTarget ? 'rival-drop-target' : ''} ${player.combat ? 'combat-locked' : ''}`}
       style={{ '--hero-color': player.color } as CSSProperties}
       onClick={() => {
         if (canRivalTarget) {
@@ -961,7 +976,10 @@ function CombatOverlay({ player }: { player: Player }) {
   const enemyAfter = Math.max(0, Math.min(100, (combat.enemyHpAfter / combat.enemyMaxHp) * 100));
 
   return (
-    <div className="combat-overlay" style={{ '--combat-bg': `url(${combatBackgroundUrl(combat.backgroundId)})` } as CSSProperties}>
+    <div className="combat-overlay" style={{
+      '--combat-bg': `url(${combatBackgroundUrl(combat.backgroundId)})`,
+      '--combat-duration': `${combat.durationMs ?? 5200}ms`
+    } as CSSProperties}>
       <div className="combat-vignette" />
       <div className="combatant hero-combat">
         <img src={heroSpriteUrl(player.heroId)} alt="" />
@@ -982,6 +1000,7 @@ function CombatOverlay({ player }: { player: Player }) {
       <div className="combat-impact">
         <div className={combatFxClass(combat.effect)} aria-hidden="true" />
         <strong>{combat.label}</strong>
+        {combat.enemyCount > 1 && <em>{combat.enemyCount} foes · {combat.rounds} clashes</em>}
         <span>-{combat.damage} HP</span>
         <small>+{combat.reward} XP</small>
       </div>
@@ -993,7 +1012,7 @@ function CombatOverlay({ player }: { player: Player }) {
           title={combat.enemyName}
           eyebrow="Enemy"
           body={combat.label}
-          lines={[`${combat.damage} damage dealt`, `${combat.reward} XP reward`]}
+          lines={[`${combat.enemyCount} foe${combat.enemyCount === 1 ? '' : 's'}`, `${combat.rounds} clash${combat.rounds === 1 ? '' : 'es'}`, `${combat.damage} damage dealt`, `${combat.reward} XP reward`]}
         />
       </div>
     </div>

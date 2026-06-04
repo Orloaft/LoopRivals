@@ -9,9 +9,9 @@ export const matchTiers = [
   { id: 3, name: 'Unstable Loop', minScore: 4500, text: 'The leader is marked and the loop pushes back.' },
   { id: 4, name: 'Claim Phase', minScore: goalScore, text: 'Complete a marked claim lap to win.' }
 ];
-const claimTimeoutMs = 52000 * timeScale;
+const claimTimeoutMs = 90000 * timeScale;
 const soloGateScores = [1800, 4500, goalScore];
-const combatDisplayMs = 1800 * timeScale;
+const combatBaseDisplayMs = 1500 * timeScale;
 
 const combatEncounters = {
   'wolf grove': {
@@ -25,6 +25,36 @@ const combatEncounters = {
     enemyName: 'Crypt Wraith',
     backgroundId: 'crypt',
     effect: 'spectral'
+  },
+  'bone pit': {
+    enemyId: 'crypt-wraith',
+    enemyName: 'Bone Host',
+    backgroundId: 'crypt',
+    effect: 'spectral'
+  },
+  'wolf den': {
+    enemyId: 'thorn-wolf',
+    enemyName: 'Wolf Pack',
+    backgroundId: 'grove',
+    effect: 'claw'
+  },
+  'ruined keep': {
+    enemyId: 'brigand',
+    enemyName: 'Keep Reavers',
+    backgroundId: 'road',
+    effect: 'sword'
+  },
+  'blood moon': {
+    enemyId: 'ash-imp',
+    enemyName: 'Moonbound Fiend',
+    backgroundId: 'forge',
+    effect: 'ember'
+  },
+  'wyrm gate': {
+    enemyId: 'ash-imp',
+    enemyName: 'Gate Wyrm',
+    backgroundId: 'forge',
+    effect: 'ember'
   },
   'bandit ambush': {
     enemyId: 'brigand',
@@ -132,6 +162,11 @@ export const terrainCards = [
   { id: 'grove', name: 'Grove', kind: 'terrain', tile: 'grove', icon: '♣', text: '+XP fights, small loot chance.' },
   { id: 'meadow', name: 'Meadow', kind: 'terrain', tile: 'meadow', icon: '✦', text: 'Heal when crossed. Warden loves it.' },
   { id: 'crypt', name: 'Crypt', kind: 'terrain', tile: 'crypt', icon: '☗', text: 'Hard fight. Better loot.' },
+  { id: 'wolf-den', name: 'Wolf Den', kind: 'terrain', tile: 'wolfden', icon: '♣', text: 'Pack fight. Stacks hard beside danger.' },
+  { id: 'bone-pit', name: 'Bone Pit', kind: 'terrain', tile: 'bonepit', icon: '☗', text: 'Two-enemy undead fight with better loot.' },
+  { id: 'ruined-keep', name: 'Ruined Keep', kind: 'terrain', tile: 'ruinedkeep', icon: '⚔', text: 'Elite raider fight. High XP and loot odds.' },
+  { id: 'blood-moon', name: 'Blood Moon', kind: 'terrain', tile: 'bloodmoon', icon: '☾', text: 'Danger aura: nearby fights stack larger.' },
+  { id: 'wyrm-gate', name: 'Wyrm Gate', kind: 'terrain', tile: 'wyrmgate', icon: '◆', text: 'Boss tile. Big rewards if you can survive.' },
   { id: 'forge', name: 'Forge', kind: 'terrain', tile: 'forge', icon: '⚒', text: 'Loot and temporary armor.' },
   { id: 'shrine', name: 'Shrine', kind: 'terrain', tile: 'shrine', icon: '✚', text: 'XP burst and trait tempo.' },
   { id: 'mire', name: 'Mire', kind: 'terrain', tile: 'mire', icon: '≈', text: 'Slows hero, but pays cards.' },
@@ -331,7 +366,7 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     color: hero.color,
     seatIndex: room ? room.nextSeatIndex++ : 0,
     board: blankBoard(),
-    hand: [drawCard(room), drawCard(room), drawCard(room)],
+    hand: [drawCard(room, 'terrain'), drawCard(room, 'terrain')],
     loot: [],
     loadout: { weapon: null, charm: null, armor: null },
     gold: 0,
@@ -366,7 +401,7 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     curse: 0,
     armor: 0,
     nextMoveAt: now(room) + 1000 * timeScale,
-    nextDrawAt: now(room) + 2200 * timeScale,
+    nextDrawAt: now(room) + 3600 * timeScale,
     event: 'entered the loop',
     message: 'entered the loop',
     lastEventAt: now(room),
@@ -597,6 +632,10 @@ export function runRoomStep(room, options = {}) {
   room.tick += 1;
   for (const player of Object.values(room.players)) {
     clearExpiredCombat(room, player);
+    if (isCombatLocked(room, player)) {
+      botThink(room, player);
+      continue;
+    }
     maybeDraw(room, player);
     if (now(room) >= player.nextMoveAt) advancePlayer(room, player);
     botThink(room, player);
@@ -649,6 +688,8 @@ function maybeTriggerSoloGate(room, player) {
 
 function startClaim(room, player) {
   room.tier = matchTiers[3];
+  player.hp = player.maxHp;
+  player.armor += 2;
   room.claim = {
     playerId: player.id,
     startedAt: now(room),
@@ -781,6 +822,10 @@ function clearExpiredCombat(room, player) {
   player.combat = null;
 }
 
+function isCombatLocked(room, player) {
+  return Boolean(player.combat && now(room) < player.combat.expiresAt);
+}
+
 function blankBoard() {
   return boardPath.map((coord, index) => ({
     index,
@@ -908,30 +953,56 @@ function addXp(room, player, amount) {
   }
 }
 
-function fight(room, player, label, threat, reward) {
+const dangerTiles = new Set(['grove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'ambush', 'scorch']);
+const stackAuraTiles = new Set(['bloodmoon', 'bonepit', 'wolfden', 'wyrmgate']);
+
+function encounterStack(room, player, tile, baseCount = 1) {
+  const previous = player.board[(tile.index - 1 + player.board.length) % player.board.length];
+  const next = player.board[(tile.index + 1) % player.board.length];
+  const nearbyDanger = [previous, next].filter((candidate) => dangerTiles.has(candidate?.type)).length;
+  const auraPressure = player.board.filter((candidate) => {
+    if (!stackAuraTiles.has(candidate.type)) return false;
+    const distance = Math.min(
+      Math.abs(candidate.index - tile.index),
+      player.board.length - Math.abs(candidate.index - tile.index)
+    );
+    return distance > 0 && distance <= 2;
+  }).length;
+  const bloodMoonHere = tile.type === 'bloodmoon' ? 1 : 0;
+  return clamp(baseCount + nearbyDanger + auraPressure + bloodMoonHere, 1, 5);
+}
+
+function fight(room, player, label, threat, reward, enemyCount = 1) {
   const hpBefore = player.hp;
   const cursePenalty = player.curse > 0 ? 3 : 0;
   const heroBonus = player.heroId === 'ember-knight' && player.hp < player.maxHp * 0.45 ? 2 : 0;
   const graveBonus = player.heroId === 'grave-singer' && threat >= 10 ? 4 : 0;
-  const damage = clamp(threat + cursePenalty - Math.floor(player.guard / 2) - player.armor, 1, 18);
+  const power = Math.max(4, player.power + Math.floor(player.level / 3));
+  const enemyMaxHp = clamp(threat * 2 + reward + player.level * 4 + enemyCount * 12, 24, 160);
+  const rounds = clamp(Math.ceil(enemyMaxHp / power), enemyCount, enemyCount + 5);
+  const stackedPressure = (enemyCount - 1) * 2 + Math.max(0, rounds - 2);
+  const damage = clamp(threat + stackedPressure + cursePenalty - Math.floor(player.guard / 1.7) - player.armor, 2, 26);
   player.hp -= damage;
   player.armor = Math.max(0, player.armor - 1);
-  addXp(room, player, reward + heroBonus + graveBonus);
-  player.kos += 1;
-  player.event = `${label}: -${damage} hp, +${reward + heroBonus + graveBonus} xp`;
+  const xpReward = reward + heroBonus + graveBonus + (enemyCount - 1) * 5 + Math.max(0, rounds - enemyCount) * 2;
+  addXp(room, player, xpReward);
+  player.kos += enemyCount;
+  player.event = `${label}: ${enemyCount} foe${enemyCount === 1 ? '' : 's'}, -${damage} hp, +${xpReward} xp`;
   const encounter = combatEncounters[label] ?? {
     enemyId: 'ash-imp',
     enemyName: 'Ash Imp',
     backgroundId: 'forge',
     effect: 'ember'
   };
-  const enemyMaxHp = clamp(threat + reward + player.level * 3, 16, 64);
   const timestamp = now(room);
+  const durationMs = combatBaseDisplayMs + enemyCount * 450 * timeScale + rounds * 160 * timeScale;
   player.combat = {
     ...encounter,
     label,
     damage,
-    reward: reward + heroBonus + graveBonus,
+    reward: xpReward,
+    enemyCount,
+    rounds,
     heroHpBefore: hpBefore,
     heroHpAfter: player.hp,
     heroMaxHp: player.maxHp,
@@ -939,10 +1010,11 @@ function fight(room, player, label, threat, reward) {
     enemyHpAfter: 0,
     enemyMaxHp,
     startedAt: timestamp,
-    expiresAt: timestamp + combatDisplayMs
+    expiresAt: timestamp + durationMs,
+    durationMs
   };
   const vagrantLuck = player.heroId === 'night-vagrant' ? 0.1 : 0;
-  if (random(room) < 0.17 + player.lootLuck + vagrantLuck + reward / 180) drawLoot(room, player);
+  if (random(room) < 0.17 + player.lootLuck + vagrantLuck + xpReward / 220) drawLoot(room, player);
   if (player.curse > 0) player.curse -= 1;
 }
 
@@ -970,13 +1042,23 @@ function triggerTile(room, player, tile) {
     player.hp = clamp(player.hp + 9 + player.lapHeal, 0, player.maxHp);
     player.event = 'campfire recovery';
   } else if (tile.type === 'grove') {
-    fight(room, player, 'wolf grove', 6, 9);
+    fight(room, player, 'wolf grove', 8, 10, encounterStack(room, player, tile));
   } else if (tile.type === 'meadow') {
     const bonus = player.heroId === 'moss-warden' ? 7 : 4;
     player.hp = clamp(player.hp + bonus, 0, player.maxHp);
     player.event = `meadow bloom: +${bonus} hp`;
   } else if (tile.type === 'crypt') {
-    fight(room, player, 'crypt duel', 11, 16);
+    fight(room, player, 'crypt duel', 14, 18, encounterStack(room, player, tile));
+  } else if (tile.type === 'wolfden') {
+    fight(room, player, 'wolf den', 13, 17, encounterStack(room, player, tile, 2));
+  } else if (tile.type === 'bonepit') {
+    fight(room, player, 'bone pit', 16, 22, encounterStack(room, player, tile, 2));
+  } else if (tile.type === 'ruinedkeep') {
+    fight(room, player, 'ruined keep', 18, 24, encounterStack(room, player, tile, 2));
+  } else if (tile.type === 'bloodmoon') {
+    fight(room, player, 'blood moon', 15, 18, encounterStack(room, player, tile, 1));
+  } else if (tile.type === 'wyrmgate') {
+    fight(room, player, 'wyrm gate', 23, 34, encounterStack(room, player, tile, 3));
   } else if (tile.type === 'forge') {
     player.armor += 3;
     if (random(room) < 0.55 + player.lootLuck) drawLoot(room, player);
@@ -998,14 +1080,14 @@ function triggerTile(room, player, tile) {
   } else if (tile.type === 'obelisk') {
     player.armor += 1;
     addXp(room, player, player.heroId === 'grave-singer' ? 18 : 12);
-    if (random(room) < 0.5) fight(room, player, 'obelisk shade', 9, 11);
+    if (random(room) < 0.62) fight(room, player, 'obelisk shade', 12, 13, encounterStack(room, player, tile));
     else player.event = 'obelisk surge: power in the stones';
   } else if (tile.type === 'watchtower') {
     if (player.hand.length < 7) player.hand.push(drawCard(room, 'rival'));
     addXp(room, player, 7);
     player.event = 'watchtower spotted a rival opening';
   } else if (tile.type === 'ambush') {
-    fight(room, player, 'bandit ambush', 13, 13);
+    fight(room, player, 'bandit ambush', 16, 15, encounterStack(room, player, tile));
     tile.charges -= 1;
     if (tile.charges <= 0) tile.type = 'road';
   } else if (tile.type === 'scorch') {
@@ -1015,7 +1097,7 @@ function triggerTile(room, player, tile) {
     if (tile.charges <= 0) tile.type = 'road';
   } else {
     const roll = random(room);
-    if (roll < 0.38) fight(room, player, 'road skirmish', 4, 6);
+    if (roll < 0.3) fight(room, player, 'road skirmish', 6, 7);
     else if (roll < 0.52) {
       player.hp = clamp(player.hp + 3, 0, player.maxHp);
       player.event = 'quiet road: +3 hp';
@@ -1037,11 +1119,12 @@ function advancePlayer(room, player) {
     player.laps += 1;
     player.hp = clamp(player.hp + player.lapHeal, 0, player.maxHp);
     addXp(room, player, 4);
-    if (player.hand.length < 7) player.hand.push(drawCard(room));
+    if (player.hand.length < 7 && random(room) < 0.38) player.hand.push(drawCard(room));
     addLog(room, `${player.name} completed lap ${player.laps}.`);
   }
   triggerTile(room, player, player.board[player.position]);
-  player.nextMoveAt = now(room) + movementDelay(player);
+  const combatHold = player.combat ? player.combat.expiresAt + Math.round(320 * timeScale) : now(room);
+  player.nextMoveAt = Math.max(now(room) + movementDelay(player), combatHold);
 }
 
 function maybeDraw(room, player) {
@@ -1050,7 +1133,7 @@ function maybeDraw(room, player) {
     player.hand.push(drawCard(room));
     player.event = 'drew a card';
   }
-  player.nextDrawAt = now(room) + Math.round((3100 + rand(room, 850)) * player.drawRate * timeScale);
+  player.nextDrawAt = now(room) + Math.round((6500 + rand(room, 1400)) * player.drawRate * timeScale);
 }
 
 function bestItemScore(item) {

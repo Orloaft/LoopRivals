@@ -94,6 +94,8 @@ export type Combat = {
   label: string;
   damage: number;
   reward: number;
+  enemyCount: number;
+  rounds: number;
   heroHpBefore: number;
   heroHpAfter: number;
   heroMaxHp: number;
@@ -102,6 +104,7 @@ export type Combat = {
   enemyMaxHp: number;
   startedAt: number;
   expiresAt: number;
+  durationMs: number;
 };
 
 export type Player = {
