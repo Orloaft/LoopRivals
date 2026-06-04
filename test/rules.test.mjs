@@ -83,6 +83,21 @@ test('joining with the same player token reconnects instead of adding a new slot
   assert.equal(secondJoin.player.heroId, 'ember-knight');
 });
 
+test('snapshot keeps board seats stable while ranks follow score', () => {
+  const firstJoin = testApi.joinRoom(room, { playerId: 'alpha', name: 'Alpha', heroId: 'ember-knight' });
+  const secondJoin = testApi.joinRoom(room, { playerId: 'bravo', name: 'Bravo', heroId: 'night-vagrant' });
+
+  assert.deepEqual(testApi.roomSnapshot(room).players.map((player) => player.id), ['alpha', 'bravo']);
+
+  secondJoin.player.level = firstJoin.player.level + 8;
+  const snapshot = testApi.roomSnapshot(room);
+
+  assert.deepEqual(snapshot.players.map((player) => player.id), ['alpha', 'bravo']);
+  assert.equal(snapshot.players.find((player) => player.id === 'alpha').rank, 2);
+  assert.equal(snapshot.players.find((player) => player.id === 'bravo').rank, 1);
+  assert.deepEqual(snapshot.leaderboard.map((player) => player.id), ['bravo', 'alpha']);
+});
+
 test('room finishes when a player reaches the goal score', () => {
   const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
   room.players.leader = player;

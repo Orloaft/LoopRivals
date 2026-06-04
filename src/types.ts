@@ -75,6 +75,8 @@ export type Player = {
   isBot: boolean;
   connected: boolean;
   color: string;
+  seatIndex: number;
+  rank: number;
   board: Tile[];
   hand: Card[];
   loot: Loot[];
@@ -107,6 +109,8 @@ export type Player = {
   score: number;
 };
 
+export type LeaderboardEntry = Pick<Player, 'id' | 'name' | 'heroId' | 'color' | 'score' | 'rank' | 'hp' | 'maxHp' | 'level' | 'laps'>;
+
 export type GameConfig = {
   heroes: Hero[];
   cards: Omit<Card, 'instanceId'>[];
@@ -125,5 +129,6 @@ export type GameState = {
   goalScore: number;
   winnerId: string | null;
   winner: Player | null;
+  leaderboard: LeaderboardEntry[];
   players: Player[];
 };

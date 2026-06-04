@@ -171,6 +171,7 @@ export function createRoom(id, options = {}) {
     players: {},
     log: ['Loopduel lobby is open. Join, pick a hero, then keep up.'],
     botCounter: 1,
+    nextSeatIndex: 0,
     winnerId: null
   };
 }
@@ -202,9 +203,20 @@ export function score(player) {
 }
 
 export function roomSnapshot(room) {
-  const players = Object.values(room.players)
-    .map((player) => ({ ...player, score: score(player) }))
-    .sort((a, b) => b.score - a.score);
+  const scoredPlayers = Object.values(room.players).map((player) => ({ ...player, score: score(player) }));
+  const ranked = [...scoredPlayers].sort((a, b) => {
+    const scoreDiff = b.score - a.score;
+    if (scoreDiff !== 0) return scoreDiff;
+    return (a.seatIndex ?? 0) - (b.seatIndex ?? 0);
+  });
+  const ranks = new Map(ranked.map((player, index) => [player.id, index + 1]));
+  const players = scoredPlayers
+    .map((player) => ({ ...player, rank: ranks.get(player.id) ?? 1 }))
+    .sort((a, b) => {
+      const seatDiff = (a.seatIndex ?? 0) - (b.seatIndex ?? 0);
+      if (seatDiff !== 0) return seatDiff;
+      return a.id.localeCompare(b.id);
+    });
   return {
     id: room.id,
     status: room.status,
@@ -214,6 +226,18 @@ export function roomSnapshot(room) {
     goalScore,
     winnerId: room.winnerId,
     winner: room.winnerId ? players.find((player) => player.id === room.winnerId) ?? null : null,
+    leaderboard: ranked.map((player, index) => ({
+      id: player.id,
+      name: player.name,
+      heroId: player.heroId,
+      color: player.color,
+      score: player.score,
+      rank: index + 1,
+      hp: player.hp,
+      maxHp: player.maxHp,
+      level: player.level,
+      laps: player.laps
+    })),
     players
   };
 }
@@ -227,6 +251,7 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     isBot,
     connected: !isBot,
     color: hero.color,
+    seatIndex: room ? room.nextSeatIndex++ : 0,
     board: blankBoard(),
     hand: [drawCard(room), drawCard(room), drawCard(room)],
     loot: [],

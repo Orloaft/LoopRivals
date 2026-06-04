@@ -36,6 +36,16 @@ body {
   background-size: 28px 28px, 28px 28px, auto, auto;
 }
 
+html,
+body,
+#root,
+.lobby-shell,
+.game-shell,
+.board,
+.player-side-dock {
+  cursor: url('/assets/ui/cursor-hand-v1.png') 16 8, auto;
+}
+
 body::before {
   content: '';
   position: fixed;
@@ -153,6 +163,7 @@ input {
   color: var(--parchment);
   background: #0d0d0c;
   outline: none;
+  cursor: text;
 }
 
 input:focus {
@@ -282,6 +293,7 @@ input:focus {
 
 .game-shell {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 12px;
   min-height: 100vh;
   padding: 10px 12px 12px;
@@ -313,6 +325,14 @@ input:focus {
   color: #d5c394;
 }
 
+.play-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(286px, 22vw, 356px);
+  align-items: start;
+  gap: 14px;
+  min-height: 0;
+}
+
 .arena-grid {
   display: flex;
   flex-wrap: wrap;
@@ -324,7 +344,7 @@ input:focus {
 
 .player-panel {
   /* Focused/default board size (the boards are square, so this is width AND height). */
-  --board-size: min(72vh, 660px);
+  --board-size: min(64vh, 620px);
   position: relative;
   width: var(--board-size);
   max-width: 100%;
@@ -337,7 +357,7 @@ input:focus {
 
 /* Unfocused boards render at 50% and dim slightly; click to focus them. */
 .player-panel.dimmed {
-  --board-size: min(36vh, 330px);
+  --board-size: min(32vh, 310px);
   opacity: 0.84;
 }
 
@@ -966,8 +986,8 @@ input:focus {
   color: #281a0f;
   text-align: left;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.02)),
-    url('/assets/ui/card-terrain-v1.png') center / 100% 100% no-repeat;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0)),
+    url('/assets/ui/card-terrain-v2.png') center / 100% 100% no-repeat;
   box-shadow:
     0 12px 20px rgba(0, 0, 0, 0.48),
     inset 0 0 0 2px rgba(0, 0, 0, 0.28);
@@ -1015,8 +1035,8 @@ input:focus {
 .hand-card.rival {
   color: #f8e5d8;
   background:
-    linear-gradient(180deg, rgba(85, 19, 25, 0.12), rgba(0, 0, 0, 0.1)),
-    url('/assets/ui/card-rival-v1.png') center / 100% 100% no-repeat;
+    linear-gradient(180deg, rgba(85, 19, 25, 0.1), rgba(0, 0, 0, 0.08)),
+    url('/assets/ui/card-rival-v2.png') center / 100% 100% no-repeat;
 }
 
 .hand-card.grove {
@@ -1035,8 +1055,8 @@ input:focus {
 .hand-card.crypt,
 .hand-card.obelisk {
   background:
-    linear-gradient(180deg, rgba(21, 10, 30, 0.14), rgba(0, 0, 0, 0.12)),
-    url('/assets/ui/card-terrain-v1.png') center / 100% 100% no-repeat;
+    linear-gradient(180deg, rgba(21, 10, 30, 0.12), rgba(0, 0, 0, 0.1)),
+    url('/assets/ui/card-terrain-v2.png') center / 100% 100% no-repeat;
 }
 
 .hand-card.meadow,
@@ -1087,14 +1107,19 @@ input:focus {
   z-index: 1;
   display: grid;
   place-items: center;
-  min-height: 0;
-  margin: 12px 7px 15px;
-  border: 1px solid rgba(69, 41, 18, 0.28);
-  border-radius: 5px;
+  align-self: end;
+  justify-self: center;
+  width: 48%;
+  aspect-ratio: 1;
+  margin: 0 0 16px;
+  border: 1px solid rgba(255, 235, 161, 0.28);
+  border-radius: 50%;
   background:
-    radial-gradient(circle at 50% 34%, rgba(255, 235, 168, 0.75), rgba(98, 59, 24, 0.22) 45%, rgba(30, 16, 8, 0.14) 72%),
-    rgba(255, 245, 203, 0.18);
-  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.18);
+    radial-gradient(circle at 50% 36%, rgba(255, 245, 197, 0.32), rgba(17, 11, 6, 0.52) 68%),
+    rgba(10, 7, 4, 0.42);
+  box-shadow:
+    inset 0 0 16px rgba(0, 0, 0, 0.32),
+    0 2px 8px rgba(0, 0, 0, 0.34);
 }
 
 .hand-card.rival .card-art {
@@ -1106,7 +1131,7 @@ input:focus {
 
 .card-art span {
   color: inherit;
-  font-size: clamp(2rem, 3.8vw, 3.15rem);
+  font-size: clamp(1.25rem, 2.4vw, 2rem);
   line-height: 1;
   filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.42));
 }
@@ -1220,12 +1245,22 @@ input:focus {
 .target-chip:focus-visible .hover-pop,
 .dock-menu-button:hover .hover-pop,
 .dock-menu-button:focus-visible .hover-pop,
+.side-control-button:hover .hover-pop,
+.side-control-button:focus-visible .hover-pop,
 .combatant:hover .hover-pop,
 .combatant:focus-visible .hover-pop,
 .equip-slot:hover .hover-pop,
 .equip-slot:focus-visible .hover-pop,
 .loot-chip:hover .hover-pop,
 .loot-chip:focus-visible .hover-pop,
+.paper-slot:hover .hover-pop,
+.paper-slot:focus-visible .hover-pop,
+.side-loot:hover .hover-pop,
+.side-loot:focus-visible .hover-pop,
+.side-trait:hover .hover-pop,
+.side-trait:focus-visible .hover-pop,
+.side-feed:hover .hover-pop,
+.side-feed:focus-visible .hover-pop,
 .trait-rune:hover .hover-pop,
 .trait-rune:focus-visible .hover-pop {
   opacity: 1;
@@ -1311,7 +1346,351 @@ input:focus {
   border-color: var(--gold-bright);
 }
 
-/* Right cluster: equipment, traits, feed. */
+/* Right-side player dock: paperdoll, bespoke loadout slots, loot, traits, feed. */
+.player-side-dock {
+  position: sticky;
+  top: 10px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  max-height: calc(100vh - 194px);
+  overflow: visible auto;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--hero-color) 45%, var(--line));
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(0, 0, 0, 0.18)),
+    #11100e;
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.46),
+    inset 0 0 0 1px rgba(210, 177, 92, 0.08);
+}
+
+.side-dock-head {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.side-dock-head img {
+  width: 44px;
+  height: 44px;
+  border: 1px solid color-mix(in srgb, var(--hero-color) 58%, var(--gold));
+  border-radius: 4px;
+  object-fit: cover;
+  background: #050505;
+}
+
+.side-dock-head div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.side-dock-head strong {
+  overflow: hidden;
+  font-family: Georgia, "Times New Roman", serif;
+  color: var(--parchment);
+  font-size: 1.05rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-dock-head span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-dock-head svg {
+  color: var(--gold-bright);
+  filter: drop-shadow(0 1px 1px #000);
+}
+
+.side-stat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--parchment);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.side-hp {
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(210, 177, 92, 0.22);
+  border-radius: 999px;
+  background: #211414;
+}
+
+.side-hp i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--blood), var(--gold-bright));
+}
+
+.side-stat-row em {
+  color: var(--gold-bright);
+  font-style: normal;
+  font-weight: 900;
+}
+
+.paperdoll {
+  position: relative;
+  min-height: 250px;
+  overflow: visible;
+  border: 1px solid rgba(210, 177, 92, 0.16);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.36)),
+    url('/assets/ui/paperdoll-panel-v1.png') center / contain no-repeat,
+    rgba(0, 0, 0, 0.18);
+}
+
+.paperdoll-body {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  display: grid;
+  place-items: center;
+  width: 38%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+}
+
+.paperdoll-body::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 7%;
+  width: 78%;
+  height: 18%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.56), transparent 70%);
+}
+
+.paperdoll-body img {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 4px 0 rgba(0, 0, 0, 0.58))
+    drop-shadow(0 0 10px color-mix(in srgb, var(--hero-color) 44%, transparent));
+}
+
+.paper-slot {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  aspect-ratio: 1;
+  color: rgba(240, 217, 140, 0.68);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  filter: saturate(0.95);
+}
+
+.paper-slot.weapon {
+  left: 5%;
+  top: 16%;
+  background-image: url('/assets/ui/item-slot-weapon-v1.png');
+}
+
+.paper-slot.armor {
+  right: 5%;
+  top: 16%;
+  background-image: url('/assets/ui/item-slot-armor-v1.png');
+}
+
+.paper-slot.charm {
+  left: 50%;
+  bottom: 4%;
+  background-image: url('/assets/ui/item-slot-charm-v1.png');
+  transform: translateX(-50%);
+}
+
+.paper-slot.filled {
+  color: var(--gold-bright);
+  filter: saturate(1.12) brightness(1.08);
+}
+
+.paper-slot svg {
+  filter: drop-shadow(0 2px 1px #000);
+}
+
+.dock-section {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.side-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--gold-bright);
+}
+
+.side-section-title strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.96rem;
+}
+
+.side-section-title span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.side-loot-grid,
+.side-trait-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  min-height: 40px;
+}
+
+.side-loot,
+.side-trait {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  color: var(--parchment);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.side-loot {
+  background-image: url('/assets/ui/loot-slot-v1.png');
+}
+
+.side-loot.weapon {
+  color: #f0d98c;
+}
+
+.side-loot.armor {
+  color: #c9dfeb;
+}
+
+.side-loot.charm {
+  color: #cfe8b8;
+}
+
+.side-loot.rare {
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--blue) 45%, transparent));
+}
+
+.side-loot.relic {
+  filter: drop-shadow(0 0 9px color-mix(in srgb, var(--gold) 65%, transparent));
+}
+
+.side-loot svg,
+.side-trait svg {
+  filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.8));
+}
+
+.side-trait {
+  color: #d7c69a;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.72rem;
+  font-weight: 950;
+  background-image: url('/assets/ui/trait-rune-frame-v1.png');
+}
+
+.side-trait.pending {
+  color: var(--gold-bright);
+  animation: trait-pulse 1.4s ease-in-out infinite;
+}
+
+.side-empty {
+  grid-column: 1 / -1;
+  align-self: center;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-style: italic;
+}
+
+.side-feed {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid rgba(210, 177, 92, 0.16);
+  border-radius: 5px;
+  color: var(--gold-bright);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.side-feed > span:not(.hover-pop) {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.side-control-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 7px;
+  border: 1px solid rgba(210, 177, 92, 0.34);
+  border-radius: 5px;
+  color: var(--gold-bright);
+  background:
+    linear-gradient(180deg, rgba(210, 177, 92, 0.1), rgba(0, 0, 0, 0.28)),
+    #11100e;
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.side-control-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-control-button:hover,
+.side-control-button:focus-visible,
+.side-loot:hover,
+.side-loot:focus-visible,
+.side-trait:hover,
+.side-trait:focus-visible,
+.paper-slot:hover,
+.paper-slot:focus-visible {
+  z-index: 8;
+  filter: brightness(1.08) saturate(1.12) drop-shadow(0 0 8px color-mix(in srgb, var(--gold) 42%, transparent));
+}
+
+/* Legacy compact dock rules kept for older class names used by previews/tests. */
 .dock-cluster {
   display: flex;
   align-items: center;
@@ -1476,6 +1855,18 @@ input:focus {
   line-height: 1.32;
 }
 
+.side-feed .feed-pop {
+  left: auto;
+  right: 0;
+  bottom: calc(100% + 8px);
+  transform: translateY(4px);
+}
+
+.side-feed:hover .feed-pop,
+.side-feed:focus-visible .feed-pop {
+  transform: translateY(0);
+}
+
 .help-overlay {
   position: fixed;
   inset: 0;
@@ -1637,10 +2028,21 @@ input:focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .play-layout,
   .control-dock,
   .side-panels,
   .help-grid {
     grid-template-columns: 1fr;
+  }
+
+  .player-side-dock {
+    position: relative;
+    top: auto;
+    max-height: none;
+  }
+
+  .paperdoll {
+    min-height: 220px;
   }
 
   .name-row {
@@ -1666,7 +2068,8 @@ input:focus {
   }
 
   .hero-grid,
-  .arena-grid {
+  .arena-grid,
+  .play-layout {
     grid-template-columns: 1fr;
   }
 
@@ -1676,6 +2079,19 @@ input:focus {
 
   .control-dock {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .player-side-dock {
+    padding: 10px;
+  }
+
+  .side-loot-grid,
+  .side-trait-grid {
+    grid-template-columns: repeat(5, minmax(40px, 1fr));
+  }
+
+  .paper-slot {
+    width: 58px;
   }
 
   .topbar {

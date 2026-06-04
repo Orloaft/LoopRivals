@@ -127,7 +127,7 @@ function InfoPopover({
       {eyebrow && <em>{eyebrow}</em>}
       <strong>{title}</strong>
       {body && <span>{body}</span>}
-      {lines?.map((line) => <span key={line}>{line}</span>)}
+      {lines?.map((line, index) => <span key={`${line}-${index}`}>{line}</span>)}
       {hint && <small>{hint}</small>}
     </span>
   );
@@ -327,20 +327,33 @@ function App() {
         </section>
       )}
 
-      <section className={`arena-grid ${focusedPlayerId !== me.id ? 'has-focus' : ''}`}>
-        {game.players.map((player, index) => (
-          <PlayerPanel
-            key={player.id}
-            player={player}
-            rank={index + 1}
-            active={player.id === me.id}
-            focused={player.id === focusedPlayerId}
-            selectedCard={player.id === me.id ? selectedCard : null}
-            draggingCard={player.id === me.id && dragCardId ? selectedCard : null}
-            onTile={player.id === me.id ? placeCard : undefined}
-            onFocus={() => focusBoard(player.id)}
-          />
-        ))}
+      <section className="play-layout">
+        <section className={`arena-grid ${focusedPlayerId !== me.id ? 'has-focus' : ''}`}>
+          {game.players.map((player) => (
+            <PlayerPanel
+              key={player.id}
+              player={player}
+              rank={player.rank}
+              active={player.id === me.id}
+              focused={player.id === focusedPlayerId}
+              selectedCard={player.id === me.id ? selectedCard : null}
+              draggingCard={player.id === me.id && dragCardId ? selectedCard : null}
+              onTile={player.id === me.id ? placeCard : undefined}
+              onFocus={() => focusBoard(player.id)}
+            />
+          ))}
+        </section>
+        <PlayerSideDock
+          player={me}
+          config={config}
+          game={game}
+          lines={game.log}
+          onEquip={equip}
+          onChoose={chooseTrait}
+          onMenu={() => setShowMenu(true)}
+          onAddBot={addBot}
+          onFillCpu={fillCpu}
+        />
       </section>
 
       <section className="control-dock">
@@ -382,16 +395,6 @@ function App() {
             ))}
           </div>
         )}
-        <div className="dock-cluster">
-          <button className="dock-menu-button" onClick={() => setShowMenu(true)}>
-            <Bot size={16} />
-            <span>Menu</span>
-            <InfoPopover title="Menu" eyebrow="Room controls" body="Add CPU opponents, view rules, or reset the room." />
-          </button>
-          <EquipCluster player={me} onEquip={equip} />
-          <TraitCluster player={me} config={config} onChoose={chooseTrait} />
-          <FeedCluster lines={game.log} />
-        </div>
       </section>
       {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}
       {showMenu && (
@@ -463,6 +466,20 @@ function slotIcon(slot: string, size = 14) {
   return <Sparkles size={size} />;
 }
 
+function traitGlyph(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function itemStatLine(item: Loot) {
+  return `+${item.power}P +${item.guard}G +${item.speed}S +${item.maxHp}HP`;
+}
+
 function HandBar({
   hand,
   selectedId,
@@ -525,95 +542,141 @@ function HandBar({
   );
 }
 
-function EquipCluster({ player, onEquip }: { player: Player; onEquip: (item: Loot) => void }) {
+function PlayerSideDock({
+  player,
+  config,
+  game,
+  lines,
+  onEquip,
+  onChoose,
+  onMenu,
+  onAddBot,
+  onFillCpu
+}: {
+  player: Player;
+  config: GameConfig;
+  game: GameState;
+  lines: string[];
+  onEquip: (item: Loot) => void;
+  onChoose: (traitId: string) => void;
+  onMenu: () => void;
+  onAddBot: () => void;
+  onFillCpu: () => void;
+}) {
+  const hero = config.heroes.find((item) => item.id === player.heroId);
+  const pending = config.traits.filter((trait) => player.pendingTraits.includes(trait.id));
+  const learned = config.traits.filter((trait) => player.traits.includes(trait.id));
+  const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+
   return (
-    <div className="dock-cell equip-cell">
-      <div className="equip-slots">
+    <aside className="player-side-dock" style={{ '--hero-color': player.color } as React.CSSProperties}>
+      <div className="side-dock-head">
+        <img src={heroPortraitUrl(player.heroId)} alt="" />
+        <div>
+          <strong>{player.name}</strong>
+          <span>{hero?.name ?? 'Runner'} · Rank {player.rank}</span>
+        </div>
+        {player.rank === 1 && <Crown size={18} />}
+      </div>
+
+      <div className="side-stat-row">
+        <span className="side-hp"><i style={{ width: `${hpRatio}%` }} /></span>
+        <b>{Math.ceil(player.hp)}/{player.maxHp}</b>
+        <em>{player.score}</em>
+      </div>
+
+      <div className="paperdoll">
+        <div className="paperdoll-body">
+          <img src={heroSpriteUrl(player.heroId)} alt="" />
+        </div>
         {(['weapon', 'armor', 'charm'] as const).map((slot) => {
           const item = player.loadout[slot];
           return (
-            <div key={slot} className={`equip-slot ${item ? 'filled' : ''}`} tabIndex={0}>
-              {slotIcon(slot)}
-              <span className="hover-pop">
-                <strong>{slot}</strong>
-                <span>{item ? item.name : 'empty'}</span>
-                {item && <em>+{item.power}P +{item.guard}G +{item.speed}S +{item.maxHp}HP</em>}
-              </span>
+            <div key={slot} className={`paper-slot ${slot} ${item ? 'filled' : ''}`} tabIndex={0}>
+              {slotIcon(slot, 18)}
+              <InfoPopover
+                title={item?.name ?? `${slot} slot`}
+                eyebrow={item ? `${item.rarity} ${slot}` : 'Loadout'}
+                body={item ? itemStatLine(item) : 'No item equipped.'}
+              />
             </div>
           );
         })}
       </div>
-      {player.loot.length > 0 && (
-        <div className="loot-bag">
-          {player.loot.slice(0, 8).map((item) => (
-            <button key={item.id} className={`loot-chip ${item.rarity}`} onClick={() => onEquip(item)}>
-              {slotIcon(item.slot, 12)}
-              <span className="hover-pop">
-                <strong>{item.name}</strong>
-                <em>{item.slot} · {item.rarity}</em>
-                <span>+{item.power}P +{item.guard}G +{item.speed}S +{item.maxHp}HP</span>
-                <small>click to equip</small>
-              </span>
+
+      <section className="dock-section loot-section">
+        <div className="side-section-title">
+          <strong>Loot</strong>
+          <span>{player.loot.length}/10</span>
+        </div>
+        <div className="side-loot-grid">
+          {player.loot.slice(0, 10).map((item) => (
+            <button key={item.id} className={`side-loot ${item.slot} ${item.rarity}`} onClick={() => onEquip(item)}>
+              {slotIcon(item.slot, 17)}
+              <InfoPopover
+                title={item.name}
+                eyebrow={`${item.rarity} ${item.slot}`}
+                body={itemStatLine(item)}
+                hint="click to equip"
+              />
             </button>
           ))}
+          {player.loot.length === 0 && <span className="side-empty">No loose loot.</span>}
         </div>
-      )}
-    </div>
-  );
-}
+      </section>
 
-function TraitCluster({
-  player,
-  config,
-  onChoose
-}: {
-  player: Player;
-  config: GameConfig;
-  onChoose: (traitId: string) => void;
-}) {
-  const pending = config.traits.filter((trait) => player.pendingTraits.includes(trait.id));
-  const learned = config.traits.filter((trait) => player.traits.includes(trait.id));
-  if (pending.length === 0 && learned.length === 0) return null;
+      <section className={`dock-section side-traits ${pending.length > 0 ? 'has-pending' : ''}`}>
+        <div className="side-section-title">
+          <strong>Traits</strong>
+          <span>{learned.length}</span>
+        </div>
+        <div className="side-trait-grid">
+          {pending.map((trait) => (
+            <button key={trait.id} className="side-trait pending" onClick={() => onChoose(trait.id)}>
+              <Plus size={14} />
+              <InfoPopover title={trait.name} eyebrow="Trait choice" body={trait.text} hint="click to learn" />
+            </button>
+          ))}
+          {learned.map((trait) => (
+            <span key={trait.id} className="side-trait learned" tabIndex={0}>
+              {traitGlyph(trait.name)}
+              <InfoPopover title={trait.name} eyebrow="Learned trait" body={trait.text} />
+            </span>
+          ))}
+          {pending.length === 0 && learned.length === 0 && <span className="side-empty">Level up to unlock runes.</span>}
+        </div>
+      </section>
 
-  return (
-    <div className={`dock-cell trait-cell ${pending.length > 0 ? 'has-pending' : ''}`}>
-      {pending.map((trait) => (
-        <button key={trait.id} className="trait-rune pending" onClick={() => onChoose(trait.id)}>
-          <Plus size={14} />
-          <span className="hover-pop">
-            <strong>{trait.name}</strong>
-            <span>{trait.text}</span>
-            <small>click to learn</small>
-          </span>
+      <div className="side-feed" tabIndex={0}>
+        <ScrollText size={16} />
+        <span>{lines[0] ?? 'The loop is quiet.'}</span>
+        <InfoPopover
+          title="Event log"
+          lines={lines.slice(0, 8)}
+          className="feed-pop"
+        />
+      </div>
+
+      <div className="side-controls">
+        <button className="side-control-button" onClick={onMenu}>
+          <Bot size={15} />
+          <span>Menu</span>
+          <InfoPopover title="Menu" eyebrow="Room controls" body={`Room ${game.id} · ${game.players.length}/${game.maxPlayers} runners`} />
         </button>
-      ))}
-      {learned.map((trait) => (
-        <span key={trait.id} className="trait-rune" tabIndex={0}>
-          {trait.name.slice(0, 1)}
-          <span className="hover-pop">
-            <strong>{trait.name}</strong>
-            <span>{trait.text}</span>
-          </span>
-        </span>
-      ))}
-    </div>
+        <button className="side-control-button" onClick={onAddBot}>
+          <Bot size={15} />
+          <span>Bot</span>
+          <InfoPopover title="Add bot" body="Adds one CPU opponent if a seat is open." />
+        </button>
+        <button className="side-control-button" onClick={onFillCpu}>
+          <Users size={15} />
+          <span>Fill</span>
+          <InfoPopover title="Fill CPU match" body="Fills every open seat with CPU opponents." />
+        </button>
+      </div>
+    </aside>
   );
 }
-
-function FeedCluster({ lines }: { lines: string[] }) {
-  return (
-    <div className="dock-cell feed-cell" tabIndex={0}>
-      <ScrollText size={16} />
-      <span className="feed-latest">{lines[0] ?? ''}</span>
-      <span className="hover-pop feed-pop">
-        {lines.slice(0, 9).map((line, index) => (
-          <p key={`${line}-${index}`}>{line}</p>
-        ))}
-      </span>
-    </div>
-  );
-}
-
 function PlayerPanel({
   player,
   rank,
