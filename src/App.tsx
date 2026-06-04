@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Bot, Crown, HelpCircle, Play, Plus, RotateCcw, Shield, Sparkles, Swords, Zap } from 'lucide-react';
+import { Bot, Crown, HelpCircle, Play, Plus, RotateCcw, ScrollText, Shield, Sparkles, Swords, Zap } from 'lucide-react';
 import type { Card, Combat, GameConfig, GameState, Hero, Loot, Player, Tile } from './types';
 
 const tileNames: Record<string, string> = {
@@ -81,6 +81,8 @@ function App() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [showHelp, setShowHelp] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   useEffect(() => {
     socket.on('connect', () => {
@@ -108,6 +110,21 @@ function App() {
       socket.off('notice');
     };
   }, [heroId, name, socket]);
+
+  // Esc toggles the game menu (and closes the rules overlay first if it's open).
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (showHelp) {
+        setShowHelp(false);
+        return;
+      }
+      setShowMenu((open) => !open);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showHelp]);
 
   const me = game?.players.find((player) => player.id === playerToken) ?? null;
   const selectedCard = me?.hand.find((card) => card.instanceId === selectedCardId) ?? null;
@@ -214,29 +231,19 @@ function App() {
     );
   }
 
+  // Exactly one board is focused (full size); the rest render at 50%. Default is your
+  // own board; clicking a board focuses it (clicking it again returns focus to you).
+  const meId = me.id;
+  const focusedPlayerId = focusedId && game.players.some((player) => player.id === focusedId)
+    ? focusedId
+    : meId;
+  function focusBoard(id: string) {
+    setFocusedId(id === focusedPlayerId && id !== meId ? meId : id);
+  }
+
   return (
     <main className="game-shell">
-      <header className="topbar">
-        <div>
-          <h1>Loopduel</h1>
-          <p>Room {game.id} · {game.players.length}/{game.maxPlayers} runners · first to {game.goalScore} · tick {game.tick}</p>
-        </div>
-        <div className="top-actions">
-          {notice && <span className="notice">{notice}</span>}
-          <button className="icon-action" onClick={() => setShowHelp(true)} title="Rules">
-            <HelpCircle size={18} />
-            Rules
-          </button>
-          <button className="icon-action" onClick={addBot} title="Add bot">
-            <Bot size={18} />
-            Bot
-          </button>
-          <button className="icon-action" onClick={resetRoom} title="Reset room">
-            <RotateCcw size={18} />
-            Reset
-          </button>
-        </div>
-      </header>
+      {notice && <div className="notice-toast">{notice}</div>}
 
       {game.status === 'finished' && game.winner && (
         <section className="winner-strip" style={{ '--hero-color': game.winner.color } as React.CSSProperties}>
@@ -251,65 +258,227 @@ function App() {
         </section>
       )}
 
-      <section className="arena-grid">
+      <section className={`arena-grid ${focusedPlayerId !== me.id ? 'has-focus' : ''}`}>
         {game.players.map((player, index) => (
           <PlayerPanel
             key={player.id}
             player={player}
             rank={index + 1}
             active={player.id === me.id}
+            focused={player.id === focusedPlayerId}
             selectedCard={player.id === me.id ? selectedCard : null}
             onTile={player.id === me.id ? placeCard : undefined}
+            onFocus={() => focusBoard(player.id)}
           />
         ))}
       </section>
 
       <section className="control-dock">
-        <div className="hand-panel">
-          <PanelHeader icon={<Sparkles size={17} />} title="Hand" detail={`${me.hand.length}/7`} />
-          <div className="card-row">
-            {me.hand.map((card) => (
+        <HandBar
+          hand={me.hand}
+          selectedId={selectedCardId}
+          onSelect={(id) => setSelectedCardId(id === selectedCardId ? null : id)}
+        />
+        {selectedCard?.kind === 'rival' && (
+          <div className="target-row">
+            <span className="target-label">strike</span>
+            {game.players.filter((player) => player.id !== me.id).map((target) => (
               <button
-                key={card.instanceId}
-                className={`play-card ${selectedCardId === card.instanceId ? 'selected' : ''} ${card.kind}`}
-                onClick={() => setSelectedCardId(card.instanceId === selectedCardId ? null : card.instanceId)}
+                key={target.id}
+                className="target-chip"
+                style={{ '--hero-color': target.color } as React.CSSProperties}
+                onClick={() => playRival(target.id)}
+                title={`Hit ${target.name}`}
               >
-                <span>{card.icon}</span>
-                <strong>{card.name}</strong>
-                <small>{card.kind}</small>
-                <p>{card.text}</p>
+                <img src={heroPortraitUrl(target.heroId)} alt={target.name} />
               </button>
             ))}
           </div>
-          {selectedCard?.kind === 'rival' && (
-            <div className="target-row">
-              {game.players.filter((player) => player.id !== me.id).map((target) => (
-                <button key={target.id} onClick={() => playRival(target.id)}>
-                  <Swords size={16} />
-                  {target.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="side-panels">
-          <LoadoutPanel player={me} onEquip={equip} />
-          <TraitPanel player={me} config={config} onChoose={chooseTrait} />
-          <LogPanel lines={game.log} />
+        )}
+        <div className="dock-cluster">
+          <EquipCluster player={me} onEquip={equip} />
+          <TraitCluster player={me} config={config} onChoose={chooseTrait} />
+          <FeedCluster lines={game.log} />
         </div>
       </section>
       {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}
+      {showMenu && (
+        <GameMenu
+          game={game}
+          onAddBot={addBot}
+          onReset={() => { resetRoom(); setShowMenu(false); }}
+          onRules={() => { setShowMenu(false); setShowHelp(true); }}
+          onClose={() => setShowMenu(false)}
+        />
+      )}
     </main>
   );
 }
 
-function PanelHeader({ icon, title, detail }: { icon: React.ReactNode; title: string; detail?: string }) {
+function GameMenu({
+  game,
+  onAddBot,
+  onReset,
+  onRules,
+  onClose
+}: {
+  game: GameState;
+  onAddBot: () => void;
+  onReset: () => void;
+  onRules: () => void;
+  onClose: () => void;
+}) {
   return (
-    <div className="panel-header">
-      <span>{icon}</span>
-      <strong>{title}</strong>
-      {detail && <small>{detail}</small>}
+    <div className="help-overlay" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="help-panel menu-panel" onClick={(event) => event.stopPropagation()}>
+        <div className="help-head">
+          <div>
+            <strong>Menu</strong>
+            <span>Room {game.id} · {game.players.length}/{game.maxPlayers} runners · first to {game.goalScore} · tick {game.tick}</span>
+          </div>
+          <button className="icon-action" onClick={onClose}>Close · Esc</button>
+        </div>
+        <div className="menu-actions">
+          <button className="menu-item" onClick={onAddBot}>
+            <Bot size={20} />
+            Add Bot
+          </button>
+          <button className="menu-item" onClick={onRules}>
+            <HelpCircle size={20} />
+            Rules
+          </button>
+          <button className="menu-item danger" onClick={onReset}>
+            <RotateCcw size={20} />
+            Reset Room
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Lucide icon for an equipment slot / loot item, used across the compact dock.
+function slotIcon(slot: string, size = 14) {
+  if (slot === 'weapon') return <Swords size={size} />;
+  if (slot === 'armor') return <Shield size={size} />;
+  return <Sparkles size={size} />;
+}
+
+function HandBar({
+  hand,
+  selectedId,
+  onSelect
+}: {
+  hand: Card[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="hand-bar">
+      {hand.map((card) => (
+        <button
+          key={card.instanceId}
+          className={`hand-slot ${card.kind} ${selectedId === card.instanceId ? 'selected' : ''}`}
+          onClick={() => onSelect(card.instanceId)}
+        >
+          <span className="hand-glyph">{card.icon}</span>
+          <span className="hover-pop">
+            <strong>{card.name}</strong>
+            <em>{card.kind}</em>
+            <span>{card.text}</span>
+          </span>
+        </button>
+      ))}
+      {hand.length === 0 && <span className="hand-empty">drawing…</span>}
+    </div>
+  );
+}
+
+function EquipCluster({ player, onEquip }: { player: Player; onEquip: (item: Loot) => void }) {
+  return (
+    <div className="dock-cell equip-cell">
+      <div className="equip-slots">
+        {(['weapon', 'armor', 'charm'] as const).map((slot) => {
+          const item = player.loadout[slot];
+          return (
+            <div key={slot} className={`equip-slot ${item ? 'filled' : ''}`} tabIndex={0}>
+              {slotIcon(slot)}
+              <span className="hover-pop">
+                <strong>{slot}</strong>
+                <span>{item ? item.name : 'empty'}</span>
+                {item && <em>+{item.power}P +{item.guard}G +{item.speed}S +{item.maxHp}HP</em>}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {player.loot.length > 0 && (
+        <div className="loot-bag">
+          {player.loot.slice(0, 8).map((item) => (
+            <button key={item.id} className={`loot-chip ${item.rarity}`} onClick={() => onEquip(item)}>
+              {slotIcon(item.slot, 12)}
+              <span className="hover-pop">
+                <strong>{item.name}</strong>
+                <em>{item.slot} · {item.rarity}</em>
+                <span>+{item.power}P +{item.guard}G +{item.speed}S +{item.maxHp}HP</span>
+                <small>click to equip</small>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TraitCluster({
+  player,
+  config,
+  onChoose
+}: {
+  player: Player;
+  config: GameConfig;
+  onChoose: (traitId: string) => void;
+}) {
+  const pending = config.traits.filter((trait) => player.pendingTraits.includes(trait.id));
+  const learned = config.traits.filter((trait) => player.traits.includes(trait.id));
+  if (pending.length === 0 && learned.length === 0) return null;
+
+  return (
+    <div className={`dock-cell trait-cell ${pending.length > 0 ? 'has-pending' : ''}`}>
+      {pending.map((trait) => (
+        <button key={trait.id} className="trait-rune pending" onClick={() => onChoose(trait.id)}>
+          <Plus size={14} />
+          <span className="hover-pop">
+            <strong>{trait.name}</strong>
+            <span>{trait.text}</span>
+            <small>click to learn</small>
+          </span>
+        </button>
+      ))}
+      {learned.map((trait) => (
+        <span key={trait.id} className="trait-rune" tabIndex={0}>
+          {trait.name.slice(0, 1)}
+          <span className="hover-pop">
+            <strong>{trait.name}</strong>
+            <span>{trait.text}</span>
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function FeedCluster({ lines }: { lines: string[] }) {
+  return (
+    <div className="dock-cell feed-cell" tabIndex={0}>
+      <ScrollText size={16} />
+      <span className="feed-latest">{lines[0] ?? ''}</span>
+      <span className="hover-pop feed-pop">
+        {lines.slice(0, 9).map((line, index) => (
+          <p key={`${line}-${index}`}>{line}</p>
+        ))}
+      </span>
     </div>
   );
 }
@@ -318,34 +487,32 @@ function PlayerPanel({
   player,
   rank,
   active,
+  focused,
   selectedCard,
-  onTile
+  onTile,
+  onFocus
 }: {
   player: Player;
   rank: number;
   active: boolean;
+  focused: boolean;
   selectedCard: Card | null;
   onTile?: (tile: Tile) => void;
+  onFocus: () => void;
 }) {
   const hpRatio = Math.max(0, player.hp / player.maxHp);
+  // Runner position as a percentage of the board, centered on the occupied tile.
+  // Rendered at board level (not inside a tile) so CSS can smoothly slide it tile-to-tile.
+  const runnerTile = player.board[player.position] ?? player.board[0];
+  const runnerLeft = ((runnerTile.coord[0] + 0.5) / 5) * 100;
+  const runnerTop = ((runnerTile.coord[1] + 0.5) / 5) * 100;
 
   return (
-    <article className={`player-panel ${active ? 'active' : ''}`} style={{ '--hero-color': player.color } as React.CSSProperties}>
-      <div className="player-head">
-        <div className="player-portrait">
-          <img src={heroPortraitUrl(player.heroId)} alt="" />
-          <span>{rank === 1 ? <Crown size={16} /> : rank}</span>
-        </div>
-        <div>
-          <h2>{player.name}</h2>
-          <p>Lv {player.level} · Lap {player.laps} · {player.score} pts{!player.connected ? ' · offline' : ''}</p>
-        </div>
-      </div>
-
-      <div className="hp-track">
-        <span style={{ width: `${hpRatio * 100}%` }} />
-      </div>
-
+    <article
+      className={`player-panel ${active ? 'active' : ''} ${focused ? 'focused' : 'dimmed'}`}
+      style={{ '--hero-color': player.color } as React.CSSProperties}
+      onClick={onFocus}
+    >
       <div className="board">
         {player.board.map((tile) => (
           <button
@@ -361,25 +528,34 @@ function PlayerPanel({
           >
             {tile.type === 'road' && <span className={`road-shape ${roadShapeClass(player.board, tile)}`} aria-hidden="true" />}
             <span className="tile-glyph">{tileGlyphs[tile.type] ?? '?'}</span>
-            {player.position === tile.index && (
-              <span className="runner">
-                <img src={heroSpriteUrl(player.heroId)} alt="" />
-              </span>
-            )}
           </button>
         ))}
+        <span className="runner" style={{ left: `${runnerLeft}%`, top: `${runnerTop}%` }}>
+          <img src={heroSpriteUrl(player.heroId)} alt="" />
+        </span>
         <div className="board-core">
-          <strong>{player.event}</strong>
-          <span>{player.hand.length} cards · {player.loot.length} loot</span>
+          <div className="bc-name">
+            <span className="bc-portrait">
+              <img src={heroPortraitUrl(player.heroId)} alt="" />
+              {rank === 1 && <Crown size={12} />}
+            </span>
+            <strong>{player.name}</strong>
+            {!player.connected && <em>offline</em>}
+          </div>
+          <div className="bc-hp">
+            <span className="bc-hp-bar"><i style={{ width: `${hpRatio * 100}%` }} /></span>
+            <small>{Math.ceil(player.hp)}/{player.maxHp}</small>
+          </div>
+          <div className="bc-meta">Lv {player.level} · Lap {player.laps} · {player.score} pts</div>
+          <div className="bc-stats">
+            <span><Zap size={12} /> {player.power}</span>
+            <span><Shield size={12} /> {player.guard}</span>
+            <span>SPD {player.speed}</span>
+          </div>
+          <div className="bc-event">{player.event}</div>
+          <div className="bc-cards">{player.hand.length} cards · {player.loot.length} loot</div>
         </div>
-        {player.combat && <CombatOverlay player={player} />}
-      </div>
-
-      <div className="stat-strip">
-        <span><Zap size={14} /> {player.power}</span>
-        <span><Shield size={14} /> {player.guard}</span>
-        <span>SPD {player.speed}</span>
-        <span>{Math.ceil(player.hp)}/{player.maxHp}</span>
+        {player.combat && <CombatOverlay key={player.combat.startedAt} player={player} />}
       </div>
     </article>
   );
@@ -427,74 +603,6 @@ function CombatBar({ current, max, before, after }: { current: number; max: numb
     <div className="combat-hp">
       <span style={{ '--hp-before': `${before}%`, '--hp-after': `${after}%` } as React.CSSProperties} />
       <small>{current}/{max}</small>
-    </div>
-  );
-}
-
-function LoadoutPanel({ player, onEquip }: { player: Player; onEquip: (item: Loot) => void }) {
-  return (
-    <div className="dock-panel">
-      <PanelHeader icon={<Shield size={17} />} title="Loadout" />
-      <div className="loadout-slots">
-        {(['weapon', 'armor', 'charm'] as const).map((slot) => (
-          <div className="slot" key={slot}>
-            <small>{slot}</small>
-            <strong>{player.loadout[slot]?.name ?? 'empty'}</strong>
-          </div>
-        ))}
-      </div>
-      <div className="loot-list">
-        {player.loot.slice(0, 5).map((item) => (
-          <button key={item.id} className={`loot ${item.rarity}`} onClick={() => onEquip(item)}>
-            <span>{item.slot}</span>
-            <strong>{item.name}</strong>
-            <small>+{item.power}P +{item.guard}G +{item.speed}S +{item.maxHp}HP</small>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TraitPanel({
-  player,
-  config,
-  onChoose
-}: {
-  player: Player;
-  config: GameConfig;
-  onChoose: (traitId: string) => void;
-}) {
-  const pending = config.traits.filter((trait) => player.pendingTraits.includes(trait.id));
-  const learned = config.traits.filter((trait) => player.traits.includes(trait.id));
-
-  return (
-    <div className="dock-panel">
-      <PanelHeader icon={<Plus size={17} />} title="Traits" detail={`${player.traits.length}`} />
-      {pending.length > 0 && (
-        <div className="trait-choice">
-          {pending.map((trait) => (
-            <button key={trait.id} onClick={() => onChoose(trait.id)}>
-              <strong>{trait.name}</strong>
-              <span>{trait.text}</span>
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="learned-list">
-        {learned.map((trait) => <span key={trait.id}>{trait.name}</span>)}
-      </div>
-    </div>
-  );
-}
-
-function LogPanel({ lines }: { lines: string[] }) {
-  return (
-    <div className="dock-panel log-panel">
-      <PanelHeader icon={<Swords size={17} />} title="Feed" />
-      {lines.slice(0, 7).map((line, index) => (
-        <p key={`${line}-${index}`}>{line}</p>
-      ))}
     </div>
   );
 }
