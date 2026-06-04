@@ -58,6 +58,10 @@ function rectFitsViewport(metrics, label) {
   assert.ok(metrics.right <= metrics.innerWidth + 1, `${label} overflows right`);
 }
 
+function assertCustomCursor(cursor, label) {
+  assert.match(cursor, /cursor-hand-v1\.png/, `${label} should keep the bespoke cursor`);
+}
+
 const serverInfo = startServer();
 let browser;
 
@@ -83,9 +87,19 @@ try {
   await page.waitForSelector('.hand-card');
 
   assert.equal(await page.locator('.hand-card.rival').count(), 0, 'solo opening hand should not contain rival cards');
+  assertCustomCursor(
+    await page.locator('.player-panel.active.focused .tile').first().evaluate((element) => window.getComputedStyle(element).cursor),
+    'disabled board tiles'
+  );
 
   const beforeCardCount = await page.locator('.hand-card').count();
   await page.locator('.hand-card').first().click();
+  const armedTileStyles = await page.locator('.player-panel.active.focused .tile.road:not(.occupied)').first().evaluate((element) => {
+    const styles = window.getComputedStyle(element);
+    return { cursor: styles.cursor, outlineStyle: styles.outlineStyle };
+  });
+  assertCustomCursor(armedTileStyles.cursor, 'armed board tiles');
+  assert.equal(armedTileStyles.outlineStyle, 'none', 'armed board tiles should not use bright outline styling');
   await page.locator('.player-panel.active.focused .tile.road:not(.occupied)').first().click();
   await page.waitForFunction((count) => document.querySelectorAll('.hand-card').length < count, beforeCardCount);
 
