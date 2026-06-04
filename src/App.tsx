@@ -409,6 +409,49 @@ function App() {
             />
           ))}
         </section>
+        <section className="control-dock">
+          <HandBar
+            hand={me.hand}
+            selectedId={selectedCardId}
+            draggingId={dragCardId}
+            onSelect={(id) => setSelectedCardId(id === selectedCardId ? null : id)}
+            onDragStart={(id) => {
+              setSelectedCardId(id);
+              setDragCardId(id);
+            }}
+            onDragEnd={() => setDragCardId(null)}
+          />
+          {rivalTargetCard && (
+            <div className="target-row">
+              <span className="target-label">strike</span>
+              {game.players.filter((player) => player.id !== me.id).map((target) => (
+                <button
+                  key={target.id}
+                  className="target-chip"
+                  style={{ '--hero-color': target.color } as React.CSSProperties}
+                  onClick={() => playRival(target.id)}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'link';
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    playRival(target.id, event.dataTransfer.getData('text/plain') || rivalTargetCard.instanceId);
+                  }}
+                >
+                  <img src={heroPortraitUrl(target.heroId)} alt={target.name} />
+                  <InfoPopover
+                    title={target.name}
+                    eyebrow="Rival target"
+                    body={`Lv ${target.level} · ${target.score} pts · ${Math.ceil(target.hp)}/${target.maxHp} HP`}
+                    lines={[`${target.hand.length} cards`, `${target.loot.length} loot`, `${target.deaths} knockdowns`]}
+                    hint="Drop a rival card here"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
         <PlayerSideDock
           player={me}
           config={config}
@@ -425,50 +468,6 @@ function App() {
           bgmOn={bgmOn}
           onToggleBgm={() => setBgmOn((on) => !on)}
         />
-      </section>
-
-      <section className="control-dock">
-        <HandBar
-          hand={me.hand}
-          selectedId={selectedCardId}
-          draggingId={dragCardId}
-          onSelect={(id) => setSelectedCardId(id === selectedCardId ? null : id)}
-          onDragStart={(id) => {
-            setSelectedCardId(id);
-            setDragCardId(id);
-          }}
-          onDragEnd={() => setDragCardId(null)}
-        />
-        {rivalTargetCard && (
-          <div className="target-row">
-            <span className="target-label">strike</span>
-            {game.players.filter((player) => player.id !== me.id).map((target) => (
-              <button
-                key={target.id}
-                className="target-chip"
-                style={{ '--hero-color': target.color } as React.CSSProperties}
-                onClick={() => playRival(target.id)}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = 'link';
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  playRival(target.id, event.dataTransfer.getData('text/plain') || rivalTargetCard.instanceId);
-                }}
-              >
-                <img src={heroPortraitUrl(target.heroId)} alt={target.name} />
-                <InfoPopover
-                  title={target.name}
-                  eyebrow="Rival target"
-                  body={`Lv ${target.level} · ${target.score} pts · ${Math.ceil(target.hp)}/${target.maxHp} HP`}
-                  lines={[`${target.hand.length} cards`, `${target.loot.length} loot`, `${target.deaths} knockdowns`]}
-                  hint="Drop a rival card here"
-                />
-              </button>
-            ))}
-          </div>
-        )}
       </section>
       <SellZone active={Boolean(dragCardId || dragLootId)} onDrop={handleSellDrop} />
       {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}

@@ -46,6 +46,11 @@ body,
   cursor: url('/assets/ui/cursor-hand-v1.png') 16 8, auto;
 }
 
+html,
+body {
+  overflow-x: clip;
+}
+
 body::before {
   content: '';
   position: fixed;
@@ -419,6 +424,9 @@ input:focus {
 .play-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) clamp(286px, 22vw, 356px);
+  grid-template-areas:
+    "arena dock"
+    "controls dock";
   align-items: start;
   gap: 14px;
   min-height: 0;
@@ -433,6 +441,7 @@ input:focus {
   justify-content: center;
   align-items: start;
   gap: 14px;
+  grid-area: arena;
   min-height: 0;
 }
 
@@ -1080,6 +1089,7 @@ input:focus {
 }
 
 .control-dock {
+  grid-area: controls;
   display: flex;
   align-items: flex-end;
   flex-wrap: wrap;
@@ -1532,6 +1542,7 @@ input:focus {
 .player-side-dock {
   position: sticky;
   top: 10px;
+  grid-area: dock;
   display: grid;
   gap: 10px;
   min-width: 0;
@@ -2498,6 +2509,13 @@ input:focus {
     grid-template-columns: 1fr;
   }
 
+  .play-layout {
+    grid-template-areas:
+      "arena"
+      "controls"
+      "dock";
+  }
+
   .phase-meta {
     justify-content: start;
   }
@@ -2540,20 +2558,39 @@ input:focus {
     grid-template-columns: 1fr;
   }
 
+  .play-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .arena-grid {
     --focus-board: min(92vw, 540px);
     --mini-board: min(44vw, 240px);
-    grid-template-columns: repeat(2, minmax(0, var(--mini-board)));
+    display: contents;
   }
 
   .player-panel.focused {
     grid-column: 1 / -1;
-    grid-row: span 3;
+    grid-row: 1;
     justify-self: center;
   }
 
   .player-panel.dimmed {
-    grid-column: auto;
+    justify-self: center;
+  }
+
+  .arena-grid > .player-panel.dimmed:nth-of-type(2) {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .arena-grid > .player-panel.dimmed:nth-of-type(3) {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .arena-grid > .player-panel.dimmed:nth-of-type(4) {
+    grid-column: 1;
+    grid-row: 4;
   }
 
   .hero-card {
@@ -2561,17 +2598,26 @@ input:focus {
   }
 
   .control-dock {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
     grid-template-columns: minmax(0, 1fr);
     overflow-x: clip;
+    margin-block: -4px 0;
+    padding: 0;
+    border-top: 1px solid rgba(210, 177, 92, 0.2);
+    background: transparent;
   }
 
   .hand-bar {
+    min-height: 112px;
     padding-inline: 0;
+    padding-block: 6px 0;
   }
 
   .hand-card {
-    --card-w: clamp(62px, 18vw, 76px);
-    margin-left: clamp(-30px, -7vw, -20px);
+    --card-w: clamp(58px, 17vw, 72px);
+    margin-left: clamp(-28px, -7.4vw, -18px);
     padding: 7px;
   }
 
@@ -2634,7 +2680,70 @@ input:focus {
   }
 
   .player-side-dock {
+    grid-column: 1 / -1;
+    grid-row: 5;
+    display: grid;
+    grid-template-columns: 1fr;
     padding: 10px;
+  }
+
+  .side-dock-head {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+  }
+
+  .side-dock-head img {
+    width: 36px;
+    height: 36px;
+  }
+
+  .paperdoll {
+    display: grid;
+    grid-template-columns: minmax(86px, 0.8fr) repeat(3, minmax(48px, 1fr));
+    align-items: center;
+    gap: 6px;
+    min-height: 88px;
+    padding: 8px;
+    background:
+      linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.36)),
+      rgba(0, 0, 0, 0.18);
+  }
+
+  .paperdoll-body,
+  .paper-slot {
+    position: relative;
+    left: auto;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    transform: none;
+  }
+
+  .paperdoll-body {
+    width: 76px;
+    justify-self: center;
+  }
+
+  .paper-slot {
+    width: 52px;
+    justify-self: center;
+  }
+
+  .sell-zone {
+    left: auto;
+    right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    min-width: 42px;
+    padding: 0 10px;
+  }
+
+  .sell-zone:not(.active) {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+  }
+
+  .sell-zone > span:not(.hover-pop) {
+    display: none;
   }
 
   .side-loot-grid,
