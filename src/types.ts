@@ -28,8 +28,25 @@ export type Card = {
 
 export type Trait = {
   id: string;
+  heroId: string;
   name: string;
   text: string;
+  tier: number;
+  x: number;
+  y: number;
+  prereqs: string[];
+  bonus: Partial<{
+    maxHp: number;
+    power: number;
+    guard: number;
+    speed: number;
+    drawRate: number;
+    sabotage: number;
+    lootLuck: number;
+    lapHeal: number;
+    terrainScore: number;
+    revivePower: number;
+  }>;
 };
 
 export type Loot = {
@@ -85,8 +102,10 @@ export type Player = {
     charm: Loot | null;
     armor: Loot | null;
   };
+  gold: number;
   traits: string[];
   pendingTraits: string[];
+  talentPoints: number;
   hp: number;
   maxHp: number;
   power: number;
@@ -116,6 +135,7 @@ export type GameConfig = {
   cards: Omit<Card, 'instanceId'>[];
   boardPath: [number, number][];
   traits: Trait[];
+  talentTrees: Record<string, Trait[]>;
   maxPlayers: number;
   goalScore: number;
 };

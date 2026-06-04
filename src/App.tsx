@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Bot, Crown, Hand, HelpCircle, Play, Plus, RotateCcw, ScrollText, Shield, Sparkles, Swords, Users, Zap } from 'lucide-react';
-import type { Card, Combat, GameConfig, GameState, Hero, Loot, Player, Tile } from './types';
+import { ArrowLeft, Bot, Coins, Crown, GitBranch, Hand, HelpCircle, Play, RotateCcw, ScrollText, Shield, Sparkles, Swords, Users, Volume2, VolumeX, Zap } from 'lucide-react';
+import type { Card, Combat, GameConfig, GameState, Hero, Loot, Player, Tile, Trait } from './types';
 
 const tileNames: Record<string, string> = {
   road: 'Road',
@@ -41,6 +41,10 @@ function heroPortraitUrl(heroId: string) {
 
 function heroSpriteUrl(heroId: string) {
   return `/assets/sprites/${heroId}-sprite-v2.png`;
+}
+
+function talentIconUrl(heroId: string) {
+  return `/assets/ui/talent-icon-${heroId}-v1.png`;
 }
 
 function combatEnemyUrl(enemyId: string) {
@@ -135,6 +139,7 @@ function InfoPopover({
 
 function App() {
   const socket = useMemo<Socket>(() => io(), []);
+  const bgmRef = useRef<HTMLAudioElement | null>(null);
   const [playerToken, setPlayerToken] = useState(() => localStorage.getItem('loopduel.playerToken') ?? '');
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
@@ -147,6 +152,8 @@ function App() {
   const [showMenu, setShowMenu] = useState(false);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [dragCardId, setDragCardId] = useState<string | null>(null);
+  const [dragLootId, setDragLootId] = useState<string | null>(null);
+  const [bgmOn, setBgmOn] = useState(() => localStorage.getItem('loopduel.bgm') !== 'off');
 
   useEffect(() => {
     socket.on('connect', () => {
@@ -195,6 +202,22 @@ function App() {
   const draggedCard = me?.hand.find((card) => card.instanceId === dragCardId) ?? null;
   const activeCard = draggedCard ?? selectedCard;
 
+  useEffect(() => {
+    localStorage.setItem('loopduel.bgm', bgmOn ? 'on' : 'off');
+    const audio = bgmRef.current;
+    if (!audio) return;
+    audio.volume = 0.32;
+    audio.loop = true;
+    if (!bgmOn || !me) {
+      audio.pause();
+      return;
+    }
+    const play = () => audio.play().catch(() => undefined);
+    play();
+    window.addEventListener('pointerdown', play, { once: true });
+    return () => window.removeEventListener('pointerdown', play);
+  }, [bgmOn, me]);
+
   function join() {
     socket.emit('join', { name, heroId, roomId, playerToken: playerToken || undefined });
     setSelectedCardId(null);
@@ -224,18 +247,43 @@ function App() {
     setDragCardId(null);
   }
 
+  function playRivalOnTile(targetId: string, tileIndex: number, cardId = activeCard?.instanceId) {
+    const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
+    if (!card || card.kind !== 'rival') return;
+    socket.emit('playRivalCard', { cardId: card.instanceId, targetId, tileIndex });
+    setSelectedCardId(null);
+    setDragCardId(null);
+  }
+
   function equip(item: Loot) {
     socket.emit('equip', { itemId: item.id });
+  }
+
+  function sellCard(cardId: string) {
+    socket.emit('sellCard', { cardId });
+    setSelectedCardId(null);
+    setDragCardId(null);
+  }
+
+  function sellLoot(itemId: string) {
+    socket.emit('sellLoot', { itemId });
+    setDragLootId(null);
   }
 
   function chooseTrait(traitId: string) {
     socket.emit('chooseTrait', { traitId });
   }
 
+  function handleSellDrop(kind: 'card' | 'loot', id: string) {
+    if (kind === 'card') sellCard(id);
+    else sellLoot(id);
+  }
+
   function resetRoom() {
     socket.emit('resetRoom');
     setSelectedCardId(null);
     setDragCardId(null);
+    setDragLootId(null);
   }
 
   if (!config || !game) {
@@ -323,6 +371,7 @@ function App() {
 
   return (
     <main className="game-shell">
+      <audio ref={bgmRef} src="/assets/audio/crypt-of-neon-glass.ogg" preload="auto" loop />
       {notice && <div className="notice-toast">{notice}</div>}
 
       {game.status === 'finished' && game.winner && (
@@ -352,6 +401,7 @@ function App() {
               rivalTargetCard={player.id !== me.id ? rivalTargetCard : null}
               onTile={player.id === me.id ? placeCard : undefined}
               onRivalTarget={player.id !== me.id ? (cardId) => playRival(player.id, cardId) : undefined}
+              onRivalTile={player.id !== me.id ? (tileIndex, cardId) => playRivalOnTile(player.id, tileIndex, cardId) : undefined}
               onFocus={() => focusBoard(player.id)}
             />
           ))}
@@ -363,9 +413,13 @@ function App() {
           lines={game.log}
           onEquip={equip}
           onChoose={chooseTrait}
+          onLootDragStart={(id) => setDragLootId(id)}
+          onLootDragEnd={() => setDragLootId(null)}
           onMenu={() => setShowMenu(true)}
           onAddBot={addBot}
           onFillCpu={fillCpu}
+          bgmOn={bgmOn}
+          onToggleBgm={() => setBgmOn((on) => !on)}
         />
       </section>
 
@@ -412,6 +466,7 @@ function App() {
           </div>
         )}
       </section>
+      <SellZone active={Boolean(dragCardId || dragLootId)} onDrop={handleSellDrop} />
       {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}
       {showMenu && (
         <GameMenu
@@ -528,6 +583,8 @@ function HandBar({
           onClick={() => onSelect(card.instanceId)}
           onDragStart={(event) => {
             event.dataTransfer.effectAllowed = card.kind === 'terrain' ? 'move' : 'link';
+            event.dataTransfer.setData('application/x-loopduel-kind', 'card');
+            event.dataTransfer.setData('application/x-loopduel-card-id', card.instanceId);
             event.dataTransfer.setData('text/plain', card.instanceId);
             onDragStart(card.instanceId);
           }}
@@ -565,9 +622,13 @@ function PlayerSideDock({
   lines,
   onEquip,
   onChoose,
+  onLootDragStart,
+  onLootDragEnd,
   onMenu,
   onAddBot,
-  onFillCpu
+  onFillCpu,
+  bgmOn,
+  onToggleBgm
 }: {
   player: Player;
   config: GameConfig;
@@ -575,14 +636,22 @@ function PlayerSideDock({
   lines: string[];
   onEquip: (item: Loot) => void;
   onChoose: (traitId: string) => void;
+  onLootDragStart: (itemId: string) => void;
+  onLootDragEnd: () => void;
   onMenu: () => void;
   onAddBot: () => void;
   onFillCpu: () => void;
+  bgmOn: boolean;
+  onToggleBgm: () => void;
 }) {
+  const [dockMode, setDockMode] = useState<'default' | 'talents'>('default');
   const hero = config.heroes.find((item) => item.id === player.heroId);
-  const pending = config.traits.filter((trait) => player.pendingTraits.includes(trait.id));
-  const learned = config.traits.filter((trait) => player.traits.includes(trait.id));
+  const tree = config.talentTrees[player.heroId] ?? [];
+  const pending = tree.filter((trait) => player.pendingTraits.includes(trait.id));
+  const learned = tree.filter((trait) => player.traits.includes(trait.id));
   const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+  const equippedIds = new Set(Object.values(player.loadout).filter(Boolean).map((item) => item?.id));
+  const looseLoot = player.loot.filter((item) => !equippedIds.has(item.id));
 
   return (
     <aside className="player-side-dock" style={{ '--hero-color': player.color } as React.CSSProperties}>
@@ -599,100 +668,245 @@ function PlayerSideDock({
         <span className="side-hp"><i style={{ width: `${hpRatio}%` }} /></span>
         <b>{Math.ceil(player.hp)}/{player.maxHp}</b>
         <em>{player.score}</em>
+        <small><Coins size={12} /> {player.gold ?? 0}</small>
       </div>
 
-      <div className="paperdoll">
-        <div className="paperdoll-body">
-          <img src={heroSpriteUrl(player.heroId)} alt="" />
-        </div>
-        {(['weapon', 'armor', 'charm'] as const).map((slot) => {
-          const item = player.loadout[slot];
-          return (
-            <div key={slot} className={`paper-slot ${slot} ${item ? 'filled' : ''}`} tabIndex={0}>
-              {slotIcon(slot, 18)}
-              <InfoPopover
-                title={item?.name ?? `${slot} slot`}
-                eyebrow={item ? `${item.rarity} ${slot}` : 'Loadout'}
-                body={item ? itemStatLine(item) : 'No item equipped.'}
-              />
-            </div>
-          );
-        })}
-      </div>
-
-      <section className="dock-section loot-section">
-        <div className="side-section-title">
-          <strong>Loot</strong>
-          <span>{player.loot.length}/10</span>
-        </div>
-        <div className="side-loot-grid">
-          {player.loot.slice(0, 10).map((item) => (
-            <button key={item.id} className={`side-loot ${item.slot} ${item.rarity}`} onClick={() => onEquip(item)}>
-              {slotIcon(item.slot, 17)}
-              <InfoPopover
-                title={item.name}
-                eyebrow={`${item.rarity} ${item.slot}`}
-                body={itemStatLine(item)}
-                hint="click to equip"
-              />
-            </button>
-          ))}
-          {player.loot.length === 0 && <span className="side-empty">No loose loot.</span>}
-        </div>
-      </section>
-
-      <section className={`dock-section side-traits ${pending.length > 0 ? 'has-pending' : ''}`}>
-        <div className="side-section-title">
-          <strong>Traits</strong>
-          <span>{learned.length}</span>
-        </div>
-        <div className="side-trait-grid">
-          {pending.map((trait) => (
-            <button key={trait.id} className="side-trait pending" onClick={() => onChoose(trait.id)}>
-              <Plus size={14} />
-              <InfoPopover title={trait.name} eyebrow="Trait choice" body={trait.text} hint="click to learn" />
-            </button>
-          ))}
-          {learned.map((trait) => (
-            <span key={trait.id} className="side-trait learned" tabIndex={0}>
-              {traitGlyph(trait.name)}
-              <InfoPopover title={trait.name} eyebrow="Learned trait" body={trait.text} />
-            </span>
-          ))}
-          {pending.length === 0 && learned.length === 0 && <span className="side-empty">Level up to unlock runes.</span>}
-        </div>
-      </section>
-
-      <div className="side-feed" tabIndex={0}>
-        <ScrollText size={16} />
-        <span>{lines[0] ?? 'The loop is quiet.'}</span>
-        <InfoPopover
-          title="Event log"
-          lines={lines.slice(0, 8)}
-          className="feed-pop"
+      {dockMode === 'talents' ? (
+        <TalentTreeDock
+          player={player}
+          tree={tree}
+          pending={pending}
+          learned={learned}
+          onChoose={onChoose}
+          onBack={() => setDockMode('default')}
         />
-      </div>
+      ) : (
+        <>
+          <div className="paperdoll">
+            <div className="paperdoll-body">
+              <img src={heroSpriteUrl(player.heroId)} alt="" />
+            </div>
+            {(['weapon', 'armor', 'charm'] as const).map((slot) => {
+              const item = player.loadout[slot];
+              return (
+                <div key={slot} className={`paper-slot ${slot} ${item ? 'filled' : ''}`} tabIndex={0}>
+                  {slotIcon(slot, 18)}
+                  <InfoPopover
+                    title={item?.name ?? `${slot} slot`}
+                    eyebrow={item ? `${item.rarity} ${slot}` : 'Loadout'}
+                    body={item ? itemStatLine(item) : 'No item equipped.'}
+                  />
+                </div>
+              );
+            })}
+          </div>
 
-      <div className="side-controls">
-        <button className="side-control-button" onClick={onMenu}>
-          <Bot size={15} />
-          <span>Menu</span>
-          <InfoPopover title="Menu" eyebrow="Room controls" body={`Room ${game.id} · ${game.players.length}/${game.maxPlayers} runners`} />
-        </button>
-        <button className="side-control-button" onClick={onAddBot}>
-          <Bot size={15} />
-          <span>Bot</span>
-          <InfoPopover title="Add bot" body="Adds one CPU opponent if a seat is open." />
-        </button>
-        <button className="side-control-button" onClick={onFillCpu}>
-          <Users size={15} />
-          <span>Fill</span>
-          <InfoPopover title="Fill CPU match" body="Fills every open seat with CPU opponents." />
-        </button>
-      </div>
+          <section className={`dock-section side-talents ${pending.length > 0 ? 'has-pending' : ''}`}>
+            <div className="side-section-title">
+              <strong>Talents</strong>
+              <span>{learned.length}/{tree.length}</span>
+            </div>
+            <button className={`talent-tree-entry ${pending.length > 0 ? 'pending' : ''}`} onClick={() => setDockMode('talents')}>
+              <span className="talent-tree-medallion" style={{ '--talent-icon': `url(${talentIconUrl(player.heroId)})` } as React.CSSProperties} />
+              <span className="talent-tree-entry-copy">
+                <strong>{pending.length > 0 ? `${pending.length} talent choice${pending.length === 1 ? '' : 's'}` : 'Open talent tree'}</strong>
+                <small>{pending.length > 0 ? 'Choose an available glowing node.' : learned.length > 0 ? `${learned[learned.length - 1].name} learned` : 'Level up to awaken the first node.'}</small>
+              </span>
+              <GitBranch size={18} />
+              <InfoPopover
+                title={`${hero?.name ?? 'Hero'} talent tree`}
+                eyebrow={pending.length > 0 ? 'Unlock ready' : 'Hero growth'}
+                body={pending.length > 0 ? 'Open the tree and choose one highlighted node.' : 'Each hero has a bespoke seven-node progression tree.'}
+              />
+            </button>
+          </section>
+
+          <section className="dock-section loot-section">
+            <div className="side-section-title">
+              <strong>Loot</strong>
+              <span>{looseLoot.length}/10</span>
+            </div>
+            <div className="side-loot-grid">
+              {looseLoot.slice(0, 10).map((item) => (
+                <button
+                  key={item.id}
+                  className={`side-loot ${item.slot} ${item.rarity}`}
+                  draggable
+                  onClick={() => onEquip(item)}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('application/x-loopduel-kind', 'loot');
+                    event.dataTransfer.setData('application/x-loopduel-loot-id', item.id);
+                    event.dataTransfer.setData('text/plain', item.id);
+                    onLootDragStart(item.id);
+                  }}
+                  onDragEnd={onLootDragEnd}
+                >
+                  {slotIcon(item.slot, 17)}
+                  <InfoPopover
+                    title={item.name}
+                    eyebrow={`${item.rarity} ${item.slot}`}
+                    body={itemStatLine(item)}
+                    hint="click to equip"
+                  />
+                </button>
+              ))}
+              {looseLoot.length === 0 && <span className="side-empty">No loose loot.</span>}
+            </div>
+          </section>
+
+          <div className="side-feed" tabIndex={0}>
+            <ScrollText size={16} />
+            <span>{lines[0] ?? 'The loop is quiet.'}</span>
+            <InfoPopover
+              title="Event log"
+              lines={lines.slice(0, 8)}
+              className="feed-pop"
+            />
+          </div>
+
+          <div className="side-controls">
+            <button className="side-control-button" onClick={onMenu}>
+              <Bot size={15} />
+              <span>Menu</span>
+              <InfoPopover title="Menu" eyebrow="Room controls" body={`Room ${game.id} · ${game.players.length}/${game.maxPlayers} runners`} />
+            </button>
+            <button className="side-control-button" onClick={onAddBot}>
+              <Bot size={15} />
+              <span>Bot</span>
+              <InfoPopover title="Add bot" body="Adds one CPU opponent if a seat is open." />
+            </button>
+            <button className="side-control-button" onClick={onFillCpu}>
+              <Users size={15} />
+              <span>Fill</span>
+              <InfoPopover title="Fill CPU match" body="Fills every open seat with CPU opponents." />
+            </button>
+            <button className="side-control-button" onClick={onToggleBgm}>
+              {bgmOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
+              <span>BGM</span>
+              <InfoPopover title="Crypt of Neon Glass" eyebrow="BGM" body={bgmOn ? 'Music is playing.' : 'Music is muted.'} />
+            </button>
+          </div>
+        </>
+      )}
     </aside>
   );
 }
+
+function TalentTreeDock({
+  player,
+  tree,
+  pending,
+  learned,
+  onChoose,
+  onBack
+}: {
+  player: Player;
+  tree: Trait[];
+  pending: Trait[];
+  learned: Trait[];
+  onChoose: (traitId: string) => void;
+  onBack: () => void;
+}) {
+  const learnedIds = new Set(learned.map((trait) => trait.id));
+  const pendingIds = new Set(pending.map((trait) => trait.id));
+  const byId = new Map(tree.map((trait) => [trait.id, trait]));
+
+  return (
+    <section className="talent-tree-mode">
+      <div className="talent-mode-head">
+        <button className="talent-back-button" onClick={onBack}>
+          <ArrowLeft size={16} />
+          <span>Back</span>
+        </button>
+        <div>
+          <strong>Talent Tree</strong>
+          <span>{player.talentPoints > 0 ? `${player.talentPoints} point${player.talentPoints === 1 ? '' : 's'} ready` : `${learned.length}/${tree.length} learned`}</span>
+        </div>
+      </div>
+
+      <div className="talent-tree-board" style={{ '--talent-icon': `url(${talentIconUrl(player.heroId)})` } as React.CSSProperties}>
+        <svg className="talent-lines" viewBox="0 0 100 100" aria-hidden="true">
+          {tree.flatMap((trait) => trait.prereqs.map((prereq) => {
+            const parent = byId.get(prereq);
+            if (!parent) return null;
+            const learnedLine = learnedIds.has(trait.id) && learnedIds.has(parent.id);
+            const availableLine = pendingIds.has(trait.id) && learnedIds.has(parent.id);
+            return (
+              <line
+                key={`${parent.id}-${trait.id}`}
+                x1={parent.x}
+                y1={parent.y}
+                x2={trait.x}
+                y2={trait.y}
+                className={learnedLine ? 'learned' : availableLine ? 'available' : ''}
+              />
+            );
+          }))}
+        </svg>
+        {tree.map((trait) => {
+          const learnedNode = learnedIds.has(trait.id);
+          const availableNode = pendingIds.has(trait.id);
+          const state = learnedNode ? 'learned' : availableNode ? 'available' : 'locked';
+          return (
+            <button
+              key={trait.id}
+              className={`talent-node ${state}`}
+              style={{ left: `${trait.x}%`, top: `${trait.y}%` }}
+              aria-disabled={!availableNode}
+              onClick={() => {
+                if (availableNode) onChoose(trait.id);
+              }}
+            >
+              <span>{traitGlyph(trait.name)}</span>
+              <InfoPopover
+                title={trait.name}
+                eyebrow={state === 'available' ? 'Available talent' : state === 'learned' ? 'Learned talent' : `Tier ${trait.tier}`}
+                body={trait.text}
+                hint={availableNode ? 'click to learn' : trait.prereqs.length > 0 ? `requires ${trait.prereqs.map((id) => byId.get(id)?.name ?? id).join(', ')}` : undefined}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function SellZone({
+  active,
+  onDrop
+}: {
+  active: boolean;
+  onDrop: (kind: 'card' | 'loot', id: string) => void;
+}) {
+  return (
+    <div
+      className={`sell-zone ${active ? 'active' : ''}`}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        const kind = event.dataTransfer.getData('application/x-loopduel-kind');
+        const cardId = event.dataTransfer.getData('application/x-loopduel-card-id');
+        const lootId = event.dataTransfer.getData('application/x-loopduel-loot-id');
+        if (kind === 'card' && cardId) onDrop('card', cardId);
+        if (kind === 'loot' && lootId) onDrop('loot', lootId);
+      }}
+    >
+      <Coins size={18} />
+      <span>Sell</span>
+      <InfoPopover
+        title="Sell"
+        eyebrow="Gold score"
+        body="Drop a hand card or loose item here to delete it and bank gold into your score."
+      />
+    </div>
+  );
+}
+
 function PlayerPanel({
   player,
   rank,
@@ -703,6 +917,7 @@ function PlayerPanel({
   rivalTargetCard,
   onTile,
   onRivalTarget,
+  onRivalTile,
   onFocus
 }: {
   player: Player;
@@ -714,6 +929,7 @@ function PlayerPanel({
   rivalTargetCard: Card | null;
   onTile?: (tile: Tile, cardId?: string) => void;
   onRivalTarget?: (cardId?: string) => void;
+  onRivalTile?: (tileIndex: number, cardId?: string) => void;
   onFocus: () => void;
 }) {
   const hpRatio = Math.max(0, player.hp / player.maxHp);
@@ -747,61 +963,60 @@ function PlayerPanel({
       }}
     >
       <div className="board">
-        {player.board.map((tile) => (
-          <button
-            key={tile.index}
-            className={`tile ${tile.type} ${player.position === tile.index ? 'occupied' : ''}`}
-            style={{
-              gridColumn: tile.coord[0] + 1,
-              gridRow: tile.coord[1] + 1
-            }}
-            onClick={() => onTile?.(tile)}
-            onDragOver={(event) => {
-              if (draggingCard?.kind === 'terrain' && tile.type !== 'camp') event.preventDefault();
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              if (draggingCard?.kind === 'terrain') onTile?.(tile, event.dataTransfer.getData('text/plain') || draggingCard.instanceId);
-            }}
-            disabled={!onTile || !selectedCard || selectedCard.kind !== 'terrain' || tile.type === 'camp'}
-          >
-            {tile.type === 'road' && <span className={`road-shape ${roadShapeClass(player.board, tile)}`} aria-hidden="true" />}
-            <span className="tile-glyph">{tileGlyphs[tile.type] ?? '?'}</span>
-            <InfoPopover
-              title={tileNames[tile.type] ?? tile.type}
-              eyebrow={`Tile ${tile.index}`}
-              body={tileDescription(tile)}
-              lines={[
-                tile.charges > 0 ? `${tile.charges} charge${tile.charges === 1 ? '' : 's'} left` : 'Permanent tile',
-                player.position === tile.index ? `${player.name} is here` : 'Loop path'
-              ]}
-              hint={selectedCard?.kind === 'terrain' && tile.type !== 'camp' ? `Drop ${selectedCard.name} here` : undefined}
-              className="tile-pop"
-            />
-          </button>
-        ))}
+        {player.board.map((tile) => {
+          const canPlaceTerrain = Boolean(onTile && selectedCard?.kind === 'terrain' && tile.type !== 'camp');
+          const canPlaceRivalTile = Boolean(onRivalTile && rivalTargetCard && tile.type === 'road' && player.position !== tile.index);
+          return (
+            <button
+              key={tile.index}
+              className={`tile ${tile.type} ${player.position === tile.index ? 'occupied' : ''} ${canPlaceRivalTile ? 'rival-tile-target' : ''}`}
+              style={{
+                gridColumn: tile.coord[0] + 1,
+                gridRow: tile.coord[1] + 1
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (canPlaceTerrain) onTile?.(tile);
+                else if (canPlaceRivalTile) onRivalTile?.(tile.index, rivalTargetCard?.instanceId);
+              }}
+              onDragOver={(event) => {
+                if (draggingCard?.kind === 'terrain' && canPlaceTerrain) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                }
+                if (rivalTargetCard && canPlaceRivalTile) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'link';
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const cardId = event.dataTransfer.getData('application/x-loopduel-card-id') || event.dataTransfer.getData('text/plain');
+                if (draggingCard?.kind === 'terrain' && canPlaceTerrain) onTile?.(tile, cardId || draggingCard.instanceId);
+                if (rivalTargetCard && canPlaceRivalTile) onRivalTile?.(tile.index, cardId || rivalTargetCard.instanceId);
+              }}
+              disabled={!canPlaceTerrain && !canPlaceRivalTile}
+            >
+              {tile.type === 'road' && <span className={`road-shape ${roadShapeClass(player.board, tile)}`} aria-hidden="true" />}
+              <span className="tile-glyph">{tileGlyphs[tile.type] ?? '?'}</span>
+              <InfoPopover
+                title={tileNames[tile.type] ?? tile.type}
+                eyebrow={`Tile ${tile.index}`}
+                body={tileDescription(tile)}
+                lines={[
+                  tile.charges > 0 ? `${tile.charges} charge${tile.charges === 1 ? '' : 's'} left` : 'Permanent tile',
+                  player.position === tile.index ? `${player.name} is here` : 'Loop path'
+                ]}
+                hint={canPlaceTerrain ? `Drop ${selectedCard?.name} here` : canPlaceRivalTile ? `Arm ${rivalTargetCard?.name} here` : undefined}
+                className="tile-pop"
+              />
+            </button>
+          );
+        })}
         <span className="runner" style={{ left: `${runnerLeft}%`, top: `${runnerTop}%` }}>
           <img src={heroSpriteUrl(player.heroId)} alt="" />
         </span>
-        {canRivalTarget && (
-          <button
-            className="rival-board-drop-zone"
-            aria-label={`Play ${rivalTargetCard?.name} on ${player.name}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              onRivalTarget?.(rivalTargetCard?.instanceId);
-            }}
-            onDragOver={(event) => {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = 'link';
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onRivalTarget?.(event.dataTransfer.getData('text/plain') || rivalTargetCard?.instanceId);
-            }}
-          />
-        )}
         <div className="board-core">
           <div className="bc-name">
             <span className="bc-portrait">
@@ -822,7 +1037,7 @@ function PlayerPanel({
             <span>SPD {player.speed}</span>
           </div>
           <div className="bc-event">{player.event}</div>
-          <div className="bc-cards">{player.hand.length} cards · {player.loot.length} loot</div>
+          <div className="bc-cards">{player.hand.length} cards · {player.loot.length} loot · {player.gold ?? 0} gold</div>
           <InfoPopover
             title={player.name}
             eyebrow={active ? 'Your runner' : 'Runner'}

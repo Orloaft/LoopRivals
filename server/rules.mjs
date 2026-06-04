@@ -129,16 +129,59 @@ export const rivalCards = [
   { id: 'cutpurse', name: 'Cutpurse', kind: 'rival', icon: '✂', text: 'Steals a loose loot tempo or wounds instead.' }
 ];
 
-export const traits = [
-  { id: 'quick-circuit', name: 'Quick Circuit', text: '+1 speed, +1 power.', bonus: { speed: 1, power: 1 } },
-  { id: 'iron-will', name: 'Iron Will', text: '+8 max HP, +2 guard.', bonus: { maxHp: 8, guard: 2 } },
-  { id: 'cardsharp', name: 'Cardsharp', text: 'Draw cards faster.', bonus: { drawRate: 0.82 } },
-  { id: 'duelist', name: 'Duelist', text: '+3 rival damage.', bonus: { sabotage: 3 } },
-  { id: 'reclaimer', name: 'Reclaimer', text: 'Heal after every lap.', bonus: { lapHeal: 6 } },
-  { id: 'prospector', name: 'Prospector', text: 'More loot from fights.', bonus: { lootLuck: 0.22 } },
-  { id: 'pathwright', name: 'Pathwright', text: 'Terrain cards score more.', bonus: { terrainScore: 5 } },
-  { id: 'vengeful', name: 'Vengeful', text: 'Revive stronger after a knockout.', bonus: { revivePower: 2 } }
-];
+function talent(heroId, id, name, text, tier, x, y, bonus, prereqs = []) {
+  return { id, heroId, name, text, tier, x, y, bonus, prereqs };
+}
+
+export const talentTrees = {
+  'ember-knight': [
+    talent('ember-knight', 'ember-oath', 'Ember Oath', '+1 power, +4 max HP.', 1, 50, 12, { power: 1, maxHp: 4 }),
+    talent('ember-knight', 'cinder-step', 'Cinder Step', '+1 speed, draw faster.', 2, 28, 34, { speed: 1, drawRate: 0.92 }, ['ember-oath']),
+    talent('ember-knight', 'shield-heat', 'Shield Heat', '+2 guard, +3 max HP.', 2, 72, 34, { guard: 2, maxHp: 3 }, ['ember-oath']),
+    talent('ember-knight', 'red-riposte', 'Red Riposte', '+3 rival damage, +1 power.', 3, 20, 58, { sabotage: 3, power: 1 }, ['cinder-step']),
+    talent('ember-knight', 'hearthguard', 'Hearthguard', '+1 guard, heal more on laps.', 3, 80, 58, { guard: 1, lapHeal: 3 }, ['shield-heat']),
+    talent('ember-knight', 'overheat', 'Overheat', '+2 power after revives.', 4, 35, 82, { revivePower: 2 }, ['red-riposte']),
+    talent('ember-knight', 'loopforged', 'Loopforged', '+1 power, +1 guard, +1 speed, terrain scores more.', 4, 65, 82, { power: 1, guard: 1, speed: 1, terrainScore: 2 }, ['hearthguard'])
+  ],
+  'moss-warden': [
+    talent('moss-warden', 'warden-root', 'Warden Root', '+2 lap heal, terrain scores more.', 1, 50, 12, { lapHeal: 2, terrainScore: 2 }),
+    talent('moss-warden', 'greenwall', 'Greenwall', '+2 guard, +5 max HP.', 2, 28, 34, { guard: 2, maxHp: 5 }, ['warden-root']),
+    talent('moss-warden', 'path-sower', 'Path Sower', 'Terrain cards score more.', 2, 72, 34, { terrainScore: 4 }, ['warden-root']),
+    talent('moss-warden', 'meadowbind', 'Meadowbind', '+4 lap heal, +2 max HP.', 3, 20, 58, { lapHeal: 4, maxHp: 2 }, ['greenwall']),
+    talent('moss-warden', 'seed-cache', 'Seed Cache', 'Draw faster and find loot slightly more often.', 3, 80, 58, { drawRate: 0.94, lootLuck: 0.08 }, ['path-sower']),
+    talent('moss-warden', 'old-bark', 'Old Bark', '+2 guard, +4 max HP.', 4, 35, 82, { guard: 2, maxHp: 4 }, ['meadowbind']),
+    talent('moss-warden', 'wild-cartographer', 'Wild Cartographer', '+1 speed, terrain scores more.', 4, 65, 82, { speed: 1, terrainScore: 3 }, ['seed-cache'])
+  ],
+  'night-vagrant': [
+    talent('night-vagrant', 'moon-pocket', 'Moon Pocket', 'Find loot more often, draw slightly faster.', 1, 50, 12, { lootLuck: 0.06, drawRate: 0.97 }),
+    talent('night-vagrant', 'softstep', 'Softstep', '+1 speed, +1 guard.', 2, 28, 34, { speed: 1, guard: 1 }, ['moon-pocket']),
+    talent('night-vagrant', 'black-market', 'Black Market', 'Find better loot more often.', 2, 72, 34, { lootLuck: 0.1 }, ['moon-pocket']),
+    talent('night-vagrant', 'knife-rhythm', 'Knife Rhythm', '+1 power, draw faster.', 3, 20, 58, { power: 1, drawRate: 0.94 }, ['softstep']),
+    talent('night-vagrant', 'smoke-veil', 'Smoke Veil', '+8 max HP, +2 guard.', 3, 80, 58, { maxHp: 8, guard: 2 }, ['black-market']),
+    talent('night-vagrant', 'night-haul', 'Night Haul', '+1 speed and stronger loot odds.', 4, 35, 82, { speed: 1, lootLuck: 0.08 }, ['knife-rhythm']),
+    talent('night-vagrant', 'vanish-loop', 'Vanish Loop', '+1 speed, +1 power, +4 max HP.', 4, 65, 82, { speed: 1, power: 1, maxHp: 4 }, ['smoke-veil'])
+  ],
+  'rune-archer': [
+    talent('rune-archer', 'rune-string', 'Rune String', '+2 rival damage, draw faster.', 1, 50, 12, { sabotage: 2, drawRate: 0.94 }),
+    talent('rune-archer', 'blue-fletching', 'Blue Fletching', '+1 power, +1 speed.', 2, 28, 34, { power: 1, speed: 1 }, ['rune-string']),
+    talent('rune-archer', 'markbreaker', 'Markbreaker', '+4 rival damage.', 2, 72, 34, { sabotage: 4 }, ['rune-string']),
+    talent('rune-archer', 'watcher-code', 'Watcher Code', 'Terrain scores more, draw faster.', 3, 20, 58, { terrainScore: 4, drawRate: 0.93 }, ['blue-fletching']),
+    talent('rune-archer', 'hex-line', 'Hex Line', '+2 rival damage, +1 guard.', 3, 80, 58, { sabotage: 2, guard: 1 }, ['markbreaker']),
+    talent('rune-archer', 'split-shot', 'Split Shot', '+1 power and stronger rival damage.', 4, 35, 82, { power: 1, sabotage: 3 }, ['watcher-code']),
+    talent('rune-archer', 'sky-sigil', 'Sky Sigil', '+1 speed, +8 max HP.', 4, 65, 82, { speed: 1, maxHp: 8 }, ['hex-line'])
+  ],
+  'grave-singer': [
+    talent('grave-singer', 'bone-chorus', 'Bone Chorus', '+1 power, revives hit harder.', 1, 50, 12, { power: 1, revivePower: 1 }),
+    talent('grave-singer', 'crypt-hunger', 'Crypt Hunger', '+2 power, +2 terrain score.', 2, 28, 34, { power: 2, terrainScore: 2 }, ['bone-chorus']),
+    talent('grave-singer', 'last-verse', 'Last Verse', '+7 max HP, revives hit harder.', 2, 72, 34, { maxHp: 7, revivePower: 1 }, ['bone-chorus']),
+    talent('grave-singer', 'dirge-step', 'Dirge Step', '+1 speed, draw faster.', 3, 20, 58, { speed: 1, drawRate: 0.94 }, ['crypt-hunger']),
+    talent('grave-singer', 'bone-plate', 'Bone Plate', '+2 guard, +4 max HP.', 3, 80, 58, { guard: 2, maxHp: 4 }, ['last-verse']),
+    talent('grave-singer', 'hollow-gold', 'Hollow Gold', 'Find loot more often, +1 power.', 4, 35, 82, { lootLuck: 0.14, power: 1 }, ['dirge-step']),
+    talent('grave-singer', 'requiem-loop', 'Requiem Loop', '+2 revive power, +1 guard.', 4, 65, 82, { revivePower: 2, guard: 1 }, ['bone-plate'])
+  ]
+};
+
+export const traits = Object.values(talentTrees).flat();
 
 const lootNames = {
   weapon: ['Glass Pike', 'Moonblade', 'Ash Bow', 'Thorn Mace', 'Cinder Wand'],
@@ -154,7 +197,7 @@ export const boardPath = [
 ];
 
 export function publicConfig() {
-  return { heroes, cards: [...terrainCards, ...rivalCards], boardPath, traits, maxPlayers, goalScore };
+  return { heroes, cards: [...terrainCards, ...rivalCards], boardPath, traits, talentTrees, maxPlayers, goalScore };
 }
 
 export function createRoom(id, options = {}) {
@@ -198,6 +241,7 @@ export function score(player) {
     player.tilesPlaced * 44 +
     player.cardsPlayed * 9 +
     player.loot.length * 24 +
+    (player.gold ?? 0) +
     player.xp
   );
 }
@@ -256,8 +300,10 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     hand: [drawCard(room), drawCard(room), drawCard(room)],
     loot: [],
     loadout: { weapon: null, charm: null, armor: null },
+    gold: 0,
     traits: [],
     pendingTraits: [],
+    talentPoints: 0,
     hp: hero.maxHp,
     maxHp: hero.maxHp,
     power: hero.power,
@@ -363,14 +409,30 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
   checkWinner(room);
 }
 
-export function playRival(room, player, cardInstanceId, targetId) {
+export function playRival(room, player, cardInstanceId, targetId, tileIndex = null) {
   if (room.status === 'finished') return;
   const card = player.hand.find((item) => item.instanceId === cardInstanceId);
   const target = room.players[targetId];
   if (!card || card.kind !== 'rival' || !target || target.id === player.id) return;
+  const hasTileTarget = Number.isInteger(tileIndex);
+  const targetedTile = hasTileTarget ? target.board[tileIndex] : null;
+  if (hasTileTarget && (!targetedTile || targetedTile.type !== 'road' || targetedTile.index === target.position)) return;
   player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
   const bonus = player.sabotage;
-  if (card.id === 'bandits') {
+
+  if (targetedTile) {
+    if (card.id === 'meteor') {
+      targetedTile.type = 'scorch';
+      targetedTile.charges = 2;
+    } else if (card.id === 'hex' || card.id === 'landslide') {
+      targetedTile.type = 'mire';
+      targetedTile.charges = card.id === 'hex' ? 3 : 4;
+    } else {
+      targetedTile.type = 'ambush';
+      targetedTile.charges = card.id === 'bandits' ? 2 : 1;
+    }
+    target.event = `${card.name} armed on the road`;
+  } else if (card.id === 'bandits') {
     const tile = target.board[(target.position + 3 + rand(room, 5)) % target.board.length];
     if (tile.type !== 'camp') {
       tile.type = 'ambush';
@@ -417,18 +479,23 @@ export function playRival(room, player, cardInstanceId, targetId) {
   player.rivalHits += 1;
   resolveDefeat(room, target);
   addXp(room, player, 7);
-  player.event = `hit ${target.name} with ${card.name}`;
-  addLog(room, `${player.name} played ${card.name} on ${target.name}.`);
+  player.event = targetedTile ? `armed ${card.name} on ${target.name}'s road` : `hit ${target.name} with ${card.name}`;
+  addLog(room, targetedTile
+    ? `${player.name} armed ${card.name} on ${target.name}'s road.`
+    : `${player.name} played ${card.name} on ${target.name}.`);
   checkWinner(room);
 }
 
 export function chooseTrait(player, traitId) {
+  refreshPendingTraits(player);
   if (!player.pendingTraits.includes(traitId)) return;
   player.traits.push(traitId);
+  player.talentPoints = Math.max(0, player.talentPoints - 1);
   player.pendingTraits = [];
   recalcStats(player);
   const trait = traits.find((item) => item.id === traitId);
   player.event = `learned ${trait?.name ?? 'a trait'}`;
+  refreshPendingTraits(player);
 }
 
 export function equip(player, itemId) {
@@ -437,6 +504,33 @@ export function equip(player, itemId) {
   player.loadout[item.slot] = item;
   recalcStats(player);
   player.event = `equipped ${item.name}`;
+}
+
+export function sellCard(room, player, cardInstanceId) {
+  if (!player) return false;
+  const card = player.hand.find((item) => item.instanceId === cardInstanceId);
+  if (!card) return false;
+  const value = card.kind === 'rival' ? 22 : 16;
+  player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
+  player.gold = (player.gold ?? 0) + value;
+  player.event = `sold ${card.name} for ${value} gold`;
+  addLog(room, `${player.name} sold ${card.name} for ${value} gold.`);
+  checkWinner(room);
+  return true;
+}
+
+export function sellLoot(room, player, itemId) {
+  if (!player) return false;
+  const item = player.loot.find((entry) => entry.id === itemId);
+  if (!item) return false;
+  if (Object.values(player.loadout).some((equipped) => equipped?.id === item.id)) return false;
+  const value = Math.max(18, Math.round(bestItemScore(item) * 4));
+  player.loot = player.loot.filter((entry) => entry.id !== itemId);
+  player.gold = (player.gold ?? 0) + value;
+  player.event = `sold ${item.name} for ${value} gold`;
+  addLog(room, `${player.name} sold ${item.name} for ${value} gold.`);
+  checkWinner(room);
+  return true;
 }
 
 export function runRoomStep(room, options = {}) {
@@ -605,17 +699,28 @@ function recalcStats(player) {
   player.hp = clamp(player.hp, 0, player.maxHp);
 }
 
+function availableTraits(player) {
+  if ((player.talentPoints ?? 0) <= 0) return [];
+  return (talentTrees[player.heroId] ?? [])
+    .filter((trait) => !player.traits.includes(trait.id))
+    .filter((trait) => trait.prereqs.every((prereq) => player.traits.includes(prereq)));
+}
+
+function refreshPendingTraits(player) {
+  player.pendingTraits = availableTraits(player).map((trait) => trait.id);
+  return player.pendingTraits;
+}
+
 function addXp(room, player, amount) {
   player.xp += amount;
   while (player.xp >= xpNeeded(player)) {
     player.xp -= xpNeeded(player);
     player.level += 1;
     player.hp = clamp(player.hp + 10, 0, player.maxHp);
-    const available = traits.filter((trait) => !player.traits.includes(trait.id) && !player.pendingTraits.includes(trait.id));
-    const first = sample(room, available);
-    const secondPool = available.filter((trait) => trait?.id !== first?.id);
-    const second = sample(room, secondPool);
-    player.pendingTraits = [first, second].filter(Boolean).map((trait) => trait.id);
+    if (player.traits.length + player.talentPoints < (talentTrees[player.heroId] ?? []).length) {
+      player.talentPoints += 1;
+      refreshPendingTraits(player);
+    }
     player.event = `hit level ${player.level}`;
     addLog(room, `${player.name} reached level ${player.level}.`);
   }
@@ -772,12 +877,13 @@ function bestItemScore(item) {
 
 function chooseBotTrait(player) {
   const priorities = {
-    'night-vagrant': ['cardsharp', 'prospector', 'quick-circuit', 'duelist'],
-    'moss-warden': ['pathwright', 'reclaimer', 'iron-will', 'cardsharp'],
-    'rune-archer': ['duelist', 'cardsharp', 'quick-circuit', 'pathwright'],
-    'grave-singer': ['vengeful', 'iron-will', 'prospector', 'quick-circuit'],
-    'ember-knight': ['quick-circuit', 'duelist', 'iron-will', 'vengeful']
+    'night-vagrant': ['moon-pocket', 'black-market', 'softstep', 'knife-rhythm', 'night-haul', 'smoke-veil', 'vanish-loop'],
+    'moss-warden': ['warden-root', 'path-sower', 'greenwall', 'seed-cache', 'wild-cartographer', 'meadowbind', 'old-bark'],
+    'rune-archer': ['rune-string', 'markbreaker', 'blue-fletching', 'hex-line', 'split-shot', 'watcher-code', 'sky-sigil'],
+    'grave-singer': ['bone-chorus', 'crypt-hunger', 'last-verse', 'dirge-step', 'hollow-gold', 'bone-plate', 'requiem-loop'],
+    'ember-knight': ['ember-oath', 'cinder-step', 'shield-heat', 'red-riposte', 'loopforged', 'hearthguard', 'overheat']
   }[player.heroId] ?? [];
+  refreshPendingTraits(player);
   return priorities.find((traitId) => player.pendingTraits.includes(traitId)) ?? player.pendingTraits[0];
 }
 
@@ -831,7 +937,9 @@ function botThink(room, player) {
 export const testApi = {
   activePlayerCount,
   addBot,
+  availableTraits,
   checkWinner,
+  chooseTrait,
   createPlayer,
   createRoom,
   fillCpuOpponents,
@@ -840,7 +948,11 @@ export const testApi = {
   maxPlayers,
   playRival,
   resetRoom,
+  refreshPendingTraits,
   roomSnapshot,
   runRoomStep,
+  sellCard,
+  sellLoot,
+  traits,
   triggerTile
 };

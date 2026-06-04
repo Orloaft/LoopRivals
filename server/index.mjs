@@ -16,7 +16,9 @@ import {
   publicConfig,
   resetRoom,
   roomSnapshot,
-  runRoomStep
+  runRoomStep,
+  sellCard,
+  sellLoot
 } from './rules.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -110,10 +112,24 @@ async function startServer() {
       emitRoom(io, room);
     });
 
-    socket.on('playRivalCard', ({ cardId, targetId } = {}) => {
+    socket.on('playRivalCard', ({ cardId, targetId, tileIndex } = {}) => {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
-      playRival(room, player, cardId, targetId);
+      playRival(room, player, cardId, targetId, Number.isFinite(Number(tileIndex)) ? Number(tileIndex) : null);
+      emitRoom(io, room);
+    });
+
+    socket.on('sellCard', ({ cardId } = {}) => {
+      const { room, player } = getSocketPlayer(socket);
+      if (!player) return;
+      sellCard(room, player, cardId);
+      emitRoom(io, room);
+    });
+
+    socket.on('sellLoot', ({ itemId } = {}) => {
+      const { room, player } = getSocketPlayer(socket);
+      if (!player) return;
+      sellLoot(room, player, itemId);
       emitRoom(io, room);
     });
 

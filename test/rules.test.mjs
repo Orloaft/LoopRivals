@@ -44,6 +44,77 @@ test('rival damage that drops a player to zero immediately revives them at camp'
   assert.equal(attacker.hand.length, 0);
 });
 
+test('rival cards can be armed on unoccupied enemy road tiles only', () => {
+  const attacker = testApi.createPlayer('attacker', 'Attacker', 'rune-archer');
+  const target = testApi.createPlayer('target', 'Target', 'moss-warden');
+  const meteor = {
+    id: 'meteor',
+    instanceId: 'meteor-road',
+    name: 'Meteor',
+    kind: 'rival',
+    icon: '☄',
+    text: 'Damages a rival and scorches a tile.'
+  };
+
+  attacker.hand = [meteor];
+  target.position = 2;
+  room.players.attacker = attacker;
+  room.players.target = target;
+
+  testApi.playRival(room, attacker, meteor.instanceId, target.id, 4);
+
+  assert.equal(target.board[4].type, 'scorch');
+  assert.equal(target.board[4].charges, 2);
+  assert.equal(attacker.hand.length, 0);
+
+  const hex = {
+    id: 'hex',
+    instanceId: 'hex-road',
+    name: 'Hex',
+    kind: 'rival',
+    icon: '☾',
+    text: 'Curses a rival for 3 events.'
+  };
+  attacker.hand = [hex];
+
+  testApi.playRival(room, attacker, hex.instanceId, target.id, target.position);
+
+  assert.equal(attacker.hand.length, 1);
+  assert.equal(target.board[target.position].type, 'road');
+});
+
+test('selling hand cards and loose loot banks gold into score', () => {
+  const player = testApi.createPlayer('seller', 'Seller', 'night-vagrant');
+  const card = {
+    id: 'tax',
+    instanceId: 'tax-sale',
+    name: 'Tithe Trap',
+    kind: 'rival',
+    icon: '$',
+    text: 'Steals tempo.'
+  };
+  const looseLoot = { id: 'loose-loot', slot: 'weapon', name: 'Glass Pike', rarity: 'rare', power: 3, guard: 0, speed: 0, maxHp: 0 };
+  const equippedLoot = { id: 'worn-loot', slot: 'armor', name: 'Tin Aegis', rarity: 'common', power: 0, guard: 2, speed: 0, maxHp: 3 };
+
+  player.hand = [card];
+  player.loot = [looseLoot, equippedLoot];
+  player.loadout.armor = equippedLoot;
+  room.players.seller = player;
+  const scoreBefore = testApi.roomSnapshot(room).players[0].score;
+
+  assert.equal(testApi.sellCard(room, player, card.instanceId), true);
+  assert.equal(player.gold, 22);
+  assert.equal(player.hand.length, 0);
+  assert.ok(testApi.roomSnapshot(room).players[0].score > scoreBefore);
+
+  assert.equal(testApi.sellLoot(room, player, equippedLoot.id), false);
+  assert.equal(player.loot.some((item) => item.id === equippedLoot.id), true);
+
+  assert.equal(testApi.sellLoot(room, player, looseLoot.id), true);
+  assert.equal(player.loot.some((item) => item.id === looseLoot.id), false);
+  assert.ok(player.gold > 22);
+});
+
 test('a player already at zero HP revives before resolving the next tile', () => {
   const player = testApi.createPlayer('runner', 'Runner', 'grave-singer');
   player.hp = 0;
@@ -96,6 +167,57 @@ test('snapshot keeps board seats stable while ranks follow score', () => {
   assert.equal(snapshot.players.find((player) => player.id === 'alpha').rank, 2);
   assert.equal(snapshot.players.find((player) => player.id === 'bravo').rank, 1);
   assert.deepEqual(snapshot.leaderboard.map((player) => player.id), ['bravo', 'alpha']);
+});
+
+test('hero talent trees gate choices by hero and prerequisites', () => {
+  const player = testApi.createPlayer('talent-test', 'Talent Test', 'ember-knight');
+
+  player.talentPoints = 1;
+  testApi.refreshPendingTraits(player);
+
+  assert.deepEqual(player.pendingTraits, ['ember-oath']);
+  assert.equal(player.pendingTraits.some((traitId) => traitId.startsWith('moon-')), false);
+
+  testApi.chooseTrait(player, 'shield-heat');
+  assert.deepEqual(player.traits, []);
+
+  testApi.chooseTrait(player, 'ember-oath');
+  assert.deepEqual(player.traits, ['ember-oath']);
+  assert.equal(player.power, 10);
+  assert.equal(player.maxHp, 50);
+
+  player.talentPoints = 1;
+  testApi.refreshPendingTraits(player);
+  assert.deepEqual(new Set(player.pendingTraits), new Set(['cinder-step', 'shield-heat']));
+});
+
+test('talent tree budgets stay in a tight balance band', () => {
+  function budgetValue(bonus) {
+    return (
+      (bonus.maxHp ?? 0) * 0.35 +
+      (bonus.power ?? 0) * 2.4 +
+      (bonus.guard ?? 0) * 1.8 +
+      (bonus.speed ?? 0) * 2.4 +
+      (1 - (bonus.drawRate ?? 1)) * 18 +
+      (bonus.sabotage ?? 0) * 1.15 +
+      (bonus.lootLuck ?? 0) * 18 +
+      (bonus.lapHeal ?? 0) * 0.7 +
+      (bonus.terrainScore ?? 0) * 0.75 +
+      (bonus.revivePower ?? 0) * 1.2
+    );
+  }
+
+  const budgets = new Map();
+  for (const trait of testApi.traits) {
+    budgets.set(trait.heroId, (budgets.get(trait.heroId) ?? 0) + budgetValue(trait.bonus));
+  }
+
+  assert.equal(budgets.size, 5);
+  for (const [heroId, budget] of budgets) {
+    const nodeCount = testApi.traits.filter((trait) => trait.heroId === heroId).length;
+    assert.equal(nodeCount, 7);
+    assert.ok(budget >= 26 && budget <= 33, `${heroId} budget ${budget.toFixed(2)} is outside the target band`);
+  }
 });
 
 test('room finishes when a player reaches the goal score', () => {

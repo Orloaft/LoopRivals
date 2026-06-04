@@ -408,28 +408,6 @@ input:focus {
   background: rgba(0, 0, 0, 0.18);
 }
 
-.rival-board-drop-zone {
-  position: absolute;
-  inset: 0;
-  z-index: 9;
-  padding: 0;
-  border: 1px solid rgba(159, 61, 53, 0.24);
-  border-radius: 4px;
-  background:
-    radial-gradient(circle at 50% 50%, rgba(159, 61, 53, 0.1), transparent 48%),
-    rgba(159, 61, 53, 0.02);
-  cursor: url('/assets/ui/cursor-hand-large-v1.png') 22 10, alias;
-}
-
-.rival-board-drop-zone:hover,
-.rival-board-drop-zone:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--blood) 74%, var(--gold-bright));
-  outline-offset: -3px;
-  background:
-    radial-gradient(circle at 50% 50%, rgba(159, 61, 53, 0.17), transparent 52%),
-    rgba(159, 61, 53, 0.035);
-}
-
 .tile {
   position: relative;
   overflow: visible;
@@ -470,6 +448,18 @@ input:focus {
 
 .tile:not(:disabled):hover {
   outline: 2px solid var(--gold-bright);
+}
+
+.tile.rival-tile-target {
+  border-color: color-mix(in srgb, var(--blood) 70%, var(--gold));
+  box-shadow:
+    inset 0 0 0 1px rgba(159, 61, 53, 0.4),
+    0 0 10px rgba(159, 61, 53, 0.22);
+}
+
+.tile.rival-tile-target:hover,
+.tile.rival-tile-target:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--blood) 74%, var(--gold-bright));
 }
 
 .tile:hover,
@@ -1302,6 +1292,12 @@ input:focus {
 .side-loot:focus-visible .hover-pop,
 .side-trait:hover .hover-pop,
 .side-trait:focus-visible .hover-pop,
+.talent-tree-entry:hover .hover-pop,
+.talent-tree-entry:focus-visible .hover-pop,
+.talent-node:hover .hover-pop,
+.talent-node:focus-visible .hover-pop,
+.talent-back-button:hover .hover-pop,
+.talent-back-button:focus-visible .hover-pop,
 .side-feed:hover .hover-pop,
 .side-feed:focus-visible .hover-pop,
 .trait-rune:hover .hover-pop,
@@ -1389,6 +1385,46 @@ input:focus {
   border-color: var(--gold-bright);
 }
 
+.sell-zone {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(210, 177, 92, 0.32);
+  border-radius: 6px;
+  color: var(--gold-bright);
+  background:
+    linear-gradient(180deg, rgba(210, 177, 92, 0.12), rgba(0, 0, 0, 0.32)),
+    #11100e;
+  font-size: 0.78rem;
+  font-weight: 950;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.42);
+}
+
+.sell-zone.active {
+  border-color: var(--gold-bright);
+  box-shadow:
+    0 0 0 1px rgba(240, 217, 140, 0.22),
+    0 0 20px rgba(210, 177, 92, 0.28),
+    0 10px 26px rgba(0, 0, 0, 0.42);
+}
+
+.sell-zone svg {
+  color: var(--gold-bright);
+}
+
+.sell-zone:hover .hover-pop,
+.sell-zone:focus-within .hover-pop {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
 /* Right-side player dock: paperdoll, bespoke loadout slots, loot, traits, feed. */
 .player-side-dock {
   position: sticky;
@@ -1455,7 +1491,7 @@ input:focus {
 
 .side-stat-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 8px;
   color: var(--parchment);
@@ -1480,6 +1516,15 @@ input:focus {
 .side-stat-row em {
   color: var(--gold-bright);
   font-style: normal;
+  font-weight: 900;
+}
+
+.side-stat-row small {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--gold);
+  font-size: 0.72rem;
   font-weight: 900;
 }
 
@@ -1647,6 +1692,230 @@ input:focus {
   filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.8));
 }
 
+.side-talents {
+  position: relative;
+}
+
+.talent-tree-entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 58px;
+  padding: 7px 9px;
+  border: 1px solid rgba(210, 177, 92, 0.2);
+  border-radius: 6px;
+  color: var(--parchment);
+  background:
+    linear-gradient(90deg, rgba(210, 177, 92, 0.08), rgba(0, 0, 0, 0.18)),
+    rgba(0, 0, 0, 0.22);
+}
+
+.talent-tree-entry.pending {
+  border-color: color-mix(in srgb, var(--moss) 60%, var(--gold));
+  box-shadow: 0 0 14px rgba(118, 170, 78, 0.18);
+}
+
+.talent-tree-entry.pending::after {
+  content: '';
+  position: absolute;
+  right: -8px;
+  top: -10px;
+  width: 34px;
+  aspect-ratio: 1;
+  background: url('/assets/ui/talent-alert-gem-v1.png') center / contain no-repeat;
+  filter: drop-shadow(0 0 9px rgba(244, 63, 50, 0.48));
+  animation: trait-pulse 1.35s ease-in-out infinite;
+}
+
+.talent-tree-medallion {
+  display: block;
+  width: 48px;
+  aspect-ratio: 1;
+  background:
+    var(--talent-icon) center / contain no-repeat,
+    url('/assets/ui/talent-node-learned-v1.png') center / contain no-repeat;
+  filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.55));
+}
+
+.talent-tree-entry-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  text-align: left;
+}
+
+.talent-tree-entry-copy strong,
+.talent-mode-head strong {
+  overflow: hidden;
+  font-family: Georgia, "Times New Roman", serif;
+  color: var(--parchment);
+  font-size: 0.94rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.talent-tree-entry-copy small,
+.talent-mode-head span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.talent-tree-entry svg {
+  color: var(--gold-bright);
+}
+
+.talent-tree-mode {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.talent-mode-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+}
+
+.talent-mode-head div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.talent-back-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid rgba(210, 177, 92, 0.3);
+  border-radius: 5px;
+  color: var(--gold-bright);
+  background:
+    url('/assets/ui/talent-back-medallion-v1.png') left center / auto 160% no-repeat,
+    rgba(0, 0, 0, 0.28);
+  font-size: 0.74rem;
+  font-weight: 950;
+}
+
+.talent-tree-board {
+  position: relative;
+  min-height: 390px;
+  overflow: visible;
+  border: 1px solid rgba(210, 177, 92, 0.18);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.36)),
+    url('/assets/ui/talent-tree-panel-v1.png') center / 100% 100% no-repeat,
+    rgba(0, 0, 0, 0.2);
+}
+
+.talent-tree-board::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  pointer-events: none;
+  border: 1px solid rgba(210, 177, 92, 0.12);
+  border-radius: 4px;
+  background:
+    url('/assets/ui/talent-connector-v1.png') center 54% / 64% auto no-repeat;
+  opacity: 0.18;
+}
+
+.talent-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.talent-lines line {
+  stroke: rgba(210, 177, 92, 0.22);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.7));
+}
+
+.talent-lines line.available {
+  stroke: color-mix(in srgb, var(--moss) 78%, var(--gold-bright));
+  stroke-width: 2;
+}
+
+.talent-lines line.learned {
+  stroke: var(--gold-bright);
+  stroke-width: 2;
+}
+
+.talent-node {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  color: var(--parchment);
+  background:
+    var(--talent-icon) center / 64% 64% no-repeat,
+    url('/assets/ui/talent-node-locked-v1.png') center / contain no-repeat;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.62rem;
+  font-weight: 950;
+  transform: translate(-50%, -50%);
+  filter: saturate(0.75) brightness(0.78);
+}
+
+.talent-node span:not(.hover-pop) {
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 17px;
+  padding: 0 4px;
+  border: 1px solid rgba(210, 177, 92, 0.24);
+  border-radius: 999px;
+  color: var(--gold-bright);
+  background: rgba(0, 0, 0, 0.72);
+  text-shadow: 0 1px 0 #000;
+  transform: translateX(-50%);
+}
+
+.talent-node.available {
+  background:
+    var(--talent-icon) center / 64% 64% no-repeat,
+    url('/assets/ui/talent-node-available-v1.png') center / contain no-repeat;
+  filter: brightness(1.08) saturate(1.08) drop-shadow(0 0 10px rgba(118, 170, 78, 0.36));
+  animation: trait-pulse 1.55s ease-in-out infinite;
+}
+
+.talent-node.learned {
+  background:
+    var(--talent-icon) center / 64% 64% no-repeat,
+    url('/assets/ui/talent-node-learned-v1.png') center / contain no-repeat;
+  filter: brightness(1.06) saturate(1.1) drop-shadow(0 0 7px rgba(210, 177, 92, 0.24));
+}
+
+.talent-node.locked {
+  cursor: default;
+}
+
+.talent-node:hover,
+.talent-node:focus-visible {
+  z-index: 9;
+}
+
 .side-trait {
   color: #d7c69a;
   font-family: Georgia, "Times New Roman", serif;
@@ -1692,7 +1961,7 @@ input:focus {
 
 .side-controls {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
 
