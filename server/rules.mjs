@@ -1,6 +1,9 @@
 export const maxPlayers = 4;
-export const goalScore = 600;
-const combatDisplayMs = 1800;
+export const goalScore = 60000;
+// Global pacing multiplier. >1 slows the game down (all timed delays get longer).
+// 2 = half speed, giving more time to play cards from hand each loop.
+const timeScale = 2;
+const combatDisplayMs = 1800 * timeScale;
 
 const combatEncounters = {
   'wolf grove': {
@@ -214,8 +217,8 @@ export function createPlayer(id, name, heroId, isBot = false) {
     deaths: 0,
     curse: 0,
     armor: 0,
-    nextMoveAt: now() + 1000,
-    nextDrawAt: now() + 2200,
+    nextMoveAt: now() + 1000 * timeScale,
+    nextDrawAt: now() + 2200 * timeScale,
     event: 'entered the loop',
     message: 'entered the loop',
     lastEventAt: now(),
@@ -556,7 +559,7 @@ function triggerTile(room, player, tile) {
     player.hp = clamp(player.hp + 3, 0, player.maxHp);
     player.event = 'shrine surge: +14 xp';
   } else if (tile.type === 'mire') {
-    player.nextMoveAt += 450;
+    player.nextMoveAt += 450 * timeScale;
     if (player.hand.length < 7) player.hand.push(drawCard());
     player.event = 'mire drag: slowed, drew a card';
   } else if (tile.type === 'ambush') {
@@ -583,7 +586,7 @@ function triggerTile(room, player, tile) {
 
 function movementDelay(player) {
   const base = 1125 - player.speed * 72;
-  return clamp(base, 390, 1300);
+  return clamp(base, 390, 1300) * timeScale;
 }
 
 function advancePlayer(room, player) {
@@ -605,7 +608,7 @@ function maybeDraw(player) {
     player.hand.push(drawCard());
     player.event = 'drew a card';
   }
-  player.nextDrawAt = now() + Math.round((3600 + rand(1000)) * player.drawRate);
+  player.nextDrawAt = now() + Math.round((3600 + rand(1000)) * player.drawRate * timeScale);
 }
 
 function botThink(room, player) {
