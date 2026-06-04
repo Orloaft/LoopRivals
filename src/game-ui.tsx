@@ -923,8 +923,16 @@ function PlayerPanel({
             </button>
           );
         })}
-        <span className="runner" style={{ left: `${runnerLeft}%`, top: `${runnerTop}%` }}>
-          <img src={heroSpriteUrl(player.heroId)} alt="" />
+        <span
+          className="runner"
+          style={{
+            '--runner-left': `${runnerLeft}%`,
+            '--runner-top': `${runnerTop}%`
+          } as CSSProperties}
+        >
+          <span className="runner-sprite">
+            <img src={heroSpriteUrl(player.heroId)} alt="" />
+          </span>
         </span>
         <div className="board-core">
           <div className="bc-name">
