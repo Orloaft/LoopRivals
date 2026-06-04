@@ -154,6 +154,19 @@ test('joining with the same player token reconnects instead of adding a new slot
   assert.equal(secondJoin.player.heroId, 'ember-knight');
 });
 
+test('first human becomes room host and host migrates to connected humans', () => {
+  const firstJoin = testApi.joinRoom(room, { playerId: 'alpha', name: 'Alpha', heroId: 'ember-knight' });
+  const secondJoin = testApi.joinRoom(room, { playerId: 'bravo', name: 'Bravo', heroId: 'night-vagrant' });
+
+  assert.equal(firstJoin.player.id, 'alpha');
+  assert.equal(testApi.roomSnapshot(room).hostId, 'alpha');
+
+  testApi.disconnectPlayer(room, firstJoin.player.id);
+
+  assert.equal(secondJoin.player.connected, true);
+  assert.equal(testApi.roomSnapshot(room).hostId, 'bravo');
+});
+
 test('snapshot keeps board seats stable while ranks follow score', () => {
   const firstJoin = testApi.joinRoom(room, { playerId: 'alpha', name: 'Alpha', heroId: 'ember-knight' });
   const secondJoin = testApi.joinRoom(room, { playerId: 'bravo', name: 'Bravo', heroId: 'night-vagrant' });

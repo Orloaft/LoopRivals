@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node server/index.mjs",
+    "start": "NODE_ENV=production node server/index.mjs",
     "build": "tsc -b && vite build",
     "preview": "NODE_ENV=production node server/index.mjs",
     "lint": "eslint .",

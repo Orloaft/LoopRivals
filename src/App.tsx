@@ -201,6 +201,7 @@ function App() {
   const selectedCard = me?.hand.find((card) => card.instanceId === selectedCardId) ?? null;
   const draggedCard = me?.hand.find((card) => card.instanceId === dragCardId) ?? null;
   const activeCard = draggedCard ?? selectedCard;
+  const isHost = Boolean(me && game?.hostId === me.id);
 
   useEffect(() => {
     localStorage.setItem('loopduel.bgm', bgmOn ? 'on' : 'off');
@@ -380,7 +381,7 @@ function App() {
             <strong>{game.winner.name} claimed the loop</strong>
             <span>{game.winner.score} points · Lv {game.winner.level} · {game.winner.laps} laps</span>
           </div>
-          <button className="primary-action" onClick={resetRoom}>
+          <button className="primary-action" onClick={resetRoom} disabled={!isHost}>
             <RotateCcw size={18} />
             Rematch
           </button>
@@ -418,6 +419,7 @@ function App() {
           onMenu={() => setShowMenu(true)}
           onAddBot={addBot}
           onFillCpu={fillCpu}
+          isHost={isHost}
           bgmOn={bgmOn}
           onToggleBgm={() => setBgmOn((on) => !on)}
         />
@@ -471,6 +473,7 @@ function App() {
       {showMenu && (
         <GameMenu
           game={game}
+          isHost={isHost}
           onAddBot={addBot}
           onFillCpu={fillCpu}
           onReset={() => { resetRoom(); setShowMenu(false); }}
@@ -484,6 +487,7 @@ function App() {
 
 function GameMenu({
   game,
+  isHost,
   onAddBot,
   onFillCpu,
   onReset,
@@ -491,6 +495,7 @@ function GameMenu({
   onClose
 }: {
   game: GameState;
+  isHost: boolean;
   onAddBot: () => void;
   onFillCpu: () => void;
   onReset: () => void;
@@ -503,16 +508,16 @@ function GameMenu({
         <div className="help-head">
           <div>
             <strong>Menu</strong>
-            <span>Room {game.id} · {game.players.length}/{game.maxPlayers} runners · first to {game.goalScore} · tick {game.tick}</span>
+            <span>Room {game.id} · {game.players.length}/{game.maxPlayers} runners · first to {game.goalScore} · {isHost ? 'host controls' : 'guest view'} · tick {game.tick}</span>
           </div>
           <button className="icon-action" onClick={onClose}>Close · Esc</button>
         </div>
         <div className="menu-actions">
-          <button className="menu-item" onClick={onAddBot}>
+          <button className="menu-item" onClick={onAddBot} disabled={!isHost}>
             <Bot size={20} />
             Add Bot
           </button>
-          <button className="menu-item" onClick={onFillCpu}>
+          <button className="menu-item" onClick={onFillCpu} disabled={!isHost}>
             <Users size={20} />
             Fill CPU Match
           </button>
@@ -520,7 +525,7 @@ function GameMenu({
             <HelpCircle size={20} />
             Rules
           </button>
-          <button className="menu-item danger" onClick={onReset}>
+          <button className="menu-item danger" onClick={onReset} disabled={!isHost}>
             <RotateCcw size={20} />
             Reset Room
           </button>
@@ -627,6 +632,7 @@ function PlayerSideDock({
   onMenu,
   onAddBot,
   onFillCpu,
+  isHost,
   bgmOn,
   onToggleBgm
 }: {
@@ -641,6 +647,7 @@ function PlayerSideDock({
   onMenu: () => void;
   onAddBot: () => void;
   onFillCpu: () => void;
+  isHost: boolean;
   bgmOn: boolean;
   onToggleBgm: () => void;
 }) {
@@ -769,17 +776,17 @@ function PlayerSideDock({
             <button className="side-control-button" onClick={onMenu}>
               <Bot size={15} />
               <span>Menu</span>
-              <InfoPopover title="Menu" eyebrow="Room controls" body={`Room ${game.id} · ${game.players.length}/${game.maxPlayers} runners`} />
+              <InfoPopover title="Menu" eyebrow={isHost ? 'Host controls' : 'Room menu'} body={`Room ${game.id} · ${game.players.length}/${game.maxPlayers} runners`} />
             </button>
-            <button className="side-control-button" onClick={onAddBot}>
+            <button className="side-control-button" onClick={onAddBot} disabled={!isHost}>
               <Bot size={15} />
               <span>Bot</span>
-              <InfoPopover title="Add bot" body="Adds one CPU opponent if a seat is open." />
+              <InfoPopover title="Add bot" body={isHost ? 'Adds one CPU opponent if a seat is open.' : 'Only the room host can add opponents.'} />
             </button>
-            <button className="side-control-button" onClick={onFillCpu}>
+            <button className="side-control-button" onClick={onFillCpu} disabled={!isHost}>
               <Users size={15} />
               <span>Fill</span>
-              <InfoPopover title="Fill CPU match" body="Fills every open seat with CPU opponents." />
+              <InfoPopover title="Fill CPU match" body={isHost ? 'Fills every open seat with CPU opponents.' : 'Only the room host can fill the match.'} />
             </button>
             <button className="side-control-button" onClick={onToggleBgm}>
               {bgmOn ? <Volume2 size={15} /> : <VolumeX size={15} />}

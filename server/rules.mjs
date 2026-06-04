@@ -206,12 +206,14 @@ export function createRoom(id, options = {}) {
     id,
     status: 'lobby',
     startedAt: startTime,
+    lastActivityAt: startTime,
     finishedAt: null,
     now: startTime,
     simulated: Boolean(options.simulated),
     rngState: normalizeSeed(options.seed ?? id),
     tick: 0,
     players: {},
+    hostId: null,
     log: ['Loopduel lobby is open. Join, pick a hero, then keep up.'],
     botCounter: 1,
     nextSeatIndex: 0,
@@ -221,7 +223,9 @@ export function createRoom(id, options = {}) {
 
 export function resetRoom(room) {
   const id = room.id;
+  const hostId = room.hostId;
   Object.assign(room, createRoom(id, { seed: room.rngState, simulated: room.simulated, now: now(room) }));
+  room.hostId = hostId;
 }
 
 export function activePlayerCount(room) {
@@ -268,6 +272,7 @@ export function roomSnapshot(room) {
     log: room.log,
     maxPlayers,
     goalScore,
+    hostId: room.hostId,
     winnerId: room.winnerId,
     winner: room.winnerId ? players.find((player) => player.id === room.winnerId) ?? null : null,
     leaderboard: ranked.map((player, index) => ({
@@ -346,6 +351,8 @@ export function joinRoom(room, { playerId, name, heroId }) {
     existing.connected = true;
     existing.name = name?.trim().slice(0, 20) || existing.name;
     existing.event = 'reconnected';
+    if (!room.hostId && !existing.isBot) room.hostId = existing.id;
+    room.lastActivityAt = now(room);
     addLog(room, `${existing.name} reconnected.`);
     return { player: existing, created: false };
   }
@@ -356,6 +363,8 @@ export function joinRoom(room, { playerId, name, heroId }) {
 
   const player = createPlayer(playerId, name, heroId, false, room);
   room.players[player.id] = player;
+  if (!room.hostId) room.hostId = player.id;
+  room.lastActivityAt = now(room);
   room.status = room.status === 'finished' ? 'finished' : 'running';
   addLog(room, `${player.name} joined as ${heroes.find((hero) => hero.id === player.heroId)?.name}.`);
   return { player, created: true };
@@ -366,6 +375,11 @@ export function disconnectPlayer(room, playerId) {
   if (!player || player.isBot) return;
   player.connected = false;
   player.event = 'disconnected';
+  room.lastActivityAt = now(room);
+  if (room.hostId === playerId) {
+    room.hostId = Object.values(room.players).find((candidate) => !candidate.isBot && candidate.connected)?.id ?? null;
+    if (room.hostId) addLog(room, `${room.players[room.hostId].name} is now room host.`);
+  }
   addLog(room, `${player.name} disconnected.`);
 }
 
@@ -376,6 +390,7 @@ export function addBot(room) {
   const botNames = ['Cinder CPU', 'Mire CPU', 'Hex CPU', 'Grove CPU'];
   const bot = createPlayer(botId, botNames[(room.botCounter - 2) % botNames.length], hero.id, true, room);
   room.players[botId] = bot;
+  room.lastActivityAt = now(room);
   room.status = 'running';
   addLog(room, `${bot.name} entered as ${hero.name}.`);
   return bot;
@@ -404,6 +419,7 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
   player.cardsPlayed += 1;
   player.tilesPlaced += 1;
   player.event = `placed ${card.name}`;
+  room.lastActivityAt = now(room);
   addXp(room, player, 3 + player.terrainScore);
   addLog(room, `${player.name} placed ${card.name}.`);
   checkWinner(room);
@@ -477,6 +493,7 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
   }
   player.cardsPlayed += 1;
   player.rivalHits += 1;
+  room.lastActivityAt = now(room);
   resolveDefeat(room, target);
   addXp(room, player, 7);
   player.event = targetedTile ? `armed ${card.name} on ${target.name}'s road` : `hit ${target.name} with ${card.name}`;
@@ -514,6 +531,7 @@ export function sellCard(room, player, cardInstanceId) {
   player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
   player.gold = (player.gold ?? 0) + value;
   player.event = `sold ${card.name} for ${value} gold`;
+  room.lastActivityAt = now(room);
   addLog(room, `${player.name} sold ${card.name} for ${value} gold.`);
   checkWinner(room);
   return true;
@@ -528,6 +546,7 @@ export function sellLoot(room, player, itemId) {
   player.loot = player.loot.filter((entry) => entry.id !== itemId);
   player.gold = (player.gold ?? 0) + value;
   player.event = `sold ${item.name} for ${value} gold`;
+  room.lastActivityAt = now(room);
   addLog(room, `${player.name} sold ${item.name} for ${value} gold.`);
   checkWinner(room);
   return true;
@@ -942,6 +961,7 @@ export const testApi = {
   chooseTrait,
   createPlayer,
   createRoom,
+  disconnectPlayer,
   fillCpuOpponents,
   hasRoomForPlayer,
   joinRoom,

@@ -25,8 +25,35 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
 const isProduction = process.env.NODE_ENV === 'production';
 const port = Number(process.env.PORT ?? 4173);
+const roomIdleTtlMs = Number(process.env.LOOPDUEL_ROOM_IDLE_TTL_MS ?? 30 * 60 * 1000);
+const cleanupIntervalMs = Number(process.env.LOOPDUEL_ROOM_CLEANUP_INTERVAL_MS ?? 60 * 1000);
 
 const rooms = new Map();
+
+function parseAllowedOrigins(value) {
+  return String(value ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+const allowedOrigins = parseAllowedOrigins(
+  process.env.LOOPDUEL_ALLOWED_ORIGINS ?? process.env.ALLOWED_ORIGINS ?? process.env.ORIGIN
+);
+
+function corsOrigin(origin, callback) {
+  if (!origin) {
+    callback(null, true);
+    return;
+  }
+
+  if (allowedOrigins.length === 0) {
+    callback(null, !isProduction);
+    return;
+  }
+
+  callback(null, allowedOrigins.includes(origin));
+}
 
 function cleanRoomId(value) {
   const raw = String(value ?? 'main').trim().toLowerCase();
@@ -44,16 +71,60 @@ function emitRoom(io, room) {
 }
 
 function getSocketPlayer(socket) {
+  if (!socket.data.roomId || !socket.data.playerId) return { room: null, player: null };
   const room = getRoom(socket.data.roomId);
   const player = room.players[socket.data.playerId];
   return { room, player };
+}
+
+function touchRoom(room) {
+  room.lastActivityAt = Date.now();
+}
+
+function hasConnectedHuman(room) {
+  return Object.values(room.players).some((player) => !player.isBot && player.connected);
+}
+
+function requireHost(socket) {
+  const { room, player } = getSocketPlayer(socket);
+  if (!room || !player) {
+    socket.emit('notice', 'Join a room before using room controls.');
+    return { room: null, player: null, authorized: false };
+  }
+
+  if (room.hostId !== player.id) {
+    socket.emit('notice', 'Only the room host can use that control.');
+    return { room, player, authorized: false };
+  }
+
+  return { room, player, authorized: true };
+}
+
+function cleanupRooms(io) {
+  const cutoff = Date.now() - roomIdleTtlMs;
+  for (const [roomId, room] of rooms.entries()) {
+    if (roomId === 'main') continue;
+    if (hasConnectedHuman(room)) continue;
+    if ((room.lastActivityAt ?? room.startedAt) > cutoff) continue;
+    io.to(room.id).emit('notice', 'Room expired after being idle.');
+    rooms.delete(roomId);
+  }
 }
 
 async function startServer() {
   const app = express();
   const server = http.createServer(app);
   const io = new Server(server, {
-    cors: { origin: true }
+    cors: { origin: corsOrigin }
+  });
+
+  app.get('/healthz', (_req, res) => {
+    res.json({
+      ok: true,
+      rooms: rooms.size,
+      players: [...rooms.values()].reduce((total, room) => total + Object.keys(room.players).length, 0),
+      uptime: process.uptime()
+    });
   });
 
   if (isProduction) {
@@ -94,13 +165,15 @@ async function startServer() {
     });
 
     socket.on('addBot', () => {
-      const { room } = getSocketPlayer(socket);
+      const { room, authorized } = requireHost(socket);
+      if (!authorized) return;
       addBot(room);
       emitRoom(io, room);
     });
 
     socket.on('fillCpu', () => {
-      const { room } = getSocketPlayer(socket);
+      const { room, authorized } = requireHost(socket);
+      if (!authorized) return;
       fillCpuOpponents(room);
       emitRoom(io, room);
     });
@@ -109,6 +182,7 @@ async function startServer() {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
       playTerrain(room, player, cardId, Number(tileIndex));
+      touchRoom(room);
       emitRoom(io, room);
     });
 
@@ -116,6 +190,7 @@ async function startServer() {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
       playRival(room, player, cardId, targetId, Number.isFinite(Number(tileIndex)) ? Number(tileIndex) : null);
+      touchRoom(room);
       emitRoom(io, room);
     });
 
@@ -123,6 +198,7 @@ async function startServer() {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
       sellCard(room, player, cardId);
+      touchRoom(room);
       emitRoom(io, room);
     });
 
@@ -130,6 +206,7 @@ async function startServer() {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
       sellLoot(room, player, itemId);
+      touchRoom(room);
       emitRoom(io, room);
     });
 
@@ -137,6 +214,7 @@ async function startServer() {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
       equip(player, itemId);
+      touchRoom(room);
       emitRoom(io, room);
     });
 
@@ -144,12 +222,15 @@ async function startServer() {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
       chooseTrait(player, traitId);
+      touchRoom(room);
       emitRoom(io, room);
     });
 
     socket.on('resetRoom', () => {
-      const { room } = getSocketPlayer(socket);
+      const { room, authorized } = requireHost(socket);
+      if (!authorized) return;
       resetRoom(room);
+      touchRoom(room);
       emitRoom(io, room);
     });
 
@@ -167,6 +248,8 @@ async function startServer() {
       emitRoom(io, room);
     }
   }, 260);
+
+  setInterval(() => cleanupRooms(io), cleanupIntervalMs);
 
   server.listen(port, '0.0.0.0', () => {
     console.log(`Loopduel listening on http://localhost:${port}`);

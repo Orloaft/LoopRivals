@@ -147,6 +147,7 @@ export type GameState = {
   log: string[];
   maxPlayers: number;
   goalScore: number;
+  hostId: string | null;
   winnerId: string | null;
   winner: Player | null;
   leaderboard: LeaderboardEntry[];

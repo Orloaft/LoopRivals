@@ -187,6 +187,15 @@ input:focus {
   font-weight: 950;
 }
 
+.primary-action:disabled,
+.icon-action:disabled,
+.menu-item:disabled,
+.side-control-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  filter: grayscale(0.35);
+}
+
 .icon-action {
   color: var(--gold-bright);
   background: #15130f;
@@ -1990,8 +1999,8 @@ input:focus {
   white-space: nowrap;
 }
 
-.side-control-button:hover,
-.side-control-button:focus-visible,
+.side-control-button:not(:disabled):hover,
+.side-control-button:not(:disabled):focus-visible,
 .side-loot:hover,
 .side-loot:focus-visible,
 .side-trait:hover,
@@ -2294,7 +2303,7 @@ input:focus {
   transition: border-color 120ms ease, background 120ms ease;
 }
 
-.menu-item:hover {
+.menu-item:not(:disabled):hover {
   border-color: var(--gold);
   background: rgba(210, 177, 92, 0.08);
 }
@@ -2303,7 +2312,7 @@ input:focus {
   color: var(--gold-bright);
 }
 
-.menu-item.danger:hover {
+.menu-item.danger:not(:disabled):hover {
   border-color: var(--blood);
   background: color-mix(in srgb, var(--blood) 18%, transparent);
 }
@@ -2409,6 +2418,75 @@ input:focus {
 
   .control-dock {
     grid-template-columns: minmax(0, 1fr);
+    overflow-x: clip;
+  }
+
+  .hand-bar {
+    padding-inline: 0;
+  }
+
+  .hand-card {
+    --card-w: clamp(62px, 18vw, 76px);
+    margin-left: clamp(-30px, -7vw, -20px);
+    padding: 7px;
+  }
+
+  .card-corner {
+    width: 20px;
+    height: 20px;
+    font-size: 0.78rem;
+  }
+
+  .card-corner.top {
+    left: 6px;
+    top: 6px;
+  }
+
+  .card-corner.bottom {
+    right: 6px;
+    bottom: 6px;
+  }
+
+  .hover-pop,
+  .card-pop,
+  .tile-pop,
+  .player-pop,
+  .feed-pop {
+    position: fixed;
+    inset: auto 10px 10px;
+    width: auto;
+    max-width: none;
+    transform: translateY(4px);
+  }
+
+  .hand-card:hover .hover-pop,
+  .hand-card:focus-visible .hover-pop,
+  .tile:hover .hover-pop,
+  .tile:focus-visible .hover-pop,
+  .board-core:hover .hover-pop,
+  .board-core:focus-visible .hover-pop,
+  .target-chip:hover .hover-pop,
+  .target-chip:focus-visible .hover-pop,
+  .side-control-button:hover .hover-pop,
+  .side-control-button:focus-visible .hover-pop,
+  .combatant:hover .hover-pop,
+  .combatant:focus-visible .hover-pop,
+  .paper-slot:hover .hover-pop,
+  .paper-slot:focus-visible .hover-pop,
+  .side-loot:hover .hover-pop,
+  .side-loot:focus-visible .hover-pop,
+  .side-trait:hover .hover-pop,
+  .talent-tree-entry:hover .hover-pop,
+  .talent-tree-entry:focus-visible .hover-pop,
+  .talent-node:hover .hover-pop,
+  .talent-node:focus-visible .hover-pop,
+  .talent-back-button:hover .hover-pop,
+  .talent-back-button:focus-visible .hover-pop,
+  .side-feed:hover .hover-pop,
+  .side-feed:focus-visible .hover-pop,
+  .trait-rune:hover .hover-pop,
+  .trait-rune:focus-visible .hover-pop {
+    transform: translateY(0);
   }
 
   .player-side-dock {
