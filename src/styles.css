@@ -334,17 +334,20 @@ input:focus {
 }
 
 .arena-grid {
-  display: flex;
-  flex-wrap: wrap;
+  --focus-board: min(62vh, calc((100vw - 430px) * 0.74), 620px);
+  --mini-board: min(calc((var(--focus-board) - 28px) / 3), 196px);
+  display: grid;
+  grid-template-columns: var(--focus-board) var(--mini-board);
+  grid-auto-rows: var(--mini-board);
   justify-content: center;
-  align-items: flex-start;
+  align-items: start;
   gap: 14px;
   min-height: 0;
 }
 
 .player-panel {
   /* Focused/default board size (the boards are square, so this is width AND height). */
-  --board-size: min(64vh, 620px);
+  --board-size: var(--focus-board);
   position: relative;
   width: var(--board-size);
   max-width: 100%;
@@ -357,21 +360,39 @@ input:focus {
 
 /* Unfocused boards render at 50% and dim slightly; click to focus them. */
 .player-panel.dimmed {
-  --board-size: min(32vh, 310px);
+  --board-size: var(--mini-board);
   opacity: 0.84;
+}
+
+.player-panel.focused {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+}
+
+.player-panel.dimmed {
+  grid-column: 2;
 }
 
 .player-panel.dimmed:hover {
   opacity: 1;
 }
 
+.player-panel.active {
+  border-color: color-mix(in srgb, var(--hero-color) 70%, var(--gold));
+  outline: 1px solid color-mix(in srgb, var(--hero-color) 68%, var(--gold));
+}
+
 .player-panel.focused {
   cursor: default;
 }
 
-.player-panel.active {
-  border-color: color-mix(in srgb, var(--hero-color) 70%, var(--gold));
-  outline: 1px solid color-mix(in srgb, var(--hero-color) 68%, var(--gold));
+.player-panel.rival-drop-target {
+  cursor: url('/assets/ui/cursor-hand-large-v1.png') 22 10, alias;
+  border-color: color-mix(in srgb, var(--blood) 70%, var(--gold));
+  box-shadow:
+    0 0 0 1px rgba(159, 61, 53, 0.34),
+    0 0 18px rgba(159, 61, 53, 0.28),
+    0 16px 42px rgba(0, 0, 0, 0.36);
 }
 
 .board {
@@ -385,6 +406,28 @@ input:focus {
   padding: 6px;
   border: 1px solid rgba(210, 177, 92, 0.22);
   background: rgba(0, 0, 0, 0.18);
+}
+
+.rival-board-drop-zone {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  padding: 0;
+  border: 1px solid rgba(159, 61, 53, 0.24);
+  border-radius: 4px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(159, 61, 53, 0.1), transparent 48%),
+    rgba(159, 61, 53, 0.02);
+  cursor: url('/assets/ui/cursor-hand-large-v1.png') 22 10, alias;
+}
+
+.rival-board-drop-zone:hover,
+.rival-board-drop-zone:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--blood) 74%, var(--gold-bright));
+  outline-offset: -3px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(159, 61, 53, 0.17), transparent 52%),
+    rgba(159, 61, 53, 0.035);
 }
 
 .tile {
@@ -2025,7 +2068,9 @@ input:focus {
   }
 
   .arena-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    --focus-board: min(58vh, 58vw, 560px);
+    --mini-board: min(calc((var(--focus-board) - 28px) / 3), 180px);
+    grid-template-columns: var(--focus-board) var(--mini-board);
   }
 
   .play-layout,
@@ -2071,6 +2116,22 @@ input:focus {
   .arena-grid,
   .play-layout {
     grid-template-columns: 1fr;
+  }
+
+  .arena-grid {
+    --focus-board: min(92vw, 540px);
+    --mini-board: min(44vw, 240px);
+    grid-template-columns: repeat(2, minmax(0, var(--mini-board)));
+  }
+
+  .player-panel.focused {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-self: center;
+  }
+
+  .player-panel.dimmed {
+    grid-column: auto;
   }
 
   .hero-card {

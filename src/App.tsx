@@ -192,6 +192,8 @@ function App() {
 
   const me = game?.players.find((player) => player.id === playerToken) ?? null;
   const selectedCard = me?.hand.find((card) => card.instanceId === selectedCardId) ?? null;
+  const draggedCard = me?.hand.find((card) => card.instanceId === dragCardId) ?? null;
+  const activeCard = draggedCard ?? selectedCard;
 
   function join() {
     socket.emit('join', { name, heroId, roomId, playerToken: playerToken || undefined });
@@ -206,16 +208,20 @@ function App() {
     socket.emit('fillCpu');
   }
 
-  function placeCard(tile: Tile) {
-    if (!selectedCard || selectedCard.kind !== 'terrain') return;
-    socket.emit('placeCard', { cardId: selectedCard.instanceId, tileIndex: tile.index });
+  function placeCard(tile: Tile, cardId = activeCard?.instanceId) {
+    const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
+    if (!card || card.kind !== 'terrain') return;
+    socket.emit('placeCard', { cardId: card.instanceId, tileIndex: tile.index });
     setSelectedCardId(null);
+    setDragCardId(null);
   }
 
-  function playRival(targetId: string) {
-    if (!selectedCard || selectedCard.kind !== 'rival') return;
-    socket.emit('playRivalCard', { cardId: selectedCard.instanceId, targetId });
+  function playRival(targetId: string, cardId = activeCard?.instanceId) {
+    const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
+    if (!card || card.kind !== 'rival') return;
+    socket.emit('playRivalCard', { cardId: card.instanceId, targetId });
     setSelectedCardId(null);
+    setDragCardId(null);
   }
 
   function equip(item: Loot) {
@@ -309,6 +315,11 @@ function App() {
   function focusBoard(id: string) {
     setFocusedId(id === focusedPlayerId && id !== meId ? meId : id);
   }
+  const focusedPlayer = game.players.find((player) => player.id === focusedPlayerId);
+  const arrangedPlayers = focusedPlayer
+    ? [focusedPlayer, ...game.players.filter((player) => player.id !== focusedPlayer.id)]
+    : game.players;
+  const rivalTargetCard = activeCard?.kind === 'rival' ? activeCard : null;
 
   return (
     <main className="game-shell">
@@ -329,16 +340,18 @@ function App() {
 
       <section className="play-layout">
         <section className={`arena-grid ${focusedPlayerId !== me.id ? 'has-focus' : ''}`}>
-          {game.players.map((player) => (
+          {arrangedPlayers.map((player) => (
             <PlayerPanel
               key={player.id}
               player={player}
               rank={player.rank}
               active={player.id === me.id}
               focused={player.id === focusedPlayerId}
-              selectedCard={player.id === me.id ? selectedCard : null}
-              draggingCard={player.id === me.id && dragCardId ? selectedCard : null}
+              selectedCard={player.id === me.id ? activeCard : null}
+              draggingCard={player.id === me.id ? activeCard : null}
+              rivalTargetCard={player.id !== me.id ? rivalTargetCard : null}
               onTile={player.id === me.id ? placeCard : undefined}
+              onRivalTarget={player.id !== me.id ? (cardId) => playRival(player.id, cardId) : undefined}
               onFocus={() => focusBoard(player.id)}
             />
           ))}
@@ -368,7 +381,7 @@ function App() {
           }}
           onDragEnd={() => setDragCardId(null)}
         />
-        {selectedCard?.kind === 'rival' && (
+        {rivalTargetCard && (
           <div className="target-row">
             <span className="target-label">strike</span>
             {game.players.filter((player) => player.id !== me.id).map((target) => (
@@ -377,10 +390,13 @@ function App() {
                 className="target-chip"
                 style={{ '--hero-color': target.color } as React.CSSProperties}
                 onClick={() => playRival(target.id)}
-                onDragOver={(event) => selectedCard?.kind === 'rival' && event.preventDefault()}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'link';
+                }}
                 onDrop={(event) => {
                   event.preventDefault();
-                  playRival(target.id);
+                  playRival(target.id, event.dataTransfer.getData('text/plain') || rivalTargetCard.instanceId);
                 }}
               >
                 <img src={heroPortraitUrl(target.heroId)} alt={target.name} />
@@ -684,7 +700,9 @@ function PlayerPanel({
   focused,
   selectedCard,
   draggingCard,
+  rivalTargetCard,
   onTile,
+  onRivalTarget,
   onFocus
 }: {
   player: Player;
@@ -693,10 +711,13 @@ function PlayerPanel({
   focused: boolean;
   selectedCard: Card | null;
   draggingCard: Card | null;
-  onTile?: (tile: Tile) => void;
+  rivalTargetCard: Card | null;
+  onTile?: (tile: Tile, cardId?: string) => void;
+  onRivalTarget?: (cardId?: string) => void;
   onFocus: () => void;
 }) {
   const hpRatio = Math.max(0, player.hp / player.maxHp);
+  const canRivalTarget = Boolean(rivalTargetCard && onRivalTarget);
   // Runner position as a percentage of the board, centered on the occupied tile.
   // Rendered at board level (not inside a tile) so CSS can smoothly slide it tile-to-tile.
   const runnerTile = player.board[player.position] ?? player.board[0];
@@ -705,9 +726,25 @@ function PlayerPanel({
 
   return (
     <article
-      className={`player-panel ${active ? 'active' : ''} ${focused ? 'focused' : 'dimmed'}`}
+      className={`player-panel ${active ? 'active' : ''} ${focused ? 'focused' : 'dimmed'} ${canRivalTarget ? 'rival-drop-target' : ''}`}
       style={{ '--hero-color': player.color } as React.CSSProperties}
-      onClick={onFocus}
+      onClick={() => {
+        if (canRivalTarget) {
+          onRivalTarget?.(rivalTargetCard?.instanceId);
+          return;
+        }
+        onFocus();
+      }}
+      onDragOver={(event) => {
+        if (!canRivalTarget) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'link';
+      }}
+      onDrop={(event) => {
+        if (!canRivalTarget) return;
+        event.preventDefault();
+        onRivalTarget?.(event.dataTransfer.getData('text/plain') || rivalTargetCard?.instanceId);
+      }}
     >
       <div className="board">
         {player.board.map((tile) => (
@@ -724,7 +761,7 @@ function PlayerPanel({
             }}
             onDrop={(event) => {
               event.preventDefault();
-              if (draggingCard?.kind === 'terrain') onTile?.(tile);
+              if (draggingCard?.kind === 'terrain') onTile?.(tile, event.dataTransfer.getData('text/plain') || draggingCard.instanceId);
             }}
             disabled={!onTile || !selectedCard || selectedCard.kind !== 'terrain' || tile.type === 'camp'}
           >
@@ -746,6 +783,25 @@ function PlayerPanel({
         <span className="runner" style={{ left: `${runnerLeft}%`, top: `${runnerTop}%` }}>
           <img src={heroSpriteUrl(player.heroId)} alt="" />
         </span>
+        {canRivalTarget && (
+          <button
+            className="rival-board-drop-zone"
+            aria-label={`Play ${rivalTargetCard?.name} on ${player.name}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onRivalTarget?.(rivalTargetCard?.instanceId);
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'link';
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onRivalTarget?.(event.dataTransfer.getData('text/plain') || rivalTargetCard?.instanceId);
+            }}
+          />
+        )}
         <div className="board-core">
           <div className="bc-name">
             <span className="bc-portrait">
