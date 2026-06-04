@@ -371,7 +371,7 @@ function App() {
 
   return (
     <main className="game-shell">
-      <audio ref={bgmRef} src="/assets/audio/crypt-of-neon-glass.ogg" preload="auto" loop />
+      <audio ref={bgmRef} src="/assets/audio/crypt-of-neon-glass.mp3" preload="auto" loop />
       {notice && <div className="notice-toast">{notice}</div>}
 
       {game.status === 'finished' && game.winner && (
