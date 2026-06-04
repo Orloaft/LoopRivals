@@ -1,8 +1,8 @@
 export const maxPlayers = 4;
 export const goalScore = 60000;
 // Global pacing multiplier. >1 slows the game down (all timed delays get longer).
-// 2 = half speed, giving more time to play cards from hand each loop.
-const timeScale = 2;
+// 4 = quarter speed, giving plenty of time to read events and play cards each loop.
+const timeScale = 4;
 const combatDisplayMs = 1800 * timeScale;
 
 const combatEncounters = {
