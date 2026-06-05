@@ -118,6 +118,29 @@ test('common bonk cards stun the highest-score rival automatically', () => {
   assert.equal(attacker.hand.length, 0);
 });
 
+test('guided runs force Ember Knight, curate the opening, and expose coach state', () => {
+  room = testApi.createRoom('guided', { simulated: true, now: 1000 });
+  const result = testApi.joinRoom(room, {
+    playerId: 'human',
+    name: 'New Runner',
+    heroId: 'grave-singer',
+    guidedRun: true
+  });
+
+  assert.equal(result.player.heroId, 'ember-knight');
+  assert.deepEqual(result.player.hand.map((card) => card.id), ['meadow', 'forge', 'grove']);
+  assert.equal(room.settings.maxPlayers, 2);
+
+  assert.equal(testApi.startRoom(room), true);
+
+  const snapshot = testApi.roomSnapshot(room);
+  assert.equal(snapshot.onboarding.playerId, 'human');
+  assert.equal(snapshot.onboarding.step, 'place-safe');
+  assert.deepEqual(snapshot.onboarding.recommendedTileIndexes, [4]);
+  assert.equal(snapshot.players.some((player) => player.name === 'Vesper'), true);
+  assert.equal(room.players.human.board[5].type, 'crypt');
+});
+
 test('rare bonk cards can stun a chosen rival and freeze movement until expiry', () => {
   room = testApi.createRoom('bonk-chosen', { simulated: true, now: 1000 });
   const attacker = testApi.createPlayer('attacker', 'Attacker', 'rune-archer', false, room);

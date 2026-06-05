@@ -297,10 +297,10 @@ async function startServer() {
       socket.emit('notice', `Watching room ${room.id}.`);
     });
 
-    onPlayerAction(socket, 'join', ({ name, heroId, roomId, playerToken } = {}) => {
+    onPlayerAction(socket, 'join', ({ name, heroId, roomId, playerToken, guidedRun = false } = {}) => {
       const room = getRoom(roomId);
       const playerId = String(playerToken || crypto.randomUUID());
-      const result = joinRoom(room, { playerId, name, heroId });
+      const result = joinRoom(room, { playerId, name, heroId, guidedRun: Boolean(guidedRun) });
 
       if (result.full) {
         socket.emit('notice', 'Room is full. Try another room code.');

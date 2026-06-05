@@ -117,6 +117,50 @@ function tileDescription(tile: Tile) {
   return descriptions[tile.type] ?? 'Unknown loop tile.';
 }
 
+const dangerousTileTypes = new Set(['grove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'ambush', 'scorch']);
+const stabilizerTileTypes = new Set(['camp', 'meadow', 'village', 'forge', 'shrine', 'mire']);
+const payoffTileTypes = new Set(['crypt', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'forge', 'watchtower']);
+
+function upcomingTiles(player: Player, count = 5) {
+  return Array.from({ length: Math.min(count, player.board.length) }, (_, index) => {
+    const step = index + 1;
+    return {
+      step,
+      tile: player.board[(player.position + step) % player.board.length]
+    };
+  });
+}
+
+function tileRisk(tile: Tile) {
+  if (tile.type === 'wyrmgate') return 5;
+  if (tile.type === 'bloodmoon' || tile.type === 'ruinedkeep' || tile.type === 'bonepit') return 4;
+  if (tile.type === 'crypt' || tile.type === 'wolfden' || tile.type === 'ambush' || tile.type === 'scorch') return 3;
+  if (tile.type === 'obelisk' || tile.type === 'grove') return 2;
+  if (stabilizerTileTypes.has(tile.type)) return -1;
+  return 0;
+}
+
+function tacticalLabel(player: Player) {
+  const next = upcomingTiles(player, 5);
+  const spike = next.find(({ tile }) => tileRisk(tile) >= 3);
+  const stabilizer = next.find(({ tile }) => stabilizerTileTypes.has(tile.type));
+  if (spike) return `${spike.step} to ${tileNames[spike.tile.type] ?? spike.tile.type}`;
+  if (stabilizer) return `${stabilizer.step} to ${tileNames[stabilizer.tile.type] ?? stabilizer.tile.type}`;
+  return 'roads ahead';
+}
+
+function comboHint(card: Card) {
+  if (card.kind === 'rival') return 'Best when a rival is near a danger tile or marked as leader.';
+  if (card.kind === 'bonk') return card.targetMode === 'chosen' ? 'Save for a gate push or a rival about to cash out.' : 'Tempo answer when the leader is about to spike.';
+  if (card.tile === 'bloodmoon') return 'Place within two tiles of Crypt, Wolf Den, or Bone Pit to grow enemy stacks.';
+  if (card.tile === 'meadow' || card.tile === 'village') return 'Place before danger so the next lap has a recovery window.';
+  if (card.tile === 'forge' || card.tile === 'shrine') return 'Place just before a gate push for armor, XP, or trait tempo.';
+  if (card.tile === 'mire') return 'Place before a hard fight when you need one more card first.';
+  if (card.tile === 'watchtower') return 'Use when the leader is close to a payoff tile.';
+  if (payoffTileTypes.has(card.tile ?? '')) return 'Pair with safe terrain nearby before stacking more danger.';
+  return 'Road shaping card.';
+}
+
 function cardSuit(card: Card) {
   if (card.kind === 'bonk') return card.rarity === 'rare' ? 'Rare control' : 'Common control';
   if (card.kind === 'rival') return 'Doom';
@@ -235,6 +279,7 @@ function MobileRivalStrip({
     <section className="mobile-rival-strip" aria-label="Rivals">
       {players.map((player) => {
         const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+        const plan = tacticalLabel(player);
         return (
           <button
             key={player.id}
@@ -245,7 +290,7 @@ function MobileRivalStrip({
             <img src={heroPortraitUrl(player.heroId)} alt="" />
             <span>
               <strong>{player.name}</strong>
-              <small>{activeCard ? (activeCard.kind === 'bonk' ? 'bonk target' : 'target') : `${player.score} pts · Lv ${player.level}`}</small>
+              <small>{activeCard ? (activeCard.kind === 'bonk' ? 'bonk target' : 'target') : `${player.score} pts · ${plan}`}</small>
             </span>
             {player.rank === 1 && <Crown size={13} />}
           </button>
@@ -544,7 +589,7 @@ function CardFace({ card, popover = true }: { card: Card; popover?: boolean }) {
         <InfoPopover
           title={card.name}
           eyebrow={`${cardSuit(card)} ${card.kind}`}
-          lines={[card.text, card.kind === 'terrain' ? `Places as the ${tileNames[card.tile ?? 'road'] ?? card.name} board tile.` : card.kind === 'bonk' ? (card.targetMode === 'chosen' ? 'Targets any rival runner.' : 'Automatically targets the highest-score rival.') : 'Targets a rival runner or one open rival road tile.']}
+          lines={[card.text, comboHint(card), card.kind === 'terrain' ? `Places as the ${tileNames[card.tile ?? 'road'] ?? card.name} board tile.` : card.kind === 'bonk' ? (card.targetMode === 'chosen' ? 'Targets any rival runner.' : 'Automatically targets the highest-score rival.') : 'Targets a rival runner or one open rival road tile.']}
           hint={card.kind === 'terrain' ? 'Drag onto your loop or click, then choose a tile' : card.kind === 'bonk' ? 'Drag onto a rival portrait or click the bonk target' : 'Drag onto a rival portrait or click, then choose a target'}
           className="card-pop"
         />
@@ -1213,6 +1258,61 @@ function SellZone({
   );
 }
 
+function RivalIntel({
+  players,
+  focusedId,
+  onFocus
+}: {
+  players: Player[];
+  focusedId: string;
+  onFocus: (id: string) => void;
+}) {
+  if (players.length === 0) return null;
+  const sorted = [...players].sort((a, b) => {
+    const aRisk = tileRisk(upcomingTiles(a, 5).find(({ tile }) => dangerousTileTypes.has(tile.type))?.tile ?? a.board[a.position] ?? a.board[0]);
+    const bRisk = tileRisk(upcomingTiles(b, 5).find(({ tile }) => dangerousTileTypes.has(tile.type))?.tile ?? b.board[b.position] ?? b.board[0]);
+    const riskDiff = bRisk - aRisk;
+    if (riskDiff !== 0) return riskDiff;
+    return b.score - a.score;
+  });
+
+  return (
+    <section className="rival-intel" aria-label="Rival intent">
+      {sorted.slice(0, 4).map((player) => {
+        const next = upcomingTiles(player, 5);
+        const threat = next.find(({ tile }) => dangerousTileTypes.has(tile.type));
+        const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+        return (
+          <button
+            key={player.id}
+            className={`rival-intel-card ${focusedId === player.id ? 'selected' : ''} ${player.marked ? 'marked' : ''}`}
+            style={{ '--hero-color': player.color, '--hp-ratio': `${hpRatio}%` } as CSSProperties}
+            onClick={() => onFocus(player.id)}
+          >
+            <img src={heroPortraitUrl(player.heroId)} alt="" />
+            <span>
+              <strong>{player.rank === 1 ? 'Leader' : player.name}</strong>
+              <small>{threat ? `${threat.step} tiles to ${tileNames[threat.tile.type] ?? threat.tile.type}` : tacticalLabel(player)}</small>
+            </span>
+            <b>{player.score}</b>
+            <i aria-hidden="true" />
+            <InfoPopover
+              title={player.name}
+              eyebrow={player.marked ? 'Marked rival' : 'Rival read'}
+              lines={[
+                `${Math.ceil(player.hp)}/${player.maxHp} HP · Lv ${player.level}`,
+                `Next five: ${next.map(({ tile }) => tileNames[tile.type] ?? tile.type).join(', ')}`,
+                `${player.hand.length} cards · ${player.loot.length} loot · ${player.rivalHits} hits`
+              ]}
+              hint="click to focus their board"
+            />
+          </button>
+        );
+      })}
+    </section>
+  );
+}
+
 function PlayerPanel({
   player,
   rank,
@@ -1221,6 +1321,7 @@ function PlayerPanel({
   selectedCard,
   draggingCard,
   rivalTargetCard,
+  recommendedTileIndexes = [],
   onTile,
   onRivalTarget,
   onRivalTile,
@@ -1233,6 +1334,7 @@ function PlayerPanel({
   selectedCard: Card | null;
   draggingCard: Card | null;
   rivalTargetCard: Card | null;
+  recommendedTileIndexes?: number[];
   onTile?: (tile: Tile, cardId?: string) => void;
   onRivalTarget?: (cardId?: string) => void;
   onRivalTile?: (tileIndex: number, cardId?: string) => void;
@@ -1246,6 +1348,8 @@ function PlayerPanel({
   const runnerLeft = ((runnerTile.coord[0] + 0.5) / 5) * 100;
   const runnerTop = ((runnerTile.coord[1] + 0.5) / 5) * 100;
   const stunSeconds = Math.ceil((player.stunRemainingMs ?? 0) / 1000);
+  const nextTiles = upcomingTiles(player, 5);
+  const hotEvent = player.event.includes('entered tier') || player.event.includes('vanished') || player.event.includes('overgrew') || player.event.includes('foes') || player.event.includes('Tyrant');
 
   return (
     <article
@@ -1273,10 +1377,11 @@ function PlayerPanel({
         {player.board.map((tile) => {
           const canPlaceTerrain = Boolean(onTile && selectedCard?.kind === 'terrain' && tile.type !== 'camp');
           const canPlaceRivalTile = Boolean(onRivalTile && rivalTargetCard && tile.type === 'road' && player.position !== tile.index);
+          const recommended = recommendedTileIndexes.includes(tile.index);
           return (
             <button
               key={tile.index}
-              className={`tile ${tile.type} ${player.position === tile.index ? 'occupied' : ''} ${canPlaceRivalTile ? 'rival-tile-target' : ''}`}
+              className={`tile ${tile.type} ${player.position === tile.index ? 'occupied' : ''} ${canPlaceRivalTile ? 'rival-tile-target' : ''} ${recommended ? 'coach-recommended' : ''}`}
               style={{
                 gridColumn: tile.coord[0] + 1,
                 gridRow: tile.coord[1] + 1
@@ -1351,7 +1456,15 @@ function PlayerPanel({
             <span><Shield size={12} /> {player.guard}</span>
             <span>SPD {player.speed}</span>
           </div>
-          <div className="bc-event">{player.event}</div>
+          {player.signature && (
+            <div className="bc-signature" style={{ '--sig-ratio': `${Math.max(0, Math.min(100, (player.signature.value / Math.max(1, player.signature.max)) * 100))}%` } as CSSProperties}>
+              <span>{player.signature.label}</span>
+              <b>{player.signature.value}/{player.signature.max}</b>
+              <i />
+              <InfoPopover title={player.signature.label} body={player.signature.text} />
+            </div>
+          )}
+          <div className={`bc-event ${hotEvent ? 'hot' : ''}`}>{player.event}</div>
           {stunSeconds > 0 && <div className="bc-stun">stunned {stunSeconds}s</div>}
           {player.marked && <div className="bc-claim">marked</div>}
           <div className="bc-cards">{player.hand.length} cards · {player.loot.length} loot · {player.gold ?? 0} gold</div>
@@ -1368,6 +1481,18 @@ function PlayerPanel({
             className="player-pop"
           />
         </div>
+        <div className="tactical-preview" aria-label={`${player.name} next five tiles`}>
+          <strong>{tacticalLabel(player)}</strong>
+          <div>
+            {nextTiles.map(({ step, tile }) => (
+              <span key={`${tile.index}-${step}`} className={`${dangerousTileTypes.has(tile.type) ? 'danger' : ''} ${stabilizerTileTypes.has(tile.type) ? 'safe' : ''}`}>
+                <b>{step}</b>
+                <i>{tileGlyphs[tile.type] ?? '?'}</i>
+              </span>
+            ))}
+          </div>
+        </div>
+        {player.event.includes('entered tier') && <div className="tier-surge"><strong>Tier {player.loopTier}</strong><span>loop collapsed</span></div>}
         {player.combat && <CombatOverlay key={player.combat.startedAt} player={player} />}
       </div>
     </article>
@@ -1548,6 +1673,7 @@ export {
   MobileStatusBar,
   PhaseStrip,
   PlayerPanel,
+  RivalIntel,
   PlayerSideDock,
   SellZone
 };

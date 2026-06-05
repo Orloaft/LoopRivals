@@ -5,6 +5,9 @@ export const roomSettingOptions = {
   goalScore: [7200, 9600, 12600],
   pace: ['steady', 'quick', 'marathon']
 };
+
+const guidedDrawSequence = ['meadow', 'forge', 'grove', 'watchtower', 'hex', 'village', 'crypt', 'blood-moon', 'wyrm-gate'];
+const guidedRecapLimit = 5;
 export const defaultRoomSettings = {
   maxPlayers,
   goalScore,
@@ -131,7 +134,7 @@ export const heroes = [
     guard: 5,
     speed: 5,
     revivePower: 1,
-    text: 'A direct fighter with steady tempo and bonus pressure after knockdowns.'
+    text: 'A direct fighter who builds Heat through consecutive fights, then burns it into faster clears.'
   },
   {
     id: 'moss-warden',
@@ -145,7 +148,7 @@ export const heroes = [
     speed: 5,
     lapHeal: 4,
     terrainScore: 6,
-    text: 'A resilient shaper who converts healing terrain into reliable scoring.'
+    text: 'A resilient shaper whose havens overgrow nearby road and make risky loops survivable.'
   },
   {
     id: 'night-vagrant',
@@ -158,7 +161,7 @@ export const heroes = [
     guard: 2,
     speed: 5,
     lootLuck: 0.06,
-    text: 'A fast looter with the best lap economy but fragile under focused attacks.'
+    text: 'A fast looter who can vanish from one lethal hit each tier, then race the reset.'
   },
   {
     id: 'rune-archer',
@@ -171,7 +174,7 @@ export const heroes = [
     guard: 6,
     speed: 5,
     sabotage: 2,
-    text: 'A control specialist with enough guard to survive while disrupting whoever is leading.'
+    text: 'A control specialist whose rival cards pin marks and punish the leader with precise disruption.'
   },
   {
     id: 'grave-singer',
@@ -185,25 +188,25 @@ export const heroes = [
     speed: 5,
     revivePower: 1,
     terrainScore: 2,
-    text: 'A risky XP engine that thrives on dangerous tiles and comeback traits.'
+    text: 'A risky XP engine that turns stacked deaths, crypt chains, and dangerous fights into momentum.'
   }
 ];
 
 export const terrainCards = [
-  { id: 'grove', name: 'Grove', kind: 'terrain', tile: 'grove', icon: '♣', text: '+XP fights, small loot chance.' },
-  { id: 'meadow', name: 'Meadow', kind: 'terrain', tile: 'meadow', icon: '✦', text: 'Heal when crossed. Warden loves it.' },
-  { id: 'crypt', name: 'Crypt', kind: 'terrain', tile: 'crypt', icon: '☗', text: 'Hard fight. Better loot.' },
-  { id: 'wolf-den', name: 'Wolf Den', kind: 'terrain', tile: 'wolfden', icon: '♣', text: 'Pack fight. Stacks hard beside danger.' },
-  { id: 'bone-pit', name: 'Bone Pit', kind: 'terrain', tile: 'bonepit', icon: '☗', text: 'Two-enemy undead fight with better loot.' },
-  { id: 'ruined-keep', name: 'Ruined Keep', kind: 'terrain', tile: 'ruinedkeep', icon: '⚔', text: 'Elite raider fight. High XP and loot odds.' },
-  { id: 'blood-moon', name: 'Blood Moon', kind: 'terrain', tile: 'bloodmoon', icon: '☾', text: 'Danger aura: nearby fights stack larger.' },
-  { id: 'wyrm-gate', name: 'Wyrm Gate', kind: 'terrain', tile: 'wyrmgate', icon: '◆', text: 'Boss tile. Big rewards if you can survive.' },
-  { id: 'forge', name: 'Forge', kind: 'terrain', tile: 'forge', icon: '⚒', text: 'Loot and temporary armor.' },
-  { id: 'shrine', name: 'Shrine', kind: 'terrain', tile: 'shrine', icon: '✚', text: 'XP burst and trait tempo.' },
-  { id: 'mire', name: 'Mire', kind: 'terrain', tile: 'mire', icon: '≈', text: 'Slows hero, but pays cards.' },
-  { id: 'village', name: 'Village', kind: 'terrain', tile: 'village', icon: '⌂', text: 'Safe heal, small score, small loot chance.' },
-  { id: 'obelisk', name: 'Obelisk', kind: 'terrain', tile: 'obelisk', icon: '◆', text: 'Power spike and XP, but attracts fights.' },
-  { id: 'watchtower', name: 'Watchtower', kind: 'terrain', tile: 'watchtower', icon: '◈', text: 'Draws rival cards and grants control score.' }
+  { id: 'grove', name: 'Grove', kind: 'terrain', tile: 'grove', icon: '♣', text: 'Reliable XP fight. Safer near Meadow, scarier beside Blood Moon.' },
+  { id: 'meadow', name: 'Meadow', kind: 'terrain', tile: 'meadow', icon: '✦', text: 'Heal tile. Place before danger or let Moss Warden overgrow adjacent road.' },
+  { id: 'crypt', name: 'Crypt', kind: 'terrain', tile: 'crypt', icon: '☗', text: 'Hard fight with better loot. Grave Singer and Blood Moon chains love it.' },
+  { id: 'wolf-den', name: 'Wolf Den', kind: 'terrain', tile: 'wolfden', icon: '♣', text: 'Pack fight. Put beside danger when you want a bigger enemy stack.' },
+  { id: 'bone-pit', name: 'Bone Pit', kind: 'terrain', tile: 'bonepit', icon: '☗', text: 'Two-enemy undead fight. Strong near Crypt, risky near Blood Moon.' },
+  { id: 'ruined-keep', name: 'Ruined Keep', kind: 'terrain', tile: 'ruinedkeep', icon: '⚔', text: 'Elite raider fight. High XP and loot odds when your gear is ready.' },
+  { id: 'blood-moon', name: 'Blood Moon', kind: 'terrain', tile: 'bloodmoon', icon: '☾', text: 'Danger aura. Nearby fights stack larger, making greed obvious and lethal.' },
+  { id: 'wyrm-gate', name: 'Wyrm Gate', kind: 'terrain', tile: 'wyrmgate', icon: '◆', text: 'Boss-class tile. Place after a safe reset or armor spike for huge rewards.' },
+  { id: 'forge', name: 'Forge', kind: 'terrain', tile: 'forge', icon: '⚒', text: 'Armor and loot tempo. Stabilizes danger clusters before the next lap.' },
+  { id: 'shrine', name: 'Shrine', kind: 'terrain', tile: 'shrine', icon: '✚', text: 'XP burst and trait tempo. Great before a planned gate push.' },
+  { id: 'mire', name: 'Mire', kind: 'terrain', tile: 'mire', icon: '≈', text: 'Slows movement but draws cards. Use before a dangerous future tile.' },
+  { id: 'village', name: 'Village', kind: 'terrain', tile: 'village', icon: '⌂', text: 'Safe heal, XP, and supply chance. Stabilizes greed-heavy loops.' },
+  { id: 'obelisk', name: 'Obelisk', kind: 'terrain', tile: 'obelisk', icon: '◆', text: 'Power and XP spike, sometimes a fight. Grave Singer likes the risk.' },
+  { id: 'watchtower', name: 'Watchtower', kind: 'terrain', tile: 'watchtower', icon: '◈', text: 'Draws rival cards. Use when another runner is about to spike.' }
 ];
 
 export const rivalCards = [
@@ -353,6 +356,165 @@ function normalizeRoomSettings(settings = {}, fallback = defaultRoomSettings) {
   };
 }
 
+function createGuidedRun(startedAt = Date.now()) {
+  return {
+    enabled: true,
+    playerId: null,
+    rivalId: null,
+    step: 'welcome',
+    title: 'First guided duel',
+    prompt: 'Pick Ember Knight, start the loop, and place the road that keeps your first danger readable.',
+    detail: 'This run uses real rules with kinder opening draws and clearer cause-and-effect notes.',
+    recommendedTileIndexes: [4],
+    recaps: [],
+    completed: false,
+    startedAt,
+    completedAt: null
+  };
+}
+
+function guidedCard(room, cardId) {
+  const card = [...terrainCards, ...rivalCards, ...bonkCards].find((item) => item.id === cardId) ?? terrainCards[0];
+  return { ...card, instanceId: randomId(room, 'card') };
+}
+
+function pushGuidedRecap(room, line) {
+  if (!room.guidedRun?.enabled || !line) return;
+  const recaps = room.guidedRun.recaps ?? [];
+  if (recaps[0] === line) return;
+  room.guidedRun.recaps = [line, ...recaps].slice(0, guidedRecapLimit);
+}
+
+function guidedHuman(room) {
+  const guide = room.guidedRun;
+  if (!guide?.enabled || !guide.playerId) return null;
+  return room.players[guide.playerId] ?? null;
+}
+
+function isGuidedHuman(room, player) {
+  return Boolean(room.guidedRun?.enabled && room.guidedRun.playerId === player?.id);
+}
+
+function setupGuidedPlayer(room, player) {
+  room.guidedRun.playerId = player.id;
+  player.heroId = 'ember-knight';
+  player.color = heroes.find((hero) => hero.id === 'ember-knight')?.color ?? player.color;
+  player.hand = ['meadow', 'forge', 'grove'].map((cardId) => guidedCard(room, cardId));
+  player.event = 'guided duel ready';
+  player.message = 'guided duel ready';
+  player.hp = player.maxHp;
+}
+
+function ensureGuidedRival(room) {
+  const guide = room.guidedRun;
+  if (!guide?.enabled) return null;
+  if (guide.rivalId && room.players[guide.rivalId]) return room.players[guide.rivalId];
+  if (!hasRoomForPlayer(room)) return null;
+  const player = guidedHuman(room);
+  const drawIndex = player?.guidedDrawIndex ?? 0;
+  const rival = createPlayer(`guide-vesper-${room.id}`, 'Vesper', 'rune-archer', true, room);
+  if (player) player.guidedDrawIndex = drawIndex;
+  rival.guidedDormant = true;
+  rival.event = 'watching your loop';
+  rival.nextMoveAt = now(room) + 45_000 * roomTimeScale(room);
+  rival.hand = ['hex', 'bandits', 'tin-bonk'].map((cardId) => guidedCard(room, cardId));
+  room.players[rival.id] = rival;
+  guide.rivalId = rival.id;
+  addLog(room, 'Vesper waits across the loop as your first rival lesson.');
+  return rival;
+}
+
+function setupGuidedOpening(room) {
+  const player = guidedHuman(room);
+  if (!player) return;
+  const crypt = player.board[5];
+  if (crypt && crypt.type === 'road') {
+    crypt.type = 'crypt';
+    crypt.expiresOnLap = player.laps + 3;
+  }
+  const road = player.board[9];
+  if (road && road.type === 'road') {
+    road.type = 'bloodmoon';
+    road.expiresOnLap = player.laps + 3;
+  }
+  player.hp = player.maxHp;
+  player.armor = Math.max(player.armor, 1);
+  player.nextMoveAt = now(room) + 2800 * roomTimeScale(room);
+  player.nextDrawAt = now(room) + 5200 * roomTimeScale(room);
+  ensureGuidedRival(room);
+  updateGuidedRun(room);
+}
+
+function updateGuidedRun(room) {
+  const guide = room.guidedRun;
+  const player = guidedHuman(room);
+  if (!guide?.enabled || !player) return;
+
+  if (room.status === 'finished') {
+    guide.step = 'debrief';
+    guide.title = room.winnerId === player.id ? 'You claimed the loop' : 'Run debrief';
+    guide.prompt = room.winnerId === player.id
+      ? `You built ${player.heroHeat ?? 0} Heat and turned the first duel into a real win.`
+      : `You reached level ${player.level}, played ${player.cardsPlayed} cards, and learned where the loop got dangerous.`;
+    guide.detail = player.deaths > 0
+      ? `Biggest lesson: danger stacks punish recovery gaps. ${player.deaths} collapse${player.deaths === 1 ? '' : 's'} marked the run.`
+      : 'Biggest lesson: Heat and safe tiles can carry a greedy road when they are planned before danger.';
+    guide.completed = true;
+    guide.completedAt = guide.completedAt ?? now(room);
+    guide.recommendedTileIndexes = [];
+    return;
+  }
+
+  if (player.cardsPlayed === 0) {
+    guide.step = 'place-safe';
+    guide.title = 'Beat 1: shape the road';
+    guide.prompt = 'Place Meadow before the visible Crypt so your first dangerous fight has recovery nearby.';
+    guide.detail = 'The loop is the battlefield. Cards change future laps, not just the tile under your feet.';
+    guide.recommendedTileIndexes = [4];
+    return;
+  }
+
+  if (player.cardsPlayed < 2) {
+    guide.step = 'prep-threat';
+    guide.title = 'Beat 2: prepare for danger';
+    guide.prompt = 'A Crypt and Blood Moon are already visible. Add Forge or Grove where the next-five preview makes the risk legible.';
+    guide.detail = 'Safe tiles buy survival; danger tiles pay XP, loot, and Heat when Ember Knight survives them.';
+    guide.recommendedTileIndexes = [6, 8];
+    return;
+  }
+
+  if (player.cardsPlayed < 4 && player.rivalHits === 0) {
+    const rival = ensureGuidedRival(room);
+    if (rival?.guidedDormant && player.cardsPlayed >= 3) {
+      rival.guidedDormant = false;
+      rival.nextMoveAt = now(room) + 1600 * roomTimeScale(room);
+      rival.event = 'building a curse chain';
+      addLog(room, 'Vesper starts moving; watch their next five tiles before striking.');
+    }
+    guide.step = 'build-fork';
+    guide.title = 'Beat 3: choose a plan';
+    guide.prompt = 'Your next picks are a fork: stabilize with Village/Forge, or lean into Blood Moon and fight for Heat.';
+    guide.detail = 'Good Loopduel picks should feel like build decisions, not random card use.';
+    guide.recommendedTileIndexes = [7, 10];
+    return;
+  }
+
+  if (player.rivalHits === 0) {
+    guide.step = 'rival';
+    guide.title = 'Rival lesson: Vesper';
+    guide.prompt = 'Vesper is a named threat now. Use a rival or bonk card when their next-five preview shows a payoff tile.';
+    guide.detail = 'Rivals are competing engines. You are not just racing the road; you are disrupting another plan.';
+    guide.recommendedTileIndexes = [];
+    return;
+  }
+
+  guide.step = 'free-run';
+  guide.title = 'Finish the duel';
+  guide.prompt = 'You have seen placement, threat prep, build forks, and rival pressure. Push for tier II and read why each fight happened.';
+  guide.detail = 'From here the guide stays quiet unless the run ends. The rules are real.';
+  guide.recommendedTileIndexes = [];
+}
+
 export function createRoom(id, options = {}) {
   const startTime = options.now ?? Date.now();
   return {
@@ -373,7 +535,8 @@ export function createRoom(id, options = {}) {
     nextSeatIndex: 0,
     winnerId: null,
     tier: matchTiers[0],
-    claim: null
+    claim: null,
+    guidedRun: options.guidedRun ? createGuidedRun(startTime) : null
   };
 }
 
@@ -418,6 +581,7 @@ export function restoreRoom(snapshot, options = {}) {
     winnerId: typeof raw.winnerId === 'string' ? raw.winnerId : null,
     tier: matchTiers.find((tier) => tier.id === raw.tier?.id) ?? room.tier,
     claim: raw.claim && typeof raw.claim === 'object' ? cloneJson(raw.claim) : null,
+    guidedRun: raw.guidedRun && typeof raw.guidedRun === 'object' ? cloneJson(raw.guidedRun) : null,
     players: {}
   });
 
@@ -471,7 +635,12 @@ export function startRoom(room) {
   if (activePlayerCount(room) === 0) return false;
   room.status = 'running';
   room.lastActivityAt = now(room);
-  addLog(room, 'The host started the loop.');
+  if (room.guidedRun?.enabled) {
+    setupGuidedOpening(room);
+    addLog(room, 'The guided duel began with a visible Crypt and a waiting rival.');
+  } else {
+    addLog(room, 'The host started the loop.');
+  }
   return true;
 }
 
@@ -492,16 +661,63 @@ export function score(player) {
     player.tilesPlaced * 44 +
     player.cardsPlayed * 9 +
     player.loot.length * 24 +
+    (player.heroId === 'grave-singer' ? (player.graveEcho ?? 0) * 48 : 0) +
     (player.gold ?? 0) +
     player.xp -
     (player.scorePenalty ?? 0)
   ));
 }
 
+function heroSignature(player) {
+  if (player.heroId === 'ember-knight') {
+    return {
+      label: 'Heat',
+      value: player.heroHeat ?? 0,
+      max: 3,
+      text: 'Fights build Heat. Each Heat adds power during combat.'
+    };
+  }
+  if (player.heroId === 'moss-warden') {
+    return {
+      label: 'Overgrow',
+      value: player.wardenOvergrowth ?? 0,
+      max: 5,
+      text: 'Safe terrain can bloom adjacent road into Grove.'
+    };
+  }
+  if (player.heroId === 'night-vagrant') {
+    const tier = player.loopTier ?? 1;
+    return {
+      label: 'Vanish',
+      value: player.vagrantEscapeTier === tier ? 0 : 1,
+      max: 1,
+      text: player.vagrantEscapeTier === tier ? 'Tier escape spent.' : 'Next lethal hit this tier leaves 1 HP.'
+    };
+  }
+  if (player.heroId === 'rune-archer') {
+    return {
+      label: 'Marks',
+      value: player.runeMarkCount ?? 0,
+      max: 5,
+      text: 'Rival cards add extra curse pressure and pin targets.'
+    };
+  }
+  if (player.heroId === 'grave-singer') {
+    return {
+      label: 'Dirge',
+      value: player.graveEcho ?? 0,
+      max: 8,
+      text: 'Dangerous kills feed bonus XP and comeback pressure.'
+    };
+  }
+  return null;
+}
+
 export function roomSnapshot(room) {
   for (const player of Object.values(room.players)) refreshShop(room, player);
   const scoredPlayers = Object.values(room.players).map((player) => ({
     ...player,
+    signature: heroSignature(player),
     shop: player.shop ? {
       ...player.shop,
       remainingMs: Math.max(0, player.shop.rotatesAt - now(room))
@@ -552,6 +768,10 @@ export function roomSnapshot(room) {
       claimantName: room.players[room.claim.playerId]?.name ?? 'Runner',
       claimantColor: room.players[room.claim.playerId]?.color ?? '#d2b15c'
     } : null,
+    onboarding: room.guidedRun?.enabled ? {
+      ...room.guidedRun,
+      recaps: room.guidedRun.recaps ?? []
+    } : null,
     players
   };
 }
@@ -585,6 +805,11 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     lapHeal: hero.lapHeal ?? 0,
     terrainScore: hero.terrainScore ?? 0,
     revivePower: hero.revivePower ?? 0,
+    heroHeat: 0,
+    wardenOvergrowth: 0,
+    vagrantEscapeTier: 0,
+    runeMarkCount: 0,
+    graveEcho: 0,
     position: 0,
     laps: 0,
     level: 1,
@@ -628,7 +853,11 @@ export function addLog(room, line) {
   room.log = room.log.slice(0, 18);
 }
 
-export function joinRoom(room, { playerId, name, heroId }) {
+export function joinRoom(room, { playerId, name, heroId, guidedRun = false }) {
+  if (guidedRun && room.status === 'lobby' && activePlayerCount(room) === 0 && !room.guidedRun) {
+    room.guidedRun = createGuidedRun(now(room));
+    room.settings = normalizeRoomSettings({ maxPlayers: 2, goalScore: 7200, pace: 'quick' });
+  }
   const existing = room.players[playerId];
   if (existing) {
     existing.connected = true;
@@ -644,7 +873,8 @@ export function joinRoom(room, { playerId, name, heroId }) {
     return { player: null, created: false, full: true };
   }
 
-  const player = createPlayer(playerId, name, heroId, false, room);
+  const player = createPlayer(playerId, name, room.guidedRun?.enabled ? 'ember-knight' : heroId, false, room);
+  if (room.guidedRun?.enabled && !room.guidedRun.playerId) setupGuidedPlayer(room, player);
   room.players[player.id] = player;
   if (!room.hostId) room.hostId = player.id;
   room.lastActivityAt = now(room);
@@ -713,13 +943,33 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
   tile.type = card.tile;
   tile.charges = card.tile === 'mire' ? 5 : 0;
   tile.expiresOnLap = player.laps + tileLoopLife(player);
+  let overgrown = null;
+  if (player.heroId === 'moss-warden' && ['meadow', 'village'].includes(card.tile)) {
+    const neighbors = [
+      player.board[(tile.index - 1 + player.board.length) % player.board.length],
+      player.board[(tile.index + 1) % player.board.length]
+    ].filter((candidate) => candidate?.type === 'road');
+    overgrown = neighbors[0] ?? null;
+    if (overgrown) {
+      overgrown.type = 'grove';
+      overgrown.charges = 0;
+      overgrown.expiresOnLap = tile.expiresOnLap;
+      player.wardenOvergrowth = (player.wardenOvergrowth ?? 0) + 1;
+    }
+  }
   player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
   player.cardsPlayed += 1;
   player.tilesPlaced += 1;
-  player.event = `placed ${card.name}`;
+  player.event = overgrown ? `placed ${card.name}; road overgrew` : `placed ${card.name}`;
   room.lastActivityAt = now(room);
   addXp(room, player, 3 + player.terrainScore);
-  addLog(room, `${player.name} placed ${card.name}.`);
+  addLog(room, overgrown ? `${player.name} placed ${card.name}; nearby road overgrew into Grove.` : `${player.name} placed ${card.name}.`);
+  if (isGuidedHuman(room, player)) {
+    pushGuidedRecap(room, overgrown
+      ? `${card.name} changed two future stops: the placed tile and a free Grove from Moss Warden.`
+      : `${card.name} changed the future loop at tile ${tile.index}; the next-five preview now tells you when it matters.`);
+    updateGuidedRun(room);
+  }
   checkWinner(room);
 }
 
@@ -734,7 +984,8 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
   if (hasTileTarget && (!targetedTile || targetedTile.type !== 'road' || targetedTile.index === target.position)) return;
   player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
   const markedBonus = target.marked ? 3 : 0;
-  const bonus = player.sabotage + markedBonus;
+  const runeBonus = player.heroId === 'rune-archer' ? 2 : 0;
+  const bonus = player.sabotage + markedBonus + runeBonus;
 
   if (targetedTile) {
     if (card.id === 'meteor') {
@@ -793,6 +1044,11 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
   }
   player.cardsPlayed += 1;
   player.rivalHits += 1;
+  if (player.heroId === 'rune-archer') {
+    target.curse += 1;
+    target.nextMoveAt += 180 * roomTimeScale(room);
+    player.runeMarkCount = (player.runeMarkCount ?? 0) + 1;
+  }
   if (target.marked) {
     target.nextMoveAt += 420 * roomTimeScale(room);
     if (room.claim?.playerId === target.id) room.claim.expiresAt -= 2600;
@@ -801,9 +1057,14 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
   resolveDefeat(room, target);
   addXp(room, player, 7);
   player.event = targetedTile ? `armed ${card.name} on ${target.name}'s road` : `hit ${target.name} with ${card.name}`;
+  if (player.heroId === 'rune-archer') player.event += '; rune mark pinned';
   addLog(room, targetedTile
     ? `${player.name} armed ${card.name} on ${target.name}'s road.`
     : `${player.name} played ${card.name} on ${target.name}.`);
+  if (isGuidedHuman(room, player)) {
+    pushGuidedRecap(room, `${card.name} mattered because ${target.name}'s engine was visible before it paid out.`);
+    updateGuidedRun(room);
+  }
   checkWinner(room);
 }
 
@@ -852,6 +1113,10 @@ export function playBonk(room, player, cardInstanceId, targetId = null) {
   room.lastActivityAt = now(room);
   addXp(room, player, card.targetMode === 'chosen' ? 8 : 6);
   addLog(room, `${player.name} bonked ${target.name} with ${card.name}${isCombatLocked(room, target) ? '; it lands after combat.' : '.'}`);
+  if (isGuidedHuman(room, player)) {
+    pushGuidedRecap(room, `${card.name} froze ${target.name}; rival cards are timing tools, not just damage buttons.`);
+    updateGuidedRun(room);
+  }
   checkWinner(room);
   return true;
 }
@@ -946,6 +1211,7 @@ export function runRoomStep(room, options = {}) {
       botThink(room, player);
       continue;
     }
+    if (player.guidedDormant) continue;
     maybeDraw(room, player);
     if (now(room) >= player.nextMoveAt) advancePlayer(room, player);
     botThink(room, player);
@@ -992,6 +1258,10 @@ function finishClaim(room, player) {
   player.marked = false;
   player.event = 'defeated the Loop Tyrant';
   addLog(room, `${player.name} defeated the Loop Tyrant and won with ${score(player)} points.`);
+  if (isGuidedHuman(room, player)) {
+    pushGuidedRecap(room, `Final lesson: your earlier road, Heat, gear, and recovery all compounded into the Tyrant fight.`);
+    updateGuidedRun(room);
+  }
   return player;
 }
 
@@ -1281,7 +1551,13 @@ function xpNeeded(player) {
   return 24 + player.level * 13;
 }
 
-function drawCard(room = null, preferredKind = null) {
+function drawCard(room = null, preferredKind = null, player = null) {
+  if (room?.guidedRun?.enabled && player && isGuidedHuman(room, player) && preferredKind !== 'rival' && preferredKind !== 'bonk') {
+    const index = Math.max(0, (player.guidedDrawIndex ?? 0));
+    const cardId = guidedDrawSequence[index % guidedDrawSequence.length];
+    player.guidedDrawIndex = index + 1;
+    return guidedCard(room, cardId);
+  }
   const soloPool = room ? activePlayerCount(room) <= 1 : false;
   const tierId = room?.tier?.id ?? 1;
   const rivalChance = tierId >= 3 ? 0.44 : tierId === 2 ? 0.38 : 0.3;
@@ -1449,20 +1725,39 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   const tierReward = 1 + (tier - 1) * 0.28;
   const corruption = isSoloPlayer(room, player) ? player.soloCorruption ?? 0 : 0;
   const cursePenalty = player.curse > 0 ? 3 : 0;
-  const heroBonus = player.heroId === 'ember-knight' && player.hp < player.maxHp * 0.45 ? 2 : 0;
+  const emberHeat = player.heroId === 'ember-knight' ? clamp(player.heroHeat ?? 0, 0, 3) : 0;
+  const graveDirge = player.heroId === 'grave-singer' ? clamp(player.graveEcho ?? 0, 0, 8) : 0;
+  const heroBonus = player.heroId === 'ember-knight' && player.hp < player.maxHp * 0.45 ? 2 + emberHeat : emberHeat;
   const graveBonus = player.heroId === 'grave-singer' && threat >= 10 ? 4 : 0;
-  const power = Math.max(4, player.power + (isSoloPlayer(room, player) ? 0 : Math.floor(player.level / 3)));
+  const power = Math.max(4, player.power + emberHeat + Math.floor(graveDirge / 2) + (isSoloPlayer(room, player) ? 0 : Math.floor(player.level / 3)));
   const scaledThreat = threat + tierThreat + Math.floor(corruption * 0.18);
   const enemyMaxHp = clamp(scaledThreat * 2 + reward + player.level * 3 + enemyCount * 12 + Math.floor(corruption * 0.65), 24, label === 'loop tyrant' ? 320 : 210);
   const rounds = clamp(Math.ceil(enemyMaxHp / power), enemyCount, enemyCount + 5);
   const stackedPressure = (enemyCount - 1) * 2 + Math.max(0, rounds - 2);
-  const damage = clamp(scaledThreat + stackedPressure + cursePenalty + Math.floor(corruption / 16) - Math.floor(player.guard / 1.7) - player.armor, 2, label === 'loop tyrant' ? 56 : 38);
+  const graveWard = player.heroId === 'grave-singer' && threat >= 10 ? Math.min(5, enemyCount + 1 + Math.floor(graveDirge / 4)) : 0;
+  const damage = clamp(scaledThreat + stackedPressure + cursePenalty + Math.floor(corruption / 16) - Math.floor(player.guard / 1.7) - player.armor - graveWard, 2, label === 'loop tyrant' ? 56 : 38);
   player.hp -= damage;
+  let vanished = false;
+  const canVanish = !['gate warden', 'crown gate', 'loop tyrant'].includes(label);
+  if (player.hp <= 0 && canVanish && player.heroId === 'night-vagrant' && player.vagrantEscapeTier !== tier) {
+    player.vagrantEscapeTier = tier;
+    player.hp = 1;
+    vanished = true;
+  }
   player.armor = Math.max(0, player.armor - 1);
   const xpReward = Math.round((reward + heroBonus + graveBonus + (enemyCount - 1) * 5 + Math.max(0, rounds - enemyCount) * 2) * tierReward);
   addXp(room, player, xpReward);
   player.kos += enemyCount;
+  if (player.heroId === 'ember-knight') player.heroHeat = clamp((player.heroHeat ?? 0) + 1, 0, 3);
+  if (player.heroId === 'grave-singer' && threat >= 10) player.graveEcho = Math.min(8, (player.graveEcho ?? 0) + enemyCount);
   player.event = `${label}: ${enemyCount} foe${enemyCount === 1 ? '' : 's'}, -${damage} hp, +${xpReward} xp`;
+  if (emberHeat > 0) player.event += `, heat ${emberHeat}`;
+  if (vanished) player.event += ', vanished at 1 hp';
+  if (isGuidedHuman(room, player)) {
+    const heatLine = emberHeat > 0 ? ` Heat added ${emberHeat} power to the exchange.` : '';
+    const survivalLine = player.hp > 0 ? ` You survived with ${Math.ceil(player.hp)} HP.` : ' The chain was lethal, so the loop forced a reset.';
+    pushGuidedRecap(room, `${label} happened because this tile was on your road: ${enemyCount} foe${enemyCount === 1 ? '' : 's'}, ${damage} damage, ${xpReward} XP.${heatLine}${survivalLine}`);
+  }
   const encounter = combatEncounters[label] ?? {
     enemyId: 'ash-imp',
     enemyName: 'Ash Imp',
@@ -1576,6 +1871,10 @@ function revivePlayer(room, player) {
   player.event = `fell, then restarted tier ${player.loopTier ?? 1}`;
   player.lastEventAt = now(room);
   addLog(room, `${player.name} got knocked back to the start of tier ${player.loopTier ?? 1}.`);
+  if (isGuidedHuman(room, player)) {
+    pushGuidedRecap(room, `You fell because the danger chain beat your recovery. Next time, place safety before the stack, not after it.`);
+    updateGuidedRun(room);
+  }
 }
 
 function applySoloDeathPenalty(room, player) {
@@ -1687,6 +1986,7 @@ function triggerTile(room, player, tile) {
 
   resolveDefeat(room, player);
   player.lastEventAt = now(room);
+  if (isGuidedHuman(room, player)) updateGuidedRun(room);
 }
 
 function movementDelay(room, player) {
@@ -1715,8 +2015,9 @@ function advancePlayer(room, player) {
 function maybeDraw(room, player) {
   if (now(room) < player.nextDrawAt) return;
   if (player.hand.length < 7) {
-    player.hand.push(drawCard(room));
+    player.hand.push(drawCard(room, null, player));
     player.event = 'drew a card';
+    if (isGuidedHuman(room, player)) updateGuidedRun(room);
   }
   player.nextDrawAt = now(room) + Math.round((6500 + rand(room, 1400)) * player.drawRate * roomTimeScale(room));
 }
@@ -1772,6 +2073,7 @@ function chooseRivalTarget(room, player) {
 
 function botThink(room, player) {
   if (!player.isBot || room.tick % 3 !== 0 || room.status === 'finished') return;
+  if (player.guidedDormant) return;
   if (player.pendingTraits.length > 0) chooseTrait(player, chooseBotTrait(player));
 
   for (const slot of equipmentSlots) {

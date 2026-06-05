@@ -4,7 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield } from 'lucide-react';
 import { heroPortraitUrl, statLine } from './game-assets';
-import type { GameConfig, GameState, Loot, RoomSettings, ShopOffer, Tile } from './types';
+import type { GameConfig, GameState, Loot, OnboardingState, Player, RoomSettings, ShopOffer, Tile } from './types';
 import {
   DragCardGhost,
   DragLootGhost,
@@ -17,6 +17,7 @@ import {
   MobileStatusBar,
   PhaseStrip,
   PlayerPanel,
+  RivalIntel,
   PlayerSideDock,
   SellZone
 } from './game-ui';
@@ -39,12 +40,49 @@ export type LocalProfile = {
 
 const emptyProfile: LocalProfile = { matches: 0, wins: 0, bestScore: 0, bestLevel: 1 };
 
+function guidedRoomId() {
+  return `guide-${Math.floor(Math.random() * 1e7).toString(36)}`;
+}
+
 function loadProfile(): LocalProfile {
   try {
     return { ...emptyProfile, ...JSON.parse(localStorage.getItem('loopduel.profile') ?? '{}') };
   } catch {
     return emptyProfile;
   }
+}
+
+function OnboardingCoach({ onboarding, player, onClose }: { onboarding: OnboardingState; player: Player; onClose: () => void }) {
+  const isDebrief = onboarding.step === 'debrief';
+  const signature = player.signature ? `${player.signature.label} ${player.signature.value}/${player.signature.max}` : 'signature ready';
+  return (
+    <section className={`onboarding-coach ${isDebrief ? 'debrief' : ''}`} aria-label="Guided duel coach">
+      <div className="coach-copy">
+        <span>{isDebrief ? 'Run story' : 'Guided duel'}</span>
+        <strong>{onboarding.title}</strong>
+        <p>{onboarding.prompt}</p>
+        <small>{onboarding.detail}</small>
+      </div>
+      <div className="coach-facts">
+        <span>Lv {player.level}</span>
+        <span>{signature}</span>
+        <span>{player.hand.length} in hand</span>
+      </div>
+      {onboarding.recaps.length > 0 && (
+        <div className="coach-recaps">
+          {onboarding.recaps.slice(0, 3).map((line) => <span key={line}>{line}</span>)}
+        </div>
+      )}
+      {isDebrief && (
+        <div className="coach-actions">
+          <button className="primary-action" onClick={onClose}>
+            <Play size={16} />
+            Normal Run
+          </button>
+        </div>
+      )}
+    </section>
+  );
 }
 
 function App() {
@@ -191,6 +229,21 @@ function App() {
     socket.emit('join', { name, heroId, roomId, playerToken: shouldAutoReconnect ? playerToken || undefined : undefined });
     setSpectatorRoomId(null);
     setSelectedCardId(null);
+  }
+
+  function startGuidedDuel() {
+    const nextRoomId = guidedRoomId();
+    setRoomId(nextRoomId);
+    setHeroId('ember-knight');
+    socket.emit('join', {
+      name,
+      heroId: 'ember-knight',
+      roomId: nextRoomId,
+      guidedRun: true
+    });
+    setSpectatorRoomId(null);
+    setSelectedCardId(null);
+    setShowTutorial(false);
   }
 
   function spectate() {
@@ -389,6 +442,10 @@ function App() {
               <Play size={18} />
               Enter
             </button>
+            <button className="primary-action guide-action" onClick={startGuidedDuel}>
+              <HelpCircle size={18} />
+              Guided Duel
+            </button>
             <button className="icon-action" onClick={spectate}>
               <Eye size={18} />
               Watch
@@ -466,6 +523,16 @@ function App() {
 
       {game.status !== 'finished' && <PhaseStrip game={game} />}
       <MobileStatusBar player={me} game={game} />
+      {game.onboarding?.playerId === me.id && (
+        <OnboardingCoach
+          onboarding={game.onboarding}
+          player={me}
+          onClose={() => {
+            localStorage.setItem('loopduel.tutorialSeen', 'yes');
+            resetRoom();
+          }}
+        />
+      )}
       <section className="room-actions">
         <span>Room {game.id}</span>
         {game.status === 'lobby' && (
@@ -535,6 +602,7 @@ function App() {
               selectedCard={player.id === me.id ? activeCard : null}
               draggingCard={player.id === me.id ? activeCard : null}
               rivalTargetCard={player.id !== me.id && (!bonkTargetCard || bonkTargetCard.targetMode === 'chosen' || player.id === highestScoreRival?.id) ? rivalTargetCard ?? bonkTargetCard : null}
+              recommendedTileIndexes={player.id === me.id ? game.onboarding?.recommendedTileIndexes ?? [] : []}
               onTile={player.id === me.id ? placeCard : undefined}
               onRivalTarget={player.id !== me.id ? (cardId) => {
                 const card = me.hand.find((item) => item.instanceId === cardId) ?? activeCard;
@@ -554,10 +622,19 @@ function App() {
           onTarget={(targetId) => bonkTargetCard ? playBonk(targetId) : playRival(targetId)}
         />
         <section className="control-dock">
+          <RivalIntel
+            players={game.players.filter((player) => player.id !== me.id)}
+            focusedId={focusedPlayerId}
+            onFocus={focusBoard}
+          />
           <div className="mobile-tray-head">
+            <button className="mobile-drawer-tab board-tab" onClick={() => setMobileDrawer(null)}>
+              <Eye size={15} />
+              Board
+            </button>
             <button className="mobile-drawer-tab" onClick={() => setMobileDrawer((mode) => mode === 'loot' ? null : 'loot')}>
               <Shield size={15} />
-              Loot
+              Gear
             </button>
             <button className="mobile-drawer-tab" onClick={() => setMobileDrawer((mode) => mode === 'talents' ? null : 'talents')}>
               <GitBranch size={15} />

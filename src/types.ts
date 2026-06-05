@@ -123,6 +123,21 @@ export type ClaimState = {
   mode: 'solo-crown-lap' | 'marked-claim-lap';
 };
 
+export type OnboardingState = {
+  enabled: boolean;
+  playerId: string | null;
+  rivalId: string | null;
+  step: string;
+  title: string;
+  prompt: string;
+  detail: string;
+  recommendedTileIndexes: number[];
+  recaps: string[];
+  completed: boolean;
+  startedAt: number;
+  completedAt: number | null;
+};
+
 export type Combat = {
   enemyId: string;
   enemyName: string;
@@ -187,6 +202,12 @@ export type Player = {
   lapHeal: number;
   terrainScore: number;
   revivePower: number;
+  signature?: {
+    label: string;
+    value: number;
+    max: number;
+    text: string;
+  };
   position: number;
   laps: number;
   level: number;
@@ -211,6 +232,8 @@ export type Player = {
   event: string;
   message: string;
   combat: Combat | null;
+  lastEventAt?: number;
+  nextMoveAt?: number;
   stunnedUntil: number | null;
   stunnedBy: string | null;
   pendingBonks?: PendingBonk[];
@@ -247,6 +270,7 @@ export type GameState = {
   settings: RoomSettings;
   tier: MatchTier;
   claim: ClaimState | null;
+  onboarding: OnboardingState | null;
   hostId: string | null;
   winnerId: string | null;
   winner: Player | null;
