@@ -314,7 +314,50 @@ function traitGlyph(name: string) {
 }
 
 function itemStatLine(item: Loot) {
-  return `+${item.power}P +${item.guard}G +${item.speed}S +${item.maxHp}HP`;
+  return itemStatParts(item).join(' ');
+}
+
+function itemStatParts(item: Loot) {
+  const parts = [
+    item.power ? `+${item.power}P` : '',
+    item.guard ? `+${item.guard}G` : '',
+    item.speed ? `+${item.speed}S` : '',
+    item.maxHp ? `+${item.maxHp}HP` : '',
+    item.sabotage ? `+${item.sabotage}Rival` : '',
+    item.lapHeal ? `+${item.lapHeal}Heal` : '',
+    item.terrainScore ? `+${item.terrainScore}Tile` : '',
+    item.revivePower ? `+${item.revivePower}Revive` : '',
+    item.lootLuck ? `+${Math.round(item.lootLuck * 100)}%Loot` : '',
+    item.drawRate ? `${Math.round(Math.abs(item.drawRate) * 100)}%Draw` : ''
+  ].filter(Boolean);
+  return parts.length > 0 ? parts : ['No stats'];
+}
+
+function statValue(item: Loot | null | undefined, stat: keyof Pick<Loot, 'power' | 'guard' | 'speed' | 'maxHp' | 'sabotage' | 'lapHeal' | 'terrainScore' | 'revivePower'>) {
+  return item?.[stat] ?? 0;
+}
+
+function itemDeltaLine(item: Loot, equipped: Loot | null | undefined) {
+  const parts = [
+    ['P', statValue(item, 'power') - statValue(equipped, 'power')],
+    ['G', statValue(item, 'guard') - statValue(equipped, 'guard')],
+    ['S', statValue(item, 'speed') - statValue(equipped, 'speed')],
+    ['HP', statValue(item, 'maxHp') - statValue(equipped, 'maxHp')]
+  ]
+    .filter(([, value]) => value !== 0)
+    .map(([label, value]) => `${Number(value) > 0 ? '+' : ''}${value}${label}`);
+  return parts.length > 0 ? parts.join(' ') : 'sidegrade';
+}
+
+function loadoutRole(player: Player) {
+  const equipped = Object.values(player.loadout).filter(Boolean) as Loot[];
+  const roles = equipped.reduce<Record<string, number>>((counts, item) => {
+    const role = item.role ?? 'Mixed';
+    counts[role] = (counts[role] ?? 0) + 1;
+    return counts;
+  }, {});
+  const [role, count] = Object.entries(roles).sort((a, b) => b[1] - a[1])[0] ?? ['Unbuilt', 0];
+  return `${role} ${count}/${equipmentSlots.length}`;
 }
 
 function HandBar({
@@ -416,6 +459,7 @@ function DragLootGhost({ item, x, y }: { item: Loot; x: number; y: number }) {
     >
       {slotIcon(item.slot, 22)}
       <span>{item.name}</span>
+      <small>{item.role ?? item.slot}</small>
     </div>
   );
 }
@@ -481,6 +525,13 @@ function PlayerSideDock({
         <small><Coins size={12} /> {player.gold ?? 0}</small>
       </div>
 
+      <div className="build-strip" aria-label="Current loadout stats">
+        <span><Swords size={13} /> {player.power}</span>
+        <span><Shield size={13} /> {player.guard}</span>
+        <span><Footprints size={13} /> {player.speed}</span>
+        <strong>{loadoutRole(player)}</strong>
+      </div>
+
       <div className={`phase-card ${game.claim?.playerId === player.id ? 'claimant' : ''}`}>
         <div>
           <strong>{game.claim?.playerId === player.id ? 'Claim lap active' : game.tier.name}</strong>
@@ -528,7 +579,7 @@ function PlayerSideDock({
                   {item && <span className="paper-slot-rarity" />}
                   <InfoPopover
                     title={item?.name ?? `${equipmentLabels[slot]} slot`}
-                    eyebrow={item ? `${item.rarity} ${equipmentLabels[slot]}` : 'Loadout'}
+                    eyebrow={item ? `${item.rarity} ${item.role ?? equipmentLabels[slot]}` : 'Loadout'}
                     body={item ? itemStatLine(item) : canDrop ? `Drop ${draggingLoot?.name ?? 'item'} here.` : 'No item equipped.'}
                     hint={canDrop ? 'drop to equip' : undefined}
                   />
@@ -579,11 +630,12 @@ function PlayerSideDock({
                   onDragEnd={onLootDragEnd}
                 >
                   {slotIcon(item.slot, 17)}
+                  <span className="loot-role">{item.role?.slice(0, 1) ?? '?'}</span>
                   <InfoPopover
                     title={item.name}
-                    eyebrow={`${item.rarity} ${item.slot}`}
-                    body={itemStatLine(item)}
-                    hint="click to equip"
+                    eyebrow={`${item.rarity} ${item.role ?? item.slot}`}
+                    body={`${itemStatLine(item)} · ${itemDeltaLine(item, player.loadout[item.slot])}`}
+                    hint="click or drag to equip"
                   />
                 </button>
               ))}
@@ -711,7 +763,7 @@ function MobileDrawer({
                   {slotIcon(slot, 16)}
                   <span>
                     <strong>{item?.name ?? equipmentLabels[slot]}</strong>
-                    <small>{item ? itemStatLine(item) : canDrop ? 'drop to equip' : 'empty'}</small>
+                    <small>{item ? `${item.role ?? item.rarity} · ${itemStatLine(item)}` : canDrop ? 'drop to equip' : 'empty'}</small>
                   </span>
                 </div>
               );
@@ -734,9 +786,10 @@ function MobileDrawer({
                 onDragEnd={onLootDragEnd}
               >
                 {slotIcon(item.slot, 17)}
+                <i>{item.role?.slice(0, 1) ?? '?'}</i>
                 <span>
                   <strong>{item.name}</strong>
-                  <small>{itemStatLine(item)}</small>
+                  <small>{item.role ?? item.rarity} · {itemStatLine(item)} · {itemDeltaLine(item, player.loadout[item.slot])}</small>
                 </span>
               </button>
             ))}

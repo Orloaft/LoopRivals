@@ -167,13 +167,14 @@ test('players have a complete paperdoll loadout with varied equipment slots', ()
 
   assert.deepEqual(Object.keys(player.loadout), testApi.equipmentSlots);
 
-  const boots = { id: 'swift-boots', slot: 'boots', name: 'Road Boots', rarity: 'rare', power: 0, guard: 0, speed: 2, maxHp: 0 };
+  const boots = { id: 'swift-boots', slot: 'boots', name: 'Quick Road Boots', rarity: 'rare', role: 'Scout', power: 0, guard: 0, speed: 2, maxHp: 0, drawRate: -0.02 };
   player.loot = [boots];
 
   testApi.equip(player, boots.id);
 
   assert.equal(player.loadout.boots.id, boots.id);
   assert.equal(player.speed, 7);
+  assert.ok(player.drawRate < 1);
 });
 
 test('active combat stops runner movement until the bespoke combat beat expires', () => {
@@ -303,7 +304,7 @@ test('reaching the goal score starts a claim lap instead of ending immediately',
   const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
   room.players.leader = player;
   room.status = 'running';
-  player.level = 20;
+  player.level = Math.ceil(testApi.goalScore / 390);
 
   const winner = testApi.checkWinner(room);
   const snapshot = testApi.roomSnapshot(room);
@@ -320,7 +321,7 @@ test('claim lap finishes after the claimant completes another lap', () => {
   const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
   room.players.leader = player;
   room.status = 'running';
-  player.level = 20;
+  player.level = Math.ceil(testApi.goalScore / 390);
   player.laps = 3;
 
   testApi.checkWinner(room);

@@ -56,10 +56,17 @@ export type Loot = {
   slot: EquipmentSlot;
   name: string;
   rarity: 'common' | 'rare' | 'relic';
+  role?: string;
   power: number;
   guard: number;
   speed: number;
   maxHp: number;
+  drawRate?: number;
+  sabotage?: number;
+  lootLuck?: number;
+  lapHeal?: number;
+  terrainScore?: number;
+  revivePower?: number;
 };
 
 export type Tile = {
@@ -140,6 +147,12 @@ export type Player = {
   power: number;
   guard: number;
   speed: number;
+  drawRate: number;
+  sabotage: number;
+  lootLuck: number;
+  lapHeal: number;
+  terrainScore: number;
+  revivePower: number;
   position: number;
   laps: number;
   level: number;

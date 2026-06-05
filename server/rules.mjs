@@ -1,5 +1,5 @@
 export const maxPlayers = 4;
-export const goalScore = 7200;
+export const goalScore = 12600;
 // Global pacing multiplier. >1 slows the game down (all timed delays get longer).
 // 2.4 keeps the board readable while restoring the "always moving" pressure.
 const timeScale = 2.4;
@@ -251,6 +251,44 @@ const lootNames = {
   boots: ['Road Boots', 'Softstep Greaves', 'Moss Treads', 'Spur Sabatons', 'Wyrm Soles'],
   ring: ['Red Loop Ring', 'Lucky Band', 'Vow Signet', 'Black Market Seal', 'Grove Coil'],
   charm: ['Lucky Tooth', 'War Drum', 'Soft Lantern', 'Hex Needle', 'Green Sigil']
+};
+
+const lootRoles = {
+  duelist: {
+    label: 'Duelist',
+    prefix: ['Keen', 'Red', 'Vowbound'],
+    stat: { power: 1 },
+    bonus: { sabotage: 1 },
+    slots: ['weapon', 'gloves', 'ring']
+  },
+  bulwark: {
+    label: 'Bulwark',
+    prefix: ['Iron', 'Rooted', 'Citadel'],
+    stat: { guard: 1, maxHp: 2 },
+    bonus: { lapHeal: 1 },
+    slots: ['shield', 'helm', 'armor']
+  },
+  scout: {
+    label: 'Scout',
+    prefix: ['Quick', 'Roadwise', 'Lanternlit'],
+    stat: { speed: 1 },
+    bonus: { drawRate: -0.02 },
+    slots: ['boots', 'gloves', 'charm']
+  },
+  harvest: {
+    label: 'Harvest',
+    prefix: ['Lucky', 'Gilded', 'Black-Market'],
+    stat: { maxHp: 1 },
+    bonus: { lootLuck: 0.03 },
+    slots: ['ring', 'charm', 'helm']
+  },
+  ritual: {
+    label: 'Ritual',
+    prefix: ['Hexed', 'Grave', 'Moon-Rune'],
+    stat: { power: 1 },
+    bonus: { terrainScore: 2, revivePower: 1 },
+    slots: ['weapon', 'armor', 'charm']
+  }
 };
 
 export const boardPath = [
@@ -878,15 +916,28 @@ function drawLoot(room, player) {
   const rarity = rarityRoll > 1.08 ? 'relic' : rarityRoll > 0.76 ? 'rare' : 'common';
   const scale = rarity === 'relic' ? 3 : rarity === 'rare' ? 2 : 1;
   const secondary = rand(room, 2);
+  const rolePool = Object.entries(lootRoles).filter(([, role]) => role.slots.includes(slot));
+  const [, role] = sample(room, rolePool);
+  const namePrefix = sample(room, role.prefix);
+  const itemName = sample(room, lootNames[slot]);
+  const bonusScale = rarity === 'relic' ? 2 : 1;
+  const statScale = rarity === 'relic' ? 1 : 0;
   const item = {
     id: randomId(room, 'loot'),
     slot,
-    name: `${rarity === 'relic' ? 'Relic ' : rarity === 'rare' ? 'Bright ' : ''}${sample(room, lootNames[slot])}`,
+    name: `${rarity === 'relic' ? 'Relic ' : rarity === 'rare' ? 'Bright ' : ''}${namePrefix} ${itemName}`,
     rarity,
-    power: ['weapon', 'gloves', 'ring'].includes(slot) ? scale + secondary : slot === 'helm' ? rand(room, 2) : 0,
-    guard: ['shield', 'armor', 'helm'].includes(slot) ? scale + secondary : slot === 'boots' ? rand(room, 2) : 0,
-    speed: ['boots', 'charm', 'gloves'].includes(slot) ? Math.max(1, scale - (slot === 'gloves' ? 1 : 0)) : 0,
-    maxHp: ['armor', 'shield', 'helm'].includes(slot) ? scale * (slot === 'armor' ? 3 : 2) : slot === 'ring' || slot === 'charm' ? scale : 0
+    role: role.label,
+    power: (['weapon', 'gloves', 'ring'].includes(slot) ? scale + secondary : slot === 'helm' ? rand(room, 2) : 0) + (role.stat.power ?? 0) * statScale,
+    guard: (['shield', 'armor', 'helm'].includes(slot) ? scale + secondary : slot === 'boots' ? rand(room, 2) : 0) + (role.stat.guard ?? 0) * statScale,
+    speed: (['boots', 'charm', 'gloves'].includes(slot) ? Math.max(1, scale - (slot === 'gloves' ? 1 : 0)) : 0) + (role.stat.speed ?? 0) * statScale,
+    maxHp: (['armor', 'shield', 'helm'].includes(slot) ? scale * (slot === 'armor' ? 3 : 2) : slot === 'ring' || slot === 'charm' ? scale : 0) + (role.stat.maxHp ?? 0) * scale,
+    drawRate: role.bonus.drawRate ? Number((role.bonus.drawRate * bonusScale).toFixed(2)) : undefined,
+    sabotage: role.bonus.sabotage ? role.bonus.sabotage * bonusScale : undefined,
+    lootLuck: role.bonus.lootLuck ? Number((role.bonus.lootLuck * bonusScale).toFixed(2)) : undefined,
+    lapHeal: role.bonus.lapHeal ? role.bonus.lapHeal * bonusScale : undefined,
+    terrainScore: role.bonus.terrainScore ? role.bonus.terrainScore * bonusScale : undefined,
+    revivePower: role.bonus.revivePower ? role.bonus.revivePower * bonusScale : undefined
   };
   player.loot.unshift(item);
   player.loot = player.loot.slice(0, 10);
@@ -928,6 +979,12 @@ function recalcStats(player) {
     power += item.power ?? 0;
     guard += item.guard ?? 0;
     speed += item.speed ?? 0;
+    drawRate *= Math.max(0.72, 1 + (item.drawRate ?? 0));
+    sabotage += item.sabotage ?? 0;
+    lootLuck += item.lootLuck ?? 0;
+    lapHeal += item.lapHeal ?? 0;
+    terrainScore += item.terrainScore ?? 0;
+    revivePower += item.revivePower ?? 0;
   }
 
   const hpGain = maxHp - player.maxHp;
@@ -1224,7 +1281,19 @@ function maybeDraw(room, player) {
 }
 
 function bestItemScore(item) {
-  return item.power * 4 + item.guard * 3 + item.speed * 4 + item.maxHp * 0.7 + (item.rarity === 'relic' ? 8 : item.rarity === 'rare' ? 4 : 0);
+  return (
+    item.power * 4 +
+    item.guard * 3 +
+    item.speed * 4 +
+    item.maxHp * 0.7 +
+    (item.sabotage ?? 0) * 2.6 +
+    (item.lapHeal ?? 0) * 2.2 +
+    (item.terrainScore ?? 0) * 1.6 +
+    (item.revivePower ?? 0) * 2.8 +
+    (item.lootLuck ?? 0) * 72 +
+    Math.max(0, -(item.drawRate ?? 0)) * 140 +
+    (item.rarity === 'relic' ? 8 : item.rarity === 'rare' ? 4 : 0)
+  );
 }
 
 function chooseBotTrait(player) {
