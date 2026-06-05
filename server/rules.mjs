@@ -11,7 +11,7 @@ export const matchTiers = [
 ];
 const claimTimeoutMs = 90000 * timeScale;
 const soloGateScores = [1800, 4500, goalScore];
-const combatBaseDisplayMs = 1500 * timeScale;
+const combatBaseDisplayMs = 1100;
 
 const combatEncounters = {
   'wolf grove': {
@@ -995,7 +995,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     effect: 'ember'
   };
   const timestamp = now(room);
-  const durationMs = combatBaseDisplayMs + enemyCount * 450 * timeScale + rounds * 160 * timeScale;
+  const durationMs = combatBaseDisplayMs + enemyCount * 260 + rounds * 90;
   player.combat = {
     ...encounter,
     label,

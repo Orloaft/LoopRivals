@@ -5,6 +5,7 @@ import { Bot, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Shield } from 
 import { heroPortraitUrl, statLine } from './game-assets';
 import type { GameConfig, GameState, Loot, Tile } from './types';
 import {
+  DragCardGhost,
   GameMenu,
   HandBar,
   HelpOverlay,
@@ -39,6 +40,7 @@ function App() {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [dragCardId, setDragCardId] = useState<string | null>(null);
   const [dragLootId, setDragLootId] = useState<string | null>(null);
+  const [dragPoint, setDragPoint] = useState({ x: 0, y: 0 });
   const [bgmOn, setBgmOn] = useState(() => localStorage.getItem('loopduel.bgm') !== 'off');
   const [mobileDrawer, setMobileDrawer] = useState<'loot' | 'talents' | 'log' | 'menu' | null>(null);
 
@@ -106,6 +108,24 @@ function App() {
     window.addEventListener('pointerdown', play, { once: true });
     return () => window.removeEventListener('pointerdown', play);
   }, [bgmOn, me]);
+
+  useEffect(() => {
+    document.body.classList.toggle('card-drag-active', Boolean(draggedCard));
+    if (!draggedCard) return () => document.body.classList.remove('card-drag-active');
+
+    function trackDrag(event: DragEvent) {
+      if (event.clientX === 0 && event.clientY === 0) return;
+      setDragPoint({ x: event.clientX, y: event.clientY });
+    }
+
+    window.addEventListener('drag', trackDrag, true);
+    window.addEventListener('dragover', trackDrag, true);
+    return () => {
+      document.body.classList.remove('card-drag-active');
+      window.removeEventListener('drag', trackDrag, true);
+      window.removeEventListener('dragover', trackDrag, true);
+    };
+  }, [draggedCard]);
 
   function join() {
     socket.emit('join', { name, heroId, roomId, playerToken: shouldAutoReconnect ? playerToken || undefined : undefined });
@@ -329,9 +349,10 @@ function App() {
             selectedId={selectedCardId}
             draggingId={dragCardId}
             onSelect={(id) => setSelectedCardId(id === selectedCardId ? null : id)}
-            onDragStart={(id) => {
+            onDragStart={(id, point) => {
               setSelectedCardId(id);
               setDragCardId(id);
+              setDragPoint(point);
             }}
             onDragEnd={() => setDragCardId(null)}
           />
@@ -407,6 +428,7 @@ function App() {
           onToggleBgm={() => setBgmOn((on) => !on)}
         />
       </section>
+      {draggedCard && <DragCardGhost card={draggedCard} x={dragPoint.x} y={dragPoint.y} />}
       <SellZone active={Boolean(dragCardId || dragLootId)} onDrop={handleSellDrop} />
       {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}
       {showMenu && (

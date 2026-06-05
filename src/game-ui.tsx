@@ -312,7 +312,7 @@ function HandBar({
   selectedId: string | null;
   draggingId: string | null;
   onSelect: (id: string) => void;
-  onDragStart: (id: string) => void;
+  onDragStart: (id: string, point: { x: number; y: number }) => void;
   onDragEnd: () => void;
 }) {
   return (
@@ -331,35 +331,61 @@ function HandBar({
           } as CSSProperties}
           onClick={() => onSelect(card.instanceId)}
           onDragStart={(event) => {
+            const transparentDragImage = document.createElement('canvas');
+            transparentDragImage.width = 1;
+            transparentDragImage.height = 1;
+            event.dataTransfer.setDragImage(transparentDragImage, 0, 0);
             event.dataTransfer.effectAllowed = card.kind === 'terrain' ? 'move' : 'link';
             event.dataTransfer.setData('application/x-loopduel-kind', 'card');
             event.dataTransfer.setData('application/x-loopduel-card-id', card.instanceId);
             event.dataTransfer.setData('text/plain', card.instanceId);
-            onDragStart(card.instanceId);
+            onDragStart(card.instanceId, { x: event.clientX, y: event.clientY });
           }}
           onDragEnd={onDragEnd}
         >
-          <span className="card-corner top">{card.icon}</span>
-          <span className="card-art">
-            <span>{card.icon}</span>
-          </span>
-          <span className="card-pips" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-          <span className="card-corner bottom">{card.icon}</span>
-          <span className="card-grab"><Hand size={14} /></span>
-          <InfoPopover
-            title={card.name}
-            eyebrow={`${cardSuit(card)} ${card.kind}`}
-            body={card.text}
-            hint={card.kind === 'terrain' ? 'Drag onto your loop or click, then choose a tile' : 'Drag onto a rival portrait or click, then choose a target'}
-            className="card-pop"
-          />
+          <CardFace card={card} />
         </button>
       ))}
       {hand.length === 0 && <span className="hand-empty">drawing…</span>}
+    </div>
+  );
+}
+
+function CardFace({ card, popover = true }: { card: Card; popover?: boolean }) {
+  return (
+    <>
+      <span className="card-corner top">{card.icon}</span>
+      <span className="card-art">
+        <span>{card.icon}</span>
+      </span>
+      <span className="card-pips" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      <span className="card-corner bottom">{card.icon}</span>
+      <span className="card-grab"><Hand size={14} /></span>
+      {popover && (
+        <InfoPopover
+          title={card.name}
+          eyebrow={`${cardSuit(card)} ${card.kind}`}
+          body={card.text}
+          hint={card.kind === 'terrain' ? 'Drag onto your loop or click, then choose a tile' : 'Drag onto a rival portrait or click, then choose a target'}
+          className="card-pop"
+        />
+      )}
+    </>
+  );
+}
+
+function DragCardGhost({ card, x, y }: { card: Card; x: number; y: number }) {
+  return (
+    <div
+      className={`drag-card-ghost hand-card ${cardFaceClass(card)}`}
+      style={{ '--drag-x': `${x}px`, '--drag-y': `${y}px` } as CSSProperties}
+      aria-hidden="true"
+    >
+      <CardFace card={card} popover={false} />
     </div>
   );
 }
@@ -1089,6 +1115,7 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
 
 export {
   GameMenu,
+  DragCardGhost,
   HandBar,
   HelpOverlay,
   InfoPopover,

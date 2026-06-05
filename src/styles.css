@@ -510,6 +510,19 @@ input:focus {
     0 16px 42px rgba(0, 0, 0, 0.36);
 }
 
+.player-panel.rival-drop-target::after {
+  content: '';
+  position: absolute;
+  inset: 14%;
+  z-index: 4;
+  pointer-events: none;
+  border: 2px dashed color-mix(in srgb, var(--blood) 72%, var(--gold-bright));
+  border-radius: 8px;
+  background: radial-gradient(circle, rgba(159, 61, 53, 0.16), transparent 66%);
+  opacity: 0.86;
+  animation: target-ring 860ms ease-in-out infinite;
+}
+
 .board {
   position: relative;
   display: grid;
@@ -573,6 +586,7 @@ input:focus {
 
 .tile.rival-tile-target {
   border-color: color-mix(in srgb, var(--blood) 46%, rgba(210, 177, 92, 0.42));
+  cursor: var(--cursor-large);
   box-shadow:
     inset 0 0 0 1px rgba(159, 61, 53, 0.2),
     0 0 10px rgba(159, 61, 53, 0.14);
@@ -961,11 +975,13 @@ input:focus {
 
 .hero-combat img {
   width: min(100%, 54px);
+  will-change: transform;
+  animation: hero-strike var(--combat-duration, 2200ms) cubic-bezier(0.2, 0.9, 0.2, 1) both;
 }
 
 .enemy-combat img {
   will-change: transform;
-  animation: enemy-hit var(--combat-duration, 5200ms) ease-out both;
+  animation: enemy-hit var(--combat-duration, 2200ms) cubic-bezier(0.2, 0.9, 0.2, 1) both;
 }
 
 .combat-name {
@@ -989,6 +1005,8 @@ input:focus {
   color: var(--gold-bright);
   text-align: center;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.9);
+  will-change: transform;
+  animation: impact-pop var(--combat-duration, 2200ms) cubic-bezier(0.2, 0.9, 0.2, 1) both;
 }
 
 .combat-fx-sprite {
@@ -1126,7 +1144,7 @@ input:focus {
     width: var(--hp-before);
   }
 
-  42%,
+  30%,
   100% {
     width: var(--hp-after);
   }
@@ -1134,18 +1152,18 @@ input:focus {
 
 @keyframes combat-fx-sheet {
   0%,
-  14% {
+  8% {
     opacity: 0;
     background-position-x: 0%;
     transform: translate(-58%, -44%) scale(0.72);
   }
 
-  18%,
-  46% {
+  12%,
+  34% {
     opacity: 1;
   }
 
-  58%,
+  48%,
   100% {
     opacity: 0;
     background-position-x: 100%;
@@ -1153,19 +1171,55 @@ input:focus {
   }
 }
 
+@keyframes hero-strike {
+  0%,
+  8% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  15% {
+    transform: translate3d(24px, -4px, 0) scale(1.08);
+  }
+
+  24%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
 @keyframes enemy-hit {
   0%,
+  12% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
   18% {
-    transform: translateX(0);
+    transform: translate3d(8px, -2px, 0) scale(0.96);
   }
 
-  24% {
-    transform: translateX(4px);
+  23% {
+    transform: translate3d(-6px, 1px, 0) scale(1.03);
   }
 
-  36%,
+  34%,
   100% {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes impact-pop {
+  0%,
+  9% {
+    transform: scale(0.86);
+  }
+
+  15% {
+    transform: scale(1.14);
+  }
+
+  27%,
+  100% {
+    transform: scale(1);
   }
 }
 
@@ -1258,6 +1312,9 @@ input:focus {
     translateY(var(--card-lift))
     rotate(var(--card-tilt));
   transform-origin: 50% 115%;
+  will-change: transform, opacity;
+  animation: card-deal-in 280ms cubic-bezier(0.18, 0.92, 0.22, 1.18) both;
+  animation-delay: calc(min(var(--card-index), 6) * 26ms);
   transition:
     transform 150ms ease,
     filter 150ms ease,
@@ -1360,8 +1417,41 @@ input:focus {
 }
 
 .hand-card.dragging {
-  opacity: 0.62;
+  animation: none;
+  opacity: 0;
   cursor: var(--cursor-grabbing);
+  pointer-events: none;
+  transform:
+    translateY(4px)
+    rotate(var(--card-tilt))
+    scale(0.94);
+}
+
+.drag-card-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 90;
+  margin: 0;
+  pointer-events: none;
+  cursor: var(--cursor-grabbing);
+  transform:
+    translate3d(calc(var(--drag-x) - 50%), calc(var(--drag-y) - 68%), 0)
+    rotate(-2deg)
+    scale(1.08);
+  transform-origin: center;
+  animation: drag-card-float 520ms ease-in-out infinite alternate;
+  filter: saturate(1.08) brightness(1.08);
+  box-shadow:
+    0 24px 40px rgba(0, 0, 0, 0.68),
+    0 0 0 2px rgba(240, 217, 140, 0.3),
+    0 0 22px color-mix(in srgb, var(--gold) 42%, transparent),
+    inset 0 0 0 2px rgba(0, 0, 0, 0.28);
+}
+
+body.card-drag-active,
+body.card-drag-active * {
+  cursor: var(--cursor-grabbing) !important;
 }
 
 .card-art {
@@ -1471,6 +1561,34 @@ input:focus {
 .hand-card:hover .card-grab,
 .hand-card.selected .card-grab {
   opacity: 1;
+}
+
+@keyframes card-deal-in {
+  from {
+    opacity: 0;
+    transform:
+      translate3d(0, -34px, 0)
+      rotate(calc(var(--card-tilt) - 10deg))
+      scale(0.82);
+  }
+
+  72% {
+    opacity: 1;
+    transform:
+      translate3d(0, calc(var(--card-lift) - 7px), 0)
+      rotate(calc(var(--card-tilt) + 2deg))
+      scale(1.04);
+  }
+}
+
+@keyframes drag-card-float {
+  from {
+    translate: 0 -2px;
+  }
+
+  to {
+    translate: 0 3px;
+  }
 }
 
 /* Shared retro hover tooltip. */
@@ -1593,14 +1711,16 @@ input:focus {
 
 .target-chip {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 46px;
+  height: 46px;
   padding: 0;
   overflow: visible;
   border: 2px solid color-mix(in srgb, var(--hero-color) 70%, var(--blood));
   border-radius: 5px;
   background: #15100f;
-  cursor: var(--cursor-hand);
+  cursor: var(--cursor-large);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--hero-color) 35%, transparent);
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .target-chip img {
@@ -1612,6 +1732,31 @@ input:focus {
 
 .target-chip:hover {
   border-color: var(--gold-bright);
+  transform: translateY(-2px) scale(1.06);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hero-color) 24%, transparent);
+}
+
+.target-chip::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  pointer-events: none;
+  border: 1px dashed color-mix(in srgb, var(--hero-color) 70%, var(--gold-bright));
+  border-radius: 8px;
+  opacity: 0.6;
+}
+
+@keyframes target-ring {
+  0%,
+  100% {
+    transform: scale(0.98);
+    opacity: 0.66;
+  }
+
+  50% {
+    transform: scale(1.02);
+    opacity: 0.96;
+  }
 }
 
 .sell-zone {
