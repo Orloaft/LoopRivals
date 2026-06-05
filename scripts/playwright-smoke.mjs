@@ -85,6 +85,8 @@ try {
   await page.waitForSelector('.game-shell .mobile-status-bar');
   await page.waitForSelector('.player-panel.active.focused .board');
   await page.waitForSelector('.hand-card');
+  await page.getByRole('button', { name: /^start$/i }).click();
+  await page.getByRole('button', { name: /start match/i }).click();
 
   assert.equal(await page.locator('.hand-card.rival').count(), 0, 'solo opening hand should not contain rival cards');
   assertCustomCursor(

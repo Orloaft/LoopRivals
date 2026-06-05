@@ -20,8 +20,11 @@ export type Card = {
   id: string;
   instanceId: string;
   name: string;
-  kind: 'terrain' | 'rival';
+  kind: 'terrain' | 'rival' | 'bonk';
   tile?: string;
+  rarity?: 'common' | 'rare' | 'relic';
+  targetMode?: 'leader' | 'chosen';
+  stunSeconds?: number;
   icon: string;
   text: string;
 };
@@ -69,6 +72,24 @@ export type Loot = {
   revivePower?: number;
 };
 
+export type ShopOffer = {
+  id: string;
+  kind: 'card';
+  card: Card;
+  price: number;
+} | {
+  id: string;
+  kind: 'loot';
+  loot: Loot;
+  price: number;
+};
+
+export type Shop = {
+  offers: ShopOffer[];
+  rotatesAt: number;
+  remainingMs?: number;
+};
+
 export type Tile = {
   index: number;
   coord: [number, number];
@@ -82,6 +103,12 @@ export type MatchTier = {
   name: string;
   minScore: number;
   text: string;
+};
+
+export type RoomSettings = {
+  maxPlayers: number;
+  goalScore: number;
+  pace: 'steady' | 'quick' | 'marathon';
 };
 
 export type ClaimState = {
@@ -126,6 +153,12 @@ export type CombatBeat = {
   enemyHp: number;
 };
 
+export type PendingBonk = {
+  by: string;
+  cardName: string;
+  durationMs: number;
+};
+
 export type Player = {
   id: string;
   name: string;
@@ -168,12 +201,21 @@ export type Player = {
   tierStartLap: number;
   bossAttempts: number;
   soloGatesCleared: number[];
+  soloCorruption: number;
+  soloGateAttempts: number;
+  deathsThisTier: number;
+  scorePenalty: number;
   marked: boolean;
   curse: number;
   armor: number;
   event: string;
   message: string;
   combat: Combat | null;
+  stunnedUntil: number | null;
+  stunnedBy: string | null;
+  pendingBonks?: PendingBonk[];
+  stunRemainingMs?: number;
+  shop?: Shop;
   score: number;
 };
 
@@ -188,6 +230,11 @@ export type GameConfig = {
   maxPlayers: number;
   goalScore: number;
   matchTiers: MatchTier[];
+  roomSettingOptions: {
+    maxPlayers: number[];
+    goalScore: number[];
+    pace: RoomSettings['pace'][];
+  };
 };
 
 export type GameState = {
@@ -197,6 +244,7 @@ export type GameState = {
   log: string[];
   maxPlayers: number;
   goalScore: number;
+  settings: RoomSettings;
   tier: MatchTier;
   claim: ClaimState | null;
   hostId: string | null;

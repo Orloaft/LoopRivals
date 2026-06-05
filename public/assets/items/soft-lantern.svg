@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Soft Lantern">
+  <defs><filter id="glow"><feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#120907" flood-opacity=".85"/><feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#f2c86e" flood-opacity=".5"/></filter></defs>
+  <ellipse cx="32" cy="55" rx="19" ry="5" fill="rgba(0,0,0,.42)"/>
+  <g filter="url(#glow)"><path d="M24 13 C24 8 40 8 40 13" fill="none" stroke="#24140d" stroke-width="4"/><path d="M22 20 L42 20 L47 49 L17 49 Z" fill="#f2c86e" stroke="#24140d" stroke-width="4"/><path d="M26 25 L38 25 L40 45 L24 45 Z" fill="#ffe08a" opacity=".76"/></g>
+</svg>

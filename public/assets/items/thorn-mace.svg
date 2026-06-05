@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Thorn Mace">
+  <defs><filter id="glow"><feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#120907" flood-opacity=".85"/><feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#73a55c" flood-opacity=".5"/></filter></defs>
+  <ellipse cx="32" cy="55" rx="19" ry="5" fill="rgba(0,0,0,.42)"/>
+  <g filter="url(#glow)"><path d="M21 48 L40 22" stroke="#24140d" stroke-width="8" stroke-linecap="round"/><path d="M21 48 L40 22" stroke="#bfa06a" stroke-width="4" stroke-linecap="round"/><path d="M36 11 L50 19 L47 33 L32 35 L25 23 Z" fill="#73a55c" stroke="#24140d" stroke-width="4"/><path d="M35 14 L32 7 M48 20 L57 17 M47 32 L54 38" stroke="#24140d" stroke-width="3" stroke-linecap="round"/></g>
+</svg>

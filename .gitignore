@@ -4,3 +4,7 @@ dist/
 .DS_Store
 *.log
 .vite/
+.openclaw-artifacts/
+coverage/
+playwright-report/
+test-results/

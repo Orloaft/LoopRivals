@@ -1,5 +1,15 @@
 export const maxPlayers = 4;
 export const goalScore = 12600;
+export const roomSettingOptions = {
+  maxPlayers: [2, 3, 4],
+  goalScore: [7200, 9600, 12600],
+  pace: ['steady', 'quick', 'marathon']
+};
+export const defaultRoomSettings = {
+  maxPlayers,
+  goalScore,
+  pace: 'steady'
+};
 // Global pacing multiplier. >1 slows the game down (all timed delays get longer).
 // 2.4 keeps the board readable while restoring the "always moving" pressure.
 const timeScale = 2.4;
@@ -9,7 +19,24 @@ export const matchTiers = [
   { id: 3, name: 'Tier III: Dying Loop', minScore: 4500, text: 'The board resets again. Survive long enough to challenge the loop boss.' }
 ];
 const tileLoopLifeByTier = { 1: 3, 2: 2, 3: 2 };
-const finalBossScore = goalScore;
+function roomGoalScore(room) {
+  return room?.settings?.goalScore ?? goalScore;
+}
+
+function roomMaxPlayers(room) {
+  return room?.settings?.maxPlayers ?? maxPlayers;
+}
+
+function roomTimeScale(room) {
+  const pace = room?.settings?.pace ?? defaultRoomSettings.pace;
+  if (pace === 'quick') return timeScale * 0.82;
+  if (pace === 'marathon') return timeScale * 1.18;
+  return timeScale;
+}
+const soloGateByTier = {
+  1: { label: 'gate warden', threat: 26, reward: 70, enemyCount: 2, nextTier: 2 },
+  2: { label: 'crown gate', threat: 34, reward: 105, enemyCount: 3, nextTier: 3 }
+};
 
 const combatEncounters = {
   'wolf grove': {
@@ -139,12 +166,12 @@ export const heroes = [
     title: 'rival control',
     icon: '🏹',
     color: '#4ab9ef',
-    maxHp: 45,
+    maxHp: 48,
     power: 8,
-    guard: 5,
+    guard: 6,
     speed: 5,
-    sabotage: 1,
-    text: 'A control specialist who scores by disrupting whoever is leading.'
+    sabotage: 2,
+    text: 'A control specialist with enough guard to survive while disrupting whoever is leading.'
   },
   {
     id: 'grave-singer',
@@ -186,6 +213,12 @@ export const rivalCards = [
   { id: 'tax', name: 'Tithe Trap', kind: 'rival', icon: '$', text: 'Steals tempo: rival loses a card or HP.' },
   { id: 'landslide', name: 'Landslide', kind: 'rival', icon: '⬖', text: 'Turns an upcoming rival tile into mire.' },
   { id: 'cutpurse', name: 'Cutpurse', kind: 'rival', icon: '✂', text: 'Steals a loose loot tempo or wounds instead.' }
+];
+
+export const bonkCards = [
+  { id: 'tin-bonk', name: 'Tin Bonk', kind: 'bonk', rarity: 'common', targetMode: 'leader', stunSeconds: 4, icon: '!', text: 'Bonks the highest-score rival, stunning them for 4 seconds.' },
+  { id: 'crown-bonk', name: 'Crown Bonk', kind: 'bonk', rarity: 'common', targetMode: 'leader', stunSeconds: 5, icon: '!', text: 'Bonks the highest-score rival, stunning them for 5 seconds.' },
+  { id: 'chosen-bonk', name: 'Chosen Bonk', kind: 'bonk', rarity: 'rare', targetMode: 'chosen', stunSeconds: 6, icon: '!', text: 'Choose any rival and stun them for 6 seconds.' }
 ];
 
 function talent(heroId, id, name, text, tier, x, y, bonus, prereqs = []) {
@@ -243,6 +276,8 @@ export const talentTrees = {
 export const traits = Object.values(talentTrees).flat();
 
 export const equipmentSlots = ['weapon', 'shield', 'helm', 'armor', 'gloves', 'boots', 'ring', 'charm'];
+export const shopSize = 5;
+export const shopRotationMs = 60 * 1000;
 const combatWindupMs = 180;
 const combatBeatMs = 203;
 const combatTailMs = 360;
@@ -304,7 +339,18 @@ export const boardPath = [
 ];
 
 export function publicConfig() {
-  return { heroes, cards: [...terrainCards, ...rivalCards], boardPath, traits, talentTrees, maxPlayers, goalScore, matchTiers };
+  return { heroes, cards: [...terrainCards, ...rivalCards, ...bonkCards], boardPath, traits, talentTrees, maxPlayers, goalScore, matchTiers, roomSettingOptions };
+}
+
+function normalizeRoomSettings(settings = {}, fallback = defaultRoomSettings) {
+  const maxPlayerValue = Number(settings.maxPlayers);
+  const goalScoreValue = Number(settings.goalScore);
+  const paceValue = String(settings.pace ?? fallback.pace);
+  return {
+    maxPlayers: roomSettingOptions.maxPlayers.includes(maxPlayerValue) ? maxPlayerValue : fallback.maxPlayers,
+    goalScore: roomSettingOptions.goalScore.includes(goalScoreValue) ? goalScoreValue : fallback.goalScore,
+    pace: roomSettingOptions.pace.includes(paceValue) ? paceValue : fallback.pace
+  };
 }
 
 export function createRoom(id, options = {}) {
@@ -321,6 +367,7 @@ export function createRoom(id, options = {}) {
     tick: 0,
     players: {},
     hostId: null,
+    settings: normalizeRoomSettings(options.settings),
     log: ['Loopduel lobby is open. Join, pick a hero, then keep up.'],
     botCounter: 1,
     nextSeatIndex: 0,
@@ -330,11 +377,102 @@ export function createRoom(id, options = {}) {
   };
 }
 
+export const roomSnapshotVersion = 1;
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+export function serializeRoom(room, options = {}) {
+  return {
+    version: roomSnapshotVersion,
+    savedAt: options.savedAt ?? Date.now(),
+    room: cloneJson(room)
+  };
+}
+
+export function restoreRoom(snapshot, options = {}) {
+  const envelope = snapshot?.room ? snapshot : { room: snapshot };
+  const raw = envelope.room;
+  if (!raw || typeof raw !== 'object') return null;
+
+  const id = String(raw.id ?? options.fallbackId ?? 'main').trim().slice(0, 20) || 'main';
+  const restoredAt = options.now ?? Date.now();
+  const room = createRoom(id, { now: restoredAt, seed: raw.rngState ?? id });
+  const status = ['lobby', 'running', 'finished'].includes(raw.status) ? raw.status : room.status;
+
+  Object.assign(room, {
+    status,
+    startedAt: Number.isFinite(raw.startedAt) ? raw.startedAt : room.startedAt,
+    lastActivityAt: restoredAt,
+    finishedAt: Number.isFinite(raw.finishedAt) ? raw.finishedAt : null,
+    now: restoredAt,
+    simulated: false,
+    rngState: Number.isFinite(raw.rngState) ? raw.rngState : room.rngState,
+    tick: Number.isFinite(raw.tick) ? raw.tick : room.tick,
+    hostId: typeof raw.hostId === 'string' ? raw.hostId : null,
+    settings: normalizeRoomSettings(raw.settings),
+    log: Array.isArray(raw.log) ? raw.log.filter((line) => typeof line === 'string').slice(0, 18) : room.log,
+    botCounter: Number.isFinite(raw.botCounter) ? raw.botCounter : room.botCounter,
+    nextSeatIndex: Number.isFinite(raw.nextSeatIndex) ? raw.nextSeatIndex : room.nextSeatIndex,
+    winnerId: typeof raw.winnerId === 'string' ? raw.winnerId : null,
+    tier: matchTiers.find((tier) => tier.id === raw.tier?.id) ?? room.tier,
+    claim: raw.claim && typeof raw.claim === 'object' ? cloneJson(raw.claim) : null,
+    players: {}
+  });
+
+  const rawPlayers = raw.players && typeof raw.players === 'object' ? raw.players : {};
+  for (const [playerId, rawPlayer] of Object.entries(rawPlayers)) {
+    if (!rawPlayer || typeof rawPlayer !== 'object') continue;
+    const player = createPlayer(playerId, rawPlayer.name, rawPlayer.heroId, Boolean(rawPlayer.isBot));
+    Object.assign(player, cloneJson(rawPlayer), {
+      id: playerId,
+      isBot: Boolean(rawPlayer.isBot),
+      connected: rawPlayer.isBot ? false : !options.markDisconnected
+    });
+    room.players[playerId] = player;
+  }
+
+  const seatIndexes = Object.values(room.players)
+    .map((player) => player.seatIndex)
+    .filter(Number.isFinite);
+  room.nextSeatIndex = Math.max(room.nextSeatIndex, seatIndexes.length > 0 ? Math.max(...seatIndexes) + 1 : 0);
+
+  if (room.hostId && !room.players[room.hostId]) room.hostId = null;
+  if (!room.hostId) room.hostId = Object.values(room.players).find((player) => !player.isBot)?.id ?? null;
+  if (room.winnerId && !room.players[room.winnerId]) room.winnerId = null;
+  addLog(room, 'Room restored after server restart. Human runners can reconnect with their saved browser tokens.');
+  return room;
+}
+
 export function resetRoom(room) {
   const id = room.id;
   const hostId = room.hostId;
-  Object.assign(room, createRoom(id, { seed: room.rngState, simulated: room.simulated, now: now(room) }));
+  const settings = room.settings;
+  Object.assign(room, createRoom(id, { seed: room.rngState, simulated: room.simulated, now: now(room), settings }));
   room.hostId = hostId;
+}
+
+export function updateRoomSettings(room, nextSettings = {}) {
+  if (room.status !== 'lobby') return false;
+  const normalized = normalizeRoomSettings({ ...room.settings, ...nextSettings }, room.settings);
+  const activeCount = activePlayerCount(room);
+  if (normalized.maxPlayers < activeCount) normalized.maxPlayers = activeCount;
+  const changed = JSON.stringify(normalized) !== JSON.stringify(room.settings);
+  room.settings = normalized;
+  if (!changed) return false;
+  room.lastActivityAt = now(room);
+  addLog(room, `Room settings updated: ${normalized.maxPlayers} seats, ${normalized.goalScore} boss score, ${normalized.pace} pace.`);
+  return true;
+}
+
+export function startRoom(room) {
+  if (room.status !== 'lobby') return false;
+  if (activePlayerCount(room) === 0) return false;
+  room.status = 'running';
+  room.lastActivityAt = now(room);
+  addLog(room, 'The host started the loop.');
+  return true;
 }
 
 export function activePlayerCount(room) {
@@ -342,25 +480,35 @@ export function activePlayerCount(room) {
 }
 
 export function hasRoomForPlayer(room) {
-  return activePlayerCount(room) < maxPlayers;
+  return activePlayerCount(room) < roomMaxPlayers(room);
 }
 
 export function score(player) {
-  return (
+  return Math.max(0, (
     player.level * 390 +
     player.laps * 130 +
     player.kos * 64 +
-    player.rivalHits * 72 +
+    player.rivalHits * (72 + player.sabotage * 8) +
     player.tilesPlaced * 44 +
     player.cardsPlayed * 9 +
     player.loot.length * 24 +
     (player.gold ?? 0) +
-    player.xp
-  );
+    player.xp -
+    (player.scorePenalty ?? 0)
+  ));
 }
 
 export function roomSnapshot(room) {
-  const scoredPlayers = Object.values(room.players).map((player) => ({ ...player, score: score(player) }));
+  for (const player of Object.values(room.players)) refreshShop(room, player);
+  const scoredPlayers = Object.values(room.players).map((player) => ({
+    ...player,
+    shop: player.shop ? {
+      ...player.shop,
+      remainingMs: Math.max(0, player.shop.rotatesAt - now(room))
+    } : null,
+    score: score(player),
+    stunRemainingMs: player.stunnedUntil ? Math.max(0, player.stunnedUntil - now(room)) : 0
+  }));
   const ranked = [...scoredPlayers].sort((a, b) => {
     const scoreDiff = b.score - a.score;
     if (scoreDiff !== 0) return scoreDiff;
@@ -379,8 +527,9 @@ export function roomSnapshot(room) {
     status: room.status,
     tick: room.tick,
     log: room.log,
-    maxPlayers,
-    goalScore,
+    maxPlayers: roomMaxPlayers(room),
+    goalScore: roomGoalScore(room),
+    settings: room.settings,
     hostId: room.hostId,
     winnerId: room.winnerId,
     winner: room.winnerId ? players.find((player) => player.id === room.winnerId) ?? null : null,
@@ -409,7 +558,7 @@ export function roomSnapshot(room) {
 
 export function createPlayer(id, name, heroId, isBot = false, room = null) {
   const hero = heroes.find((item) => item.id === heroId) ?? sample(room, heroes);
-  return {
+  const player = {
     id,
     name: name?.trim().slice(0, 20) || hero.name,
     heroId: hero.id,
@@ -450,19 +599,28 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     tierStartLap: 0,
     bossAttempts: 0,
     soloGatesCleared: [],
+    soloCorruption: 0,
+    soloGateAttempts: 0,
+    deathsThisTier: 0,
+    scorePenalty: 0,
     claimStartedAt: null,
     claimStartLap: null,
     claimDeathsAtStart: 0,
     marked: false,
     curse: 0,
     armor: 0,
-    nextMoveAt: now(room) + 1000 * timeScale,
-    nextDrawAt: now(room) + 3600 * timeScale,
+    nextMoveAt: now(room) + 1000 * roomTimeScale(room),
+    nextDrawAt: now(room) + 3600 * roomTimeScale(room),
     event: 'entered the loop',
     message: 'entered the loop',
     lastEventAt: now(room),
-    combat: null
+    combat: null,
+    stunnedUntil: null,
+    stunnedBy: null,
+    pendingBonks: []
   };
+  player.shop = createShop(room, player);
+  return player;
 }
 
 export function addLog(room, line) {
@@ -490,7 +648,6 @@ export function joinRoom(room, { playerId, name, heroId }) {
   room.players[player.id] = player;
   if (!room.hostId) room.hostId = player.id;
   room.lastActivityAt = now(room);
-  room.status = room.status === 'finished' ? 'finished' : 'running';
   addLog(room, `${player.name} joined as ${heroes.find((hero) => hero.id === player.heroId)?.name}.`);
   return { player, created: true };
 }
@@ -508,6 +665,21 @@ export function disconnectPlayer(room, playerId) {
   addLog(room, `${player.name} disconnected.`);
 }
 
+export function kickPlayer(room, targetId) {
+  const target = room.players[targetId];
+  if (!target || target.id === room.hostId) return false;
+  delete room.players[target.id];
+  room.lastActivityAt = now(room);
+  if (room.winnerId === target.id) room.winnerId = null;
+  if (room.claim?.playerId === target.id) room.claim = null;
+  if (room.hostId && !room.players[room.hostId]) {
+    room.hostId = Object.values(room.players).find((candidate) => !candidate.isBot && candidate.connected)?.id ?? null;
+  }
+  if (activePlayerCount(room) === 0) room.status = 'lobby';
+  addLog(room, `${target.name} left the room.`);
+  return true;
+}
+
 export function addBot(room) {
   if (!hasRoomForPlayer(room) || room.status === 'finished') return null;
   const hero = sample(room, heroes);
@@ -516,14 +688,13 @@ export function addBot(room) {
   const bot = createPlayer(botId, botNames[(room.botCounter - 2) % botNames.length], hero.id, true, room);
   room.players[botId] = bot;
   room.lastActivityAt = now(room);
-  room.status = 'running';
   addLog(room, `${bot.name} entered as ${hero.name}.`);
   return bot;
 }
 
-export function fillCpuOpponents(room, targetCount = maxPlayers) {
+export function fillCpuOpponents(room, targetCount = roomMaxPlayers(room)) {
   const added = [];
-  while (activePlayerCount(room) < Math.min(targetCount, maxPlayers)) {
+  while (activePlayerCount(room) < Math.min(targetCount, roomMaxPlayers(room))) {
     const bot = addBot(room);
     if (!bot) break;
     added.push(bot);
@@ -533,7 +704,8 @@ export function fillCpuOpponents(room, targetCount = maxPlayers) {
 }
 
 export function playTerrain(room, player, cardInstanceId, tileIndex) {
-  if (room.status === 'finished') return;
+  if (room.status !== 'running') return;
+  if (isStunned(room, player)) return;
   const card = player.hand.find((item) => item.instanceId === cardInstanceId);
   if (!card || card.kind !== 'terrain') return;
   const tile = player.board[tileIndex];
@@ -552,7 +724,8 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
 }
 
 export function playRival(room, player, cardInstanceId, targetId, tileIndex = null) {
-  if (room.status === 'finished') return;
+  if (room.status !== 'running') return;
+  if (isStunned(room, player)) return;
   const card = player.hand.find((item) => item.instanceId === cardInstanceId);
   const target = room.players[targetId];
   if (!card || card.kind !== 'rival' || !target || target.id === player.id) return;
@@ -621,7 +794,7 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
   player.cardsPlayed += 1;
   player.rivalHits += 1;
   if (target.marked) {
-    target.nextMoveAt += 420 * timeScale;
+    target.nextMoveAt += 420 * roomTimeScale(room);
     if (room.claim?.playerId === target.id) room.claim.expiresAt -= 2600;
   }
   room.lastActivityAt = now(room);
@@ -632,6 +805,55 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
     ? `${player.name} armed ${card.name} on ${target.name}'s road.`
     : `${player.name} played ${card.name} on ${target.name}.`);
   checkWinner(room);
+}
+
+function highestScoreRival(room, player) {
+  return Object.values(room.players)
+    .filter((candidate) => candidate.id !== player.id)
+    .sort((a, b) => {
+      const scoreDiff = score(b) - score(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return (a.seatIndex ?? 0) - (b.seatIndex ?? 0);
+    })[0] ?? null;
+}
+
+export function playBonk(room, player, cardInstanceId, targetId = null) {
+  if (room.status !== 'running') return false;
+  if (isStunned(room, player)) return false;
+  const card = player.hand.find((item) => item.instanceId === cardInstanceId);
+  if (!card || card.kind !== 'bonk') return false;
+
+  const target = card.targetMode === 'chosen'
+    ? room.players[targetId]
+    : highestScoreRival(room, player);
+  if (!target || target.id === player.id) return false;
+
+  const durationMs = Math.round((card.stunSeconds ?? 4) * 1000);
+  if (isCombatLocked(room, target)) {
+    target.pendingBonks = [...(target.pendingBonks ?? []), {
+      by: player.id,
+      cardName: card.name,
+      durationMs
+    }];
+    target.event = `${card.name}: bonk incoming`;
+    target.lastEventAt = now(room);
+  } else {
+    applyBonkStun(room, target, {
+      by: player.id,
+      cardName: card.name,
+      durationMs
+    });
+  }
+
+  player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
+  player.cardsPlayed += 1;
+  player.rivalHits += 1;
+  player.event = `bonked ${target.name}`;
+  room.lastActivityAt = now(room);
+  addXp(room, player, card.targetMode === 'chosen' ? 8 : 6);
+  addLog(room, `${player.name} bonked ${target.name} with ${card.name}${isCombatLocked(room, target) ? '; it lands after combat.' : '.'}`);
+  checkWinner(room);
+  return true;
 }
 
 export function chooseTrait(player, traitId) {
@@ -658,7 +880,7 @@ export function sellCard(room, player, cardInstanceId) {
   if (!player) return false;
   const card = player.hand.find((item) => item.instanceId === cardInstanceId);
   if (!card) return false;
-  const value = card.kind === 'rival' ? 22 : 16;
+  const value = cardSellValue(card);
   player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
   player.gold = (player.gold ?? 0) + value;
   player.event = `sold ${card.name} for ${value} gold`;
@@ -673,7 +895,7 @@ export function sellLoot(room, player, itemId) {
   const item = player.loot.find((entry) => entry.id === itemId);
   if (!item) return false;
   if (Object.values(normalizeLoadout(player)).some((equipped) => equipped?.id === item.id)) return false;
-  const value = Math.max(18, Math.round(bestItemScore(item) * 4));
+  const value = lootSellValue(item);
   player.loot = player.loot.filter((entry) => entry.id !== itemId);
   player.gold = (player.gold ?? 0) + value;
   player.event = `sold ${item.name} for ${value} gold`;
@@ -683,12 +905,43 @@ export function sellLoot(room, player, itemId) {
   return true;
 }
 
+export function buyShopOffer(room, player, offerId) {
+  if (!player || room.status !== 'running') return false;
+  refreshShop(room, player);
+  const shop = player.shop;
+  const offer = shop?.offers.find((item) => item.id === offerId);
+  if (!offer) return false;
+  if ((player.gold ?? 0) < offer.price) return false;
+  if (offer.kind === 'card' && player.hand.length >= 7) return false;
+  if (offer.kind === 'loot' && player.loot.length >= 10) return false;
+
+  player.gold = (player.gold ?? 0) - offer.price;
+  if (offer.kind === 'card') {
+    player.hand.push({ ...offer.card, instanceId: randomId(room, 'card') });
+    player.event = `bought ${offer.card.name}`;
+    addLog(room, `${player.name} bought ${offer.card.name} for ${offer.price} gold.`);
+  } else {
+    player.loot.unshift({ ...offer.loot, id: randomId(room, 'loot') });
+    player.event = `bought ${offer.loot.name}`;
+    addLog(room, `${player.name} bought ${offer.loot.name} for ${offer.price} gold.`);
+  }
+  shop.offers = shop.offers.filter((item) => item.id !== offer.id);
+  room.lastActivityAt = now(room);
+  checkWinner(room);
+  return true;
+}
+
 export function runRoomStep(room, options = {}) {
   if (room.status !== 'running') return;
   if (room.simulated || options.advanceMs) room.now += options.advanceMs ?? 260;
   room.tick += 1;
   for (const player of Object.values(room.players)) {
+    refreshShop(room, player);
     clearExpiredCombat(room, player);
+    clearExpiredStun(room, player);
+    if (isStunned(room, player)) {
+      continue;
+    }
     if (isCombatLocked(room, player)) {
       botThink(room, player);
       continue;
@@ -749,10 +1002,14 @@ function updateEndgame(room) {
   updateMarks(room);
 
   const contender = Object.values(room.players)
-    .filter((player) => (player.loopTier ?? 1) >= 3 && player.laps > (player.tierStartLap ?? 0) && score(player) >= finalBossScore && !isCombatLocked(room, player))
+    .filter((player) => (player.loopTier ?? 1) >= 3 && player.laps > (player.tierStartLap ?? 0) && score(player) >= roomGoalScore(room) && !isCombatLocked(room, player))
     .sort((a, b) => score(b) - score(a))[0];
   if (!contender) return null;
   return challengeLoopBoss(room, contender);
+}
+
+function isSoloPlayer(room, player) {
+  return Boolean(player && activePlayerCount(room) === 1);
 }
 
 function loopTierForScore(value) {
@@ -780,24 +1037,59 @@ function promotePlayerIfReady(room, player) {
   const currentTier = player.loopTier ?? 1;
   const nextTier = loopTierForScore(score(player));
   if (nextTier <= currentTier) return false;
+  if (isSoloPlayer(room, player) && !player.soloGatesCleared.includes(currentTier)) {
+    return challengeSoloGate(room, player, currentTier);
+  }
   player.loopTier = Math.min(3, currentTier + 1);
   player.tierStartScore = score(player);
   player.tierStartLap = player.laps;
+  player.deathsThisTier = 0;
   resetPlayerBoard(player);
   player.hp = player.maxHp;
   player.armor = Math.max(player.armor, player.loopTier);
   player.combat = null;
+  if (isSoloPlayer(room, player)) {
+    player.soloCorruption = (player.soloCorruption ?? 0) + 4;
+  }
   player.event = `entered tier ${player.loopTier}`;
   addLog(room, `${player.name} entered tier ${player.loopTier}; their loop collapsed into fresh road.`);
   if (loopTierForScore(score(player)) > player.loopTier) return promotePlayerIfReady(room, player);
   return true;
 }
 
+function challengeSoloGate(room, player, tier) {
+  if (isCombatLocked(room, player)) return false;
+  const gate = soloGateByTier[tier];
+  if (!gate) return false;
+  player.soloGateAttempts = (player.soloGateAttempts ?? 0) + 1;
+  player.hp = player.maxHp;
+  player.armor = Math.max(player.armor, tier + 1);
+  const corruptionPressure = Math.floor((player.soloCorruption ?? 0) * 0.35);
+  const survived = fight(
+    room,
+    player,
+    gate.label,
+    gate.threat + corruptionPressure + player.soloGateAttempts * 2,
+    gate.reward,
+    gate.enemyCount
+  );
+  if (!survived) {
+    resolveDefeat(room, player);
+    addLog(room, `${player.name} failed the ${gate.label}; corruption thickens around tier ${tier}.`);
+    return false;
+  }
+  player.soloGatesCleared = [...new Set([...(player.soloGatesCleared ?? []), tier])];
+  player.event = `cleared the ${gate.label}`;
+  addLog(room, `${player.name} broke the ${gate.label} and unlocked tier ${gate.nextTier}.`);
+  return promotePlayerIfReady(room, player);
+}
+
 function challengeLoopBoss(room, player) {
   player.bossAttempts = (player.bossAttempts ?? 0) + 1;
   player.hp = player.maxHp;
   player.armor = Math.max(player.armor, 3);
-  const survived = fight(room, player, 'loop tyrant', 42 + player.bossAttempts * 3, 160, 5);
+  const corruptionPressure = isSoloPlayer(room, player) ? Math.floor((player.soloCorruption ?? 0) * 0.45) : 0;
+  const survived = fight(room, player, 'loop tyrant', 42 + corruptionPressure + player.bossAttempts * 3, 160, 5);
   if (!survived) {
     resolveDefeat(room, player);
     addLog(room, `${player.name} was broken by the Loop Tyrant and must rebuild tier 3.`);
@@ -864,10 +1156,39 @@ function randomId(room, prefix = 'id') {
 function clearExpiredCombat(room, player) {
   if (!player.combat || now(room) < player.combat.expiresAt) return;
   player.combat = null;
+  applyPendingBonks(room, player);
 }
 
 function isCombatLocked(room, player) {
   return Boolean(player.combat && now(room) < player.combat.expiresAt);
+}
+
+function clearExpiredStun(room, player) {
+  if (!player.stunnedUntil || now(room) < player.stunnedUntil) return;
+  player.stunnedUntil = null;
+  player.stunnedBy = null;
+  if (player.event.includes('stunned')) player.event = 'shook off the bonk';
+}
+
+function isStunned(room, player) {
+  return Boolean(player.stunnedUntil && now(room) < player.stunnedUntil);
+}
+
+function applyBonkStun(room, player, bonk) {
+  const stunnedUntil = now(room) + bonk.durationMs;
+  player.stunnedUntil = Math.max(player.stunnedUntil ?? 0, stunnedUntil);
+  player.stunnedBy = bonk.by;
+  player.nextMoveAt = Math.max(player.nextMoveAt ?? now(room), player.stunnedUntil);
+  player.nextDrawAt = Math.max(player.nextDrawAt ?? now(room), player.stunnedUntil);
+  player.event = `${bonk.cardName}: stunned ${Math.ceil(bonk.durationMs / 1000)}s`;
+  player.lastEventAt = now(room);
+}
+
+function applyPendingBonks(room, player) {
+  const pendingBonks = player.pendingBonks ?? [];
+  if (!pendingBonks.length) return;
+  player.pendingBonks = [];
+  for (const bonk of pendingBonks) applyBonkStun(room, player, bonk);
 }
 
 function blankBoard() {
@@ -889,6 +1210,73 @@ function normalizeLoadout(player) {
   return player.loadout;
 }
 
+function cardSellValue(card) {
+  if (card.kind === 'bonk') return card.rarity === 'rare' ? 28 : 22;
+  if (card.kind === 'rival') return 22;
+  return 16;
+}
+
+function cardBuyValue(card) {
+  return cardSellValue(card) + (card.kind === 'terrain' ? 14 : 18);
+}
+
+function lootSellValue(item) {
+  return Math.max(18, Math.round(bestItemScore(item) * 4));
+}
+
+function lootBuyValue(item) {
+  return Math.max(32, Math.round(lootSellValue(item) * 1.65));
+}
+
+function createShop(room, player = null) {
+  const rotation = room ? Math.floor(now(room) / shopRotationMs) : Math.floor(Date.now() / shopRotationMs);
+  const shopRoom = room
+    ? {
+        ...room,
+        rngState: normalizeSeed(`${room.id}:${player?.id ?? 'shop'}:${player?.heroId ?? 'hero'}:${rotation}`),
+        tick: rotation
+      }
+    : null;
+  const offers = Array.from({ length: shopSize }, (_, index) => createShopOffer(shopRoom, player?.heroId, index));
+  return {
+    offers,
+    rotatesAt: now(room) + shopRotationMs
+  };
+}
+
+function refreshShop(room, player) {
+  if (!player.shop || now(room) >= player.shop.rotatesAt) {
+    player.shop = createShop(room, player);
+  }
+  return player.shop;
+}
+
+function createShopOffer(room, heroId, index) {
+  const wantsCard = index < 2 || random(room) < 0.45;
+  if (wantsCard) {
+    const card = drawCard(room, index === 0 ? 'terrain' : null);
+    return {
+      id: randomId(room, 'offer'),
+      kind: 'card',
+      card,
+      price: cardBuyValue(card)
+    };
+  }
+
+  const hero = heroes.find((item) => item.id === heroId);
+  const shopBuyer = {
+    level: Math.max(1, Math.floor(((hero?.speed ?? 5) + (hero?.power ?? 7)) / 4)),
+    lootLuck: hero?.lootLuck ?? 0
+  };
+  const loot = createLoot(room, shopBuyer);
+  return {
+    id: randomId(room, 'offer'),
+    kind: 'loot',
+    loot,
+    price: lootBuyValue(loot)
+  };
+}
+
 function xpNeeded(player) {
   return 24 + player.level * 13;
 }
@@ -897,18 +1285,21 @@ function drawCard(room = null, preferredKind = null) {
   const soloPool = room ? activePlayerCount(room) <= 1 : false;
   const tierId = room?.tier?.id ?? 1;
   const rivalChance = tierId >= 3 ? 0.44 : tierId === 2 ? 0.38 : 0.3;
+  const rivalPool = [...rivalCards, ...bonkCards];
   const pool = preferredKind === 'terrain'
     ? terrainCards
     : preferredKind === 'rival'
-      ? soloPool ? terrainCards : rivalCards
+      ? soloPool ? terrainCards : rivalPool
+      : preferredKind === 'bonk'
+        ? soloPool ? terrainCards : bonkCards
       : random(room) < 1 - rivalChance
         ? terrainCards
-        : soloPool ? terrainCards : rivalCards;
+        : soloPool ? terrainCards : rivalPool;
   const card = sample(room, pool);
   return { ...card, instanceId: randomId(room, 'card') };
 }
 
-function drawLoot(room, player) {
+function createLoot(room, player) {
   const slot = sample(room, equipmentSlots);
   const rarityRoll = random(room) + player.level * 0.04 + player.lootLuck;
   const rarity = rarityRoll > 1.08 ? 'relic' : rarityRoll > 0.76 ? 'rare' : 'common';
@@ -920,7 +1311,7 @@ function drawLoot(room, player) {
   const itemName = sample(room, lootNames[slot]);
   const bonusScale = rarity === 'relic' ? 2 : 1;
   const statScale = rarity === 'relic' ? 1 : 0;
-  const item = {
+  return {
     id: randomId(room, 'loot'),
     slot,
     name: `${rarity === 'relic' ? 'Relic ' : rarity === 'rare' ? 'Bright ' : ''}${namePrefix} ${itemName}`,
@@ -937,6 +1328,10 @@ function drawLoot(room, player) {
     terrainScore: role.bonus.terrainScore ? role.bonus.terrainScore * bonusScale : undefined,
     revivePower: role.bonus.revivePower ? role.bonus.revivePower * bonusScale : undefined
   };
+}
+
+function drawLoot(room, player) {
+  const item = createLoot(room, player);
   player.loot.unshift(item);
   player.loot = player.loot.slice(0, 10);
   player.event = `found ${item.name}`;
@@ -1029,6 +1424,7 @@ function addXp(room, player, amount) {
 
 const dangerTiles = new Set(['grove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'ambush', 'scorch']);
 const stackAuraTiles = new Set(['bloodmoon', 'bonepit', 'wolfden', 'wyrmgate']);
+const stabilizerTiles = new Set(['meadow', 'village', 'forge', 'shrine', 'mire']);
 
 function encounterStack(room, player, tile, baseCount = 1) {
   const previous = player.board[(tile.index - 1 + player.board.length) % player.board.length];
@@ -1051,15 +1447,16 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   const tier = player.loopTier ?? room.tier?.id ?? 1;
   const tierThreat = (tier - 1) * 5;
   const tierReward = 1 + (tier - 1) * 0.28;
+  const corruption = isSoloPlayer(room, player) ? player.soloCorruption ?? 0 : 0;
   const cursePenalty = player.curse > 0 ? 3 : 0;
   const heroBonus = player.heroId === 'ember-knight' && player.hp < player.maxHp * 0.45 ? 2 : 0;
   const graveBonus = player.heroId === 'grave-singer' && threat >= 10 ? 4 : 0;
-  const power = Math.max(4, player.power + Math.floor(player.level / 3));
-  const scaledThreat = threat + tierThreat;
-  const enemyMaxHp = clamp(scaledThreat * 2 + reward + player.level * 4 + enemyCount * 12, 24, label === 'loop tyrant' ? 260 : 180);
+  const power = Math.max(4, player.power + (isSoloPlayer(room, player) ? 0 : Math.floor(player.level / 3)));
+  const scaledThreat = threat + tierThreat + Math.floor(corruption * 0.18);
+  const enemyMaxHp = clamp(scaledThreat * 2 + reward + player.level * 3 + enemyCount * 12 + Math.floor(corruption * 0.65), 24, label === 'loop tyrant' ? 320 : 210);
   const rounds = clamp(Math.ceil(enemyMaxHp / power), enemyCount, enemyCount + 5);
   const stackedPressure = (enemyCount - 1) * 2 + Math.max(0, rounds - 2);
-  const damage = clamp(scaledThreat + stackedPressure + cursePenalty - Math.floor(player.guard / 1.7) - player.armor, 2, label === 'loop tyrant' ? 48 : 32);
+  const damage = clamp(scaledThreat + stackedPressure + cursePenalty + Math.floor(corruption / 16) - Math.floor(player.guard / 1.7) - player.armor, 2, label === 'loop tyrant' ? 56 : 38);
   player.hp -= damage;
   player.armor = Math.max(0, player.armor - 1);
   const xpReward = Math.round((reward + heroBonus + graveBonus + (enemyCount - 1) * 5 + Math.max(0, rounds - enemyCount) * 2) * tierReward);
@@ -1167,15 +1564,41 @@ function combatBeats({ rounds, enemyMaxHp, heroHpBefore, heroHpAfter, heroDamage
 
 function revivePlayer(room, player) {
   player.deaths += 1;
+  player.deathsThisTier = (player.deathsThisTier ?? 0) + 1;
+  const solo = isSoloPlayer(room, player);
   player.hp = Math.ceil(player.maxHp * 0.58);
-  player.power += player.revivePower;
+  if (!solo) player.power += player.revivePower;
   resetPlayerBoard(player);
   player.tierStartLap = player.laps;
   player.combat = null;
   player.hand = player.hand.slice(0, 3);
+  if (solo) applySoloDeathPenalty(room, player);
   player.event = `fell, then restarted tier ${player.loopTier ?? 1}`;
   player.lastEventAt = now(room);
   addLog(room, `${player.name} got knocked back to the start of tier ${player.loopTier ?? 1}.`);
+}
+
+function applySoloDeathPenalty(room, player) {
+  const deathCount = player.deathsThisTier ?? 1;
+  const goldLoss = Math.min(player.gold ?? 0, 18 + deathCount * 7);
+  player.gold = Math.max(0, (player.gold ?? 0) - goldLoss);
+  player.soloCorruption = (player.soloCorruption ?? 0) + 4 + Math.min(4, deathCount);
+  player.scorePenalty = (player.scorePenalty ?? 0) + 120 + deathCount * 35;
+  const nextTier = matchTiers[player.loopTier ?? 1];
+  const setbackThreshold = nextTier?.minScore ?? ((player.loopTier ?? 1) >= 3 ? roomGoalScore(room) : null);
+  if (setbackThreshold && score(player) >= setbackThreshold) {
+    player.scorePenalty += score(player) - setbackThreshold + 220;
+  }
+  player.shop = createShop(room, player);
+
+  const equippedIds = new Set(Object.values(normalizeLoadout(player)).filter(Boolean).map((item) => item.id));
+  const looseLoot = player.loot.filter((item) => !equippedIds.has(item.id));
+  if (looseLoot.length > 0 && random(room) < 0.55) {
+    const lost = sample(room, looseLoot);
+    player.loot = player.loot.filter((item) => item.id !== lost.id);
+    addLog(room, `${player.name} lost ${lost.name} in the collapse.`);
+  }
+  if (goldLoss > 0) addLog(room, `${player.name} dropped ${goldLoss} gold to the hungry loop.`);
 }
 
 function resolveDefeat(room, player) {
@@ -1188,13 +1611,16 @@ function triggerTile(room, player, tile) {
   if (resolveDefeat(room, player)) return;
   player.combat = null;
   if (tile.type === 'camp') {
-    player.hp = clamp(player.hp + 9 + player.lapHeal, 0, player.maxHp);
+    const corruptionTax = isSoloPlayer(room, player) ? Math.floor((player.soloCorruption ?? 0) / 10) : 0;
+    const heal = Math.max(2, 9 + player.lapHeal - corruptionTax);
+    player.hp = clamp(player.hp + heal, 0, player.maxHp);
     player.event = 'campfire recovery';
   } else if (tile.type === 'grove') {
     fight(room, player, 'wolf grove', 8, 10, encounterStack(room, player, tile));
   } else if (tile.type === 'meadow') {
     const bonus = player.heroId === 'moss-warden' ? 7 : 4;
     player.hp = clamp(player.hp + bonus, 0, player.maxHp);
+    if (isSoloPlayer(room, player)) player.soloCorruption = Math.max(0, (player.soloCorruption ?? 0) - 1);
     player.event = `meadow bloom: +${bonus} hp`;
   } else if (tile.type === 'crypt') {
     fight(room, player, 'crypt duel', 14, 18, encounterStack(room, player, tile));
@@ -1210,19 +1636,25 @@ function triggerTile(room, player, tile) {
     fight(room, player, 'wyrm gate', 23, 34, encounterStack(room, player, tile, 3));
   } else if (tile.type === 'forge') {
     player.armor += 3;
+    if (isSoloPlayer(room, player)) player.soloCorruption = Math.max(0, (player.soloCorruption ?? 0) - 1);
     if (random(room) < 0.55 + player.lootLuck) drawLoot(room, player);
     addXp(room, player, 5);
     player.event = 'forge sparks: armor and loot';
   } else if (tile.type === 'shrine') {
     addXp(room, player, 14);
+    if (isSoloPlayer(room, player)) player.soloCorruption = Math.max(0, (player.soloCorruption ?? 0) - 2);
     player.hp = clamp(player.hp + 3, 0, player.maxHp);
     player.event = 'shrine surge: +14 xp';
   } else if (tile.type === 'mire') {
-    player.nextMoveAt += 450 * timeScale;
+    player.nextMoveAt += 450 * roomTimeScale(room);
     if (player.hand.length < 7) player.hand.push(drawCard(room));
     player.event = 'mire drag: slowed, drew a card';
   } else if (tile.type === 'village') {
     player.hp = clamp(player.hp + 7, 0, player.maxHp);
+    if (isSoloPlayer(room, player)) {
+      player.soloCorruption = Math.max(0, (player.soloCorruption ?? 0) - 3);
+      player.deathsThisTier = Math.max(0, (player.deathsThisTier ?? 0) - 1);
+    }
     addXp(room, player, 6);
     if (random(room) < 0.2 + player.lootLuck) drawLoot(room, player);
     player.event = 'village rest: healed and supplied';
@@ -1257,15 +1689,18 @@ function triggerTile(room, player, tile) {
   player.lastEventAt = now(room);
 }
 
-function movementDelay(player) {
+function movementDelay(room, player) {
   const base = 1125 - player.speed * 72;
-  return clamp(base, 390, 1300) * timeScale;
+  return clamp(base, 390, 1300) * roomTimeScale(room);
 }
 
 function advancePlayer(room, player) {
   player.position = (player.position + 1) % boardPath.length;
   if (player.position === 0) {
     player.laps += 1;
+    if (isSoloPlayer(room, player)) {
+      player.soloCorruption = (player.soloCorruption ?? 0) + 1;
+    }
     expireLoopTiles(room, player);
     player.hp = clamp(player.hp + player.lapHeal, 0, player.maxHp);
     addXp(room, player, 4);
@@ -1273,8 +1708,8 @@ function advancePlayer(room, player) {
     addLog(room, `${player.name} completed lap ${player.laps}.`);
   }
   triggerTile(room, player, player.board[player.position]);
-  const combatHold = player.combat ? player.combat.expiresAt + Math.round(320 * timeScale) : now(room);
-  player.nextMoveAt = Math.max(now(room) + movementDelay(player), combatHold);
+  const combatHold = player.combat ? player.combat.expiresAt + Math.round(320 * roomTimeScale(room)) : now(room);
+  player.nextMoveAt = Math.max(now(room) + movementDelay(room, player), combatHold);
 }
 
 function maybeDraw(room, player) {
@@ -1283,7 +1718,7 @@ function maybeDraw(room, player) {
     player.hand.push(drawCard(room));
     player.event = 'drew a card';
   }
-  player.nextDrawAt = now(room) + Math.round((6500 + rand(room, 1400)) * player.drawRate * timeScale);
+  player.nextDrawAt = now(room) + Math.round((6500 + rand(room, 1400)) * player.drawRate * roomTimeScale(room));
 }
 
 function bestItemScore(item) {
@@ -1347,14 +1782,19 @@ function botThink(room, player) {
     if (best && (!current || bestItemScore(best) > bestItemScore(current))) equip(player, best.id);
   }
 
-  const wantsAttack = random(room) < 0.52 || score(player) < Math.max(...Object.values(room.players).map(score)) - 250;
+  const soloCrisis = isSoloPlayer(room, player) && (player.hp < player.maxHp * 0.68 || (player.soloCorruption ?? 0) > 24 || (player.deathsThisTier ?? 0) > 1);
+  const wantsAttack = !soloCrisis && (random(room) < 0.52 || score(player) < Math.max(...Object.values(room.players).map(score)) - 250);
+  const stabilizer = player.hand.find((item) => item.kind === 'terrain' && stabilizerTiles.has(item.tile));
   const card = wantsAttack
-    ? player.hand.find((item) => item.kind === 'rival') ?? player.hand.find((item) => item.kind === 'terrain')
-    : player.hand.find((item) => item.kind === 'terrain') ?? player.hand.find((item) => item.kind === 'rival');
+    ? player.hand.find((item) => item.kind === 'bonk' || item.kind === 'rival') ?? player.hand.find((item) => item.kind === 'terrain')
+    : stabilizer ?? player.hand.find((item) => item.kind === 'terrain') ?? player.hand.find((item) => item.kind === 'bonk' || item.kind === 'rival');
   if (!card) return;
   if (card.kind === 'terrain') {
     const tileIndex = chooseBotTerrainTile(room, player, card)?.index ?? (1 + rand(room, boardPath.length - 1));
     playTerrain(room, player, card.instanceId, tileIndex);
+  } else if (card.kind === 'bonk') {
+    const target = card.targetMode === 'chosen' ? chooseRivalTarget(room, player) : null;
+    playBonk(room, player, card.instanceId, target?.id);
   } else {
     const target = chooseRivalTarget(room, player);
     if (target) playRival(room, player, card.instanceId, target.id);
@@ -1365,6 +1805,7 @@ export const testApi = {
   activePlayerCount,
   addBot,
   availableTraits,
+  buyShopOffer,
   checkWinner,
   chooseTrait,
   createPlayer,
@@ -1375,17 +1816,27 @@ export const testApi = {
   fillCpuOpponents,
   hasRoomForPlayer,
   joinRoom,
+  kickPlayer,
   matchTiers,
   maxPlayers,
   goalScore,
+  fight,
   playRival,
+  playBonk,
   playTerrain,
   resetRoom,
   refreshPendingTraits,
+  restoreRoom,
   roomSnapshot,
   runRoomStep,
+  score,
+  serializeRoom,
   sellCard,
   sellLoot,
+  shopRotationMs,
+  shopSize,
+  startRoom,
+  updateRoomSettings,
   traits,
   triggerTile
 };

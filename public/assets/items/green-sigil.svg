@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Green Sigil">
+  <defs><filter id="glow"><feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#120907" flood-opacity=".85"/><feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#5fb86d" flood-opacity=".5"/></filter></defs>
+  <ellipse cx="32" cy="55" rx="19" ry="5" fill="rgba(0,0,0,.42)"/>
+  <g filter="url(#glow)"><path d="M32 8 L51 25 L44 51 L20 51 L13 25 Z" fill="#5fb86d" stroke="#24140d" stroke-width="4"/><path d="M32 17 L39 32 L32 46 L25 32 Z" fill="#102716" stroke="#d9f2a4" stroke-width="3"/><path d="M20 26 L44 26" stroke="#ffe08a" stroke-width="2" opacity=".55"/></g>
+</svg>

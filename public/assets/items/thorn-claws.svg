@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Thorn Claws">
+  <defs><filter id="glow"><feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#120907" flood-opacity=".85"/><feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#7ba65b" flood-opacity=".5"/></filter></defs>
+  <ellipse cx="32" cy="55" rx="19" ry="5" fill="rgba(0,0,0,.42)"/>
+  <g filter="url(#glow)"><path d="M17 17 L12 7 M28 14 L27 4 M40 16 L47 7" stroke="#e5d1a1" stroke-width="3" stroke-linecap="round"/><path d="M17 18 C27 10 45 17 43 32 L40 52 L20 52 L13 33 C10 25 11 21 17 18 Z" fill="#7ba65b" stroke="#24140d" stroke-width="4"/><path d="M21 25 L18 42 M31 22 L31 43 M40 27 L37 43" stroke="#fff0b8" stroke-width="2" opacity=".52"/></g>
+</svg>

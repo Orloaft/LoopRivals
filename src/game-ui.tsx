@@ -1,13 +1,22 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { ArrowLeft, Bot, Coins, Crown, Footprints, Gem, GitBranch, Hand, HardHat, HelpCircle, RotateCcw, ScrollText, Shield, Shirt, Sparkles, Swords, Users, Volume2, VolumeX, Zap } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import { ArrowLeft, Bot, Coins, Crown, Footprints, Gem, GitBranch, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, Sparkles, Swords, UserX, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import {
   combatBackgroundUrl,
   combatEnemyUrl,
   heroPortraitUrl,
   heroSpriteUrl,
+  itemSpriteUrl,
   talentIconUrl
 } from './game-assets';
-import type { Card, Combat, CombatBeat, EquipmentSlot, GameConfig, GameState, Loot, Player, Tile, Trait } from './types';
+import type { Card, Combat, CombatBeat, EquipmentSlot, GameConfig, GameState, Loot, Player, RoomSettings, ShopOffer, Tile, Trait } from './types';
+
+type LocalProfile = {
+  matches: number;
+  wins: number;
+  bestScore: number;
+  bestLevel: number;
+};
 
 const equipmentSlots: EquipmentSlot[] = ['weapon', 'shield', 'helm', 'armor', 'gloves', 'boots', 'ring', 'charm'];
 const equipmentLabels: Record<EquipmentSlot, string> = {
@@ -109,6 +118,7 @@ function tileDescription(tile: Tile) {
 }
 
 function cardSuit(card: Card) {
+  if (card.kind === 'bonk') return card.rarity === 'rare' ? 'Rare control' : 'Common control';
   if (card.kind === 'rival') return 'Doom';
   if (card.tile === 'meadow' || card.tile === 'village') return 'Haven';
   if (card.tile === 'crypt' || card.tile === 'obelisk' || card.tile === 'wolfden' || card.tile === 'bonepit' || card.tile === 'ruinedkeep' || card.tile === 'bloodmoon' || card.tile === 'wyrmgate') return 'Peril';
@@ -117,7 +127,9 @@ function cardSuit(card: Card) {
 }
 
 function cardFaceClass(card: Card) {
-  return card.kind === 'rival' ? 'rival' : `terrain ${card.tile ?? 'road'}`;
+  if (card.kind === 'rival') return 'rival';
+  if (card.kind === 'bonk') return `bonk ${card.rarity ?? 'common'}`;
+  return `terrain ${card.tile ?? 'road'}`;
 }
 
 function InfoPopover({
@@ -150,6 +162,7 @@ function PhaseStrip({ game }: { game: GameState }) {
   const claim = game.claim;
   const progress = Math.max(0, Math.min(100, ((game.tier?.minScore ?? 0) / game.goalScore) * 100));
   const claimRemaining = claim ? Math.ceil(claim.remainingMs / 1000) : null;
+  const isLobby = game.status === 'lobby';
 
   return (
     <section
@@ -157,8 +170,8 @@ function PhaseStrip({ game }: { game: GameState }) {
       style={{ '--hero-color': claim?.claimantColor ?? '#d2b15c', '--phase-progress': `${progress}%` } as CSSProperties}
     >
       <div className="phase-copy">
-        <strong>{claim ? 'Claim the Loop' : game.tier.name}</strong>
-        <span>{claim ? `${claim.claimantName} must complete one marked lap` : game.tier.text}</span>
+        <strong>{isLobby ? 'Lobby' : claim ? 'Claim the Loop' : game.tier.name}</strong>
+        <span>{isLobby ? 'Invite runners, add CPU opponents, then the host starts the loop.' : claim ? `${claim.claimantName} must complete one marked lap` : game.tier.text}</span>
       </div>
       <div className="phase-meter" aria-hidden="true"><i /></div>
       <div className="phase-meta">
@@ -195,6 +208,7 @@ function MobileStatusBar({ player, game }: { player: Player; game: GameState }) 
         <b>HP {Math.ceil(player.hp)}/{player.maxHp}</b>
         <b>{player.score} pts</b>
         <b>Lap {player.laps}</b>
+        <b>Corr {player.soloCorruption ?? 0}</b>
         <b>{player.soloGatesCleared.length}/3 gates</b>
         <b><Coins size={12} /> {player.gold ?? 0}</b>
       </div>
@@ -231,7 +245,7 @@ function MobileRivalStrip({
             <img src={heroPortraitUrl(player.heroId)} alt="" />
             <span>
               <strong>{player.name}</strong>
-              <small>{activeCard ? 'target' : `${player.score} pts · Lv ${player.level}`}</small>
+              <small>{activeCard ? (activeCard.kind === 'bonk' ? 'bonk target' : 'target') : `${player.score} pts · Lv ${player.level}`}</small>
             </span>
             {player.rank === 1 && <Crown size={13} />}
           </button>
@@ -246,6 +260,11 @@ function GameMenu({
   isHost,
   onAddBot,
   onFillCpu,
+  onStartRoom,
+  onKickPlayer,
+  onSettings,
+  inviteUrl,
+  profile,
   onReset,
   onRules,
   onClose
@@ -254,10 +273,17 @@ function GameMenu({
   isHost: boolean;
   onAddBot: () => void;
   onFillCpu: () => void;
+  onStartRoom: () => void;
+  onKickPlayer: (playerId: string) => void;
+  onSettings: (settings: Partial<RoomSettings>) => void;
+  inviteUrl: string;
+  profile: LocalProfile;
   onReset: () => void;
   onRules: () => void;
   onClose: () => void;
 }) {
+  const settingsLocked = !isHost || game.status !== 'lobby';
+
   return (
     <div className="help-overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="help-panel menu-panel" onClick={(event) => event.stopPropagation()}>
@@ -269,6 +295,57 @@ function GameMenu({
           <button className="icon-action" onClick={onClose}>Close · Esc</button>
         </div>
         <div className="menu-actions">
+          <section className="menu-settings" aria-label="Room settings">
+            <div className="menu-section-title">
+              <Settings size={17} />
+              <span>Room Settings</span>
+            </div>
+            <label>
+              Seats
+              <select
+                value={game.settings.maxPlayers}
+                disabled={settingsLocked}
+                onChange={(event) => onSettings({ maxPlayers: Number(event.target.value) })}
+              >
+                {[2, 3, 4].map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </label>
+            <label>
+              Boss Score
+              <select
+                value={game.settings.goalScore}
+                disabled={settingsLocked}
+                onChange={(event) => onSettings({ goalScore: Number(event.target.value) })}
+              >
+                {[7200, 9600, 12600].map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </label>
+            <label>
+              Pace
+              <select
+                value={game.settings.pace}
+                disabled={settingsLocked}
+                onChange={(event) => onSettings({ pace: event.target.value as RoomSettings['pace'] })}
+              >
+                <option value="quick">quick</option>
+                <option value="steady">steady</option>
+                <option value="marathon">marathon</option>
+              </select>
+            </label>
+          </section>
+          <section className="menu-qr-profile">
+            <div className="menu-qr" aria-label={`QR invite for room ${game.id}`}>
+              <QRCodeSVG value={inviteUrl} size={112} marginSize={1} />
+              <span>Scan to join room {game.id}</span>
+            </div>
+            <div className="menu-profile" aria-label="Local profile">
+              <strong>Profile</strong>
+              <span>{profile.matches} matches</span>
+              <span>{profile.wins} wins</span>
+              <span>{profile.bestScore} best score</span>
+              <span>Lv {profile.bestLevel} best</span>
+            </div>
+          </section>
           <button className="menu-item" onClick={onAddBot} disabled={!isHost}>
             <Bot size={20} />
             Add Bot
@@ -277,6 +354,28 @@ function GameMenu({
             <Users size={20} />
             Fill CPU Match
           </button>
+          <button className="menu-item" onClick={onStartRoom} disabled={!isHost || game.status !== 'lobby' || game.players.length === 0}>
+            <Play size={20} />
+            Start Match
+          </button>
+          <div className="menu-roster" aria-label="Room roster">
+            {game.players.map((player) => (
+              <button
+                key={player.id}
+                className="menu-roster-row"
+                style={{ '--hero-color': player.color } as CSSProperties}
+                onClick={() => onKickPlayer(player.id)}
+                disabled={!isHost || player.id === game.hostId}
+              >
+                <img src={heroPortraitUrl(player.heroId)} alt="" />
+                <span>
+                  <strong>{player.name}</strong>
+                  <small>{player.id === game.hostId ? 'host' : player.isBot ? 'bot' : player.connected ? 'connected' : 'disconnected'}</small>
+                </span>
+                {player.id !== game.hostId && <UserX size={17} />}
+              </button>
+            ))}
+          </div>
           <button className="menu-item" onClick={onRules}>
             <HelpCircle size={20} />
             Rules
@@ -301,6 +400,12 @@ function slotIcon(slot: string, size = 14) {
   if (slot === 'boots') return <Footprints size={size} />;
   if (slot === 'ring') return <Gem size={size} />;
   return <Sparkles size={size} />;
+}
+
+function ItemSprite({ item, fallbackSize = 17 }: { item: Loot; fallbackSize?: number }) {
+  const src = itemSpriteUrl(item.name);
+  if (!src) return slotIcon(item.slot, fallbackSize);
+  return <img className="item-sprite" src={src} alt="" />;
 }
 
 function traitGlyph(name: string) {
@@ -419,7 +524,7 @@ function CardFace({ card, popover = true }: { card: Card; popover?: boolean }) {
   return (
     <>
       <span className="card-corner top">{card.icon}</span>
-      <span className={`card-art ${card.kind === 'rival' ? 'rival-art' : 'terrain-art'}`}>
+      <span className={`card-art ${card.kind === 'terrain' ? 'terrain-art' : `${card.kind}-art`}`}>
         {card.kind === 'terrain' ? (
           <span className={`card-tile-preview tile ${card.tile ?? 'road'}`}>
             <span className="tile-glyph">{card.icon}</span>
@@ -439,8 +544,8 @@ function CardFace({ card, popover = true }: { card: Card; popover?: boolean }) {
         <InfoPopover
           title={card.name}
           eyebrow={`${cardSuit(card)} ${card.kind}`}
-          lines={[card.text, card.kind === 'terrain' ? `Places as the ${tileNames[card.tile ?? 'road'] ?? card.name} board tile.` : 'Targets a rival runner or one open rival road tile.']}
-          hint={card.kind === 'terrain' ? 'Drag onto your loop or click, then choose a tile' : 'Drag onto a rival portrait or click, then choose a target'}
+          lines={[card.text, card.kind === 'terrain' ? `Places as the ${tileNames[card.tile ?? 'road'] ?? card.name} board tile.` : card.kind === 'bonk' ? (card.targetMode === 'chosen' ? 'Targets any rival runner.' : 'Automatically targets the highest-score rival.') : 'Targets a rival runner or one open rival road tile.']}
+          hint={card.kind === 'terrain' ? 'Drag onto your loop or click, then choose a tile' : card.kind === 'bonk' ? 'Drag onto a rival portrait or click the bonk target' : 'Drag onto a rival portrait or click, then choose a target'}
           className="card-pop"
         />
       )}
@@ -467,7 +572,7 @@ function DragLootGhost({ item, x, y }: { item: Loot; x: number; y: number }) {
       style={{ '--drag-x': `${x}px`, '--drag-y': `${y}px` } as CSSProperties}
       aria-hidden="true"
     >
-      {slotIcon(item.slot, 22)}
+      <ItemSprite item={item} fallbackSize={22} />
       <span>{item.name}</span>
       <small>{item.role ?? item.slot}</small>
     </div>
@@ -487,7 +592,10 @@ function PlayerSideDock({
   onMenu,
   onAddBot,
   onFillCpu,
+  onStartRoom,
   isHost,
+  onSettings,
+  profile,
   bgmOn,
   onToggleBgm
 }: {
@@ -503,7 +611,10 @@ function PlayerSideDock({
   onMenu: () => void;
   onAddBot: () => void;
   onFillCpu: () => void;
+  onStartRoom: () => void;
   isHost: boolean;
+  onSettings: (settings: Partial<RoomSettings>) => void;
+  profile: LocalProfile;
   bgmOn: boolean;
   onToggleBgm: () => void;
 }) {
@@ -545,6 +656,7 @@ function PlayerSideDock({
           <span className="rail-stat-tile"><Sparkles size={15} /><b>{player.score}</b><InfoPopover title="Score" body={`${player.score}/${game.goalScore} toward the boss race.`} /></span>
           <span className="rail-stat-tile"><Coins size={15} /><b>{player.gold ?? 0}</b><InfoPopover title="Gold" body="Spendable run currency." /></span>
           <span className="rail-stat-tile"><Zap size={15} /><b>{player.level}</b><InfoPopover title="Level" body={`${player.xp} XP. Talent choices unlock as you level.`} /></span>
+          <span className="rail-stat-tile"><GitBranch size={15} /><b>{player.soloCorruption ?? 0}</b><InfoPopover title="Corruption" body="Solo pressure. Rises on laps, deaths, and tier clears; higher values make fights harsher and camp weaker." /></span>
         </div>
       </section>
 
@@ -560,12 +672,12 @@ function PlayerSideDock({
         <div className="loop-tier-meter"><i /></div>
         <div className="loop-tier-meta">
           <strong>{game.claim?.playerId === player.id ? `${Math.ceil((game.claim?.remainingMs ?? 0) / 1000)}s` : shortTierName(game.tier.name)}</strong>
-          <span>{player.soloGatesCleared.length}/3</span>
+          <span>{player.soloGatesCleared.length}/3 gates</span>
         </div>
         <InfoPopover
           title={game.claim?.playerId === player.id ? 'Boss mark active' : game.tier.name}
           body={game.claim ? `${game.claim.claimantName} is closing a marked lap.` : game.tier.text}
-          hint={`${player.soloGatesCleared.length}/3 gates cleared`}
+          hint={`${player.soloGatesCleared.length}/3 gates cleared · ${player.deathsThisTier ?? 0} deaths this tier`}
         />
       </section>
 
@@ -604,7 +716,7 @@ function PlayerSideDock({
                     onLootDragEnd();
                   }}
                 >
-                  {slotIcon(slot, 18)}
+                  {item ? <ItemSprite item={item} fallbackSize={18} /> : slotIcon(slot, 18)}
                   {item && <span className="paper-slot-rarity" />}
                   <InfoPopover
                     title={item?.name ?? `${equipmentLabels[slot]} slot`}
@@ -660,7 +772,7 @@ function PlayerSideDock({
                   }}
                   onDragEnd={onLootDragEnd}
                 >
-                  {slotIcon(item.slot, 17)}
+                  <ItemSprite item={item} />
                   <span className="loot-role">{item.role?.slice(0, 1) ?? '?'}</span>
                   <InfoPopover
                     title={item.name}
@@ -699,6 +811,19 @@ function PlayerSideDock({
               <Users size={15} />
               <InfoPopover title="Fill CPU match" body={isHost ? 'Fills every open seat with CPU opponents.' : 'Only the room host can fill the match.'} />
             </button>
+            <button className="side-control-button" onClick={onStartRoom} disabled={!isHost || game.status !== 'lobby'} aria-label="Start match">
+              <Play size={15} />
+              <InfoPopover title="Start match" body={isHost ? 'Starts movement and scoring for this room.' : 'Only the room host can start the match.'} />
+            </button>
+            <button
+              className="side-control-button"
+              onClick={() => onSettings({ pace: game.settings.pace === 'quick' ? 'steady' : 'quick' })}
+              disabled={!isHost || game.status !== 'lobby'}
+              aria-label="Toggle pace"
+            >
+              <Settings size={15} />
+              <InfoPopover title="Room pace" eyebrow={game.settings.pace} body={`${game.settings.maxPlayers} seats · ${game.settings.goalScore} boss score · profile best ${profile.bestScore}`} />
+            </button>
             <button className="side-control-button" onClick={onToggleBgm} aria-label="Toggle music">
               {bgmOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
               <InfoPopover title="Crypt of Neon Glass" eyebrow="BGM" body={bgmOn ? 'Music is playing.' : 'Music is muted.'} />
@@ -725,7 +850,10 @@ function MobileDrawer({
   onMenu,
   onAddBot,
   onFillCpu,
+  onStartRoom,
   isHost,
+  onSettings,
+  profile,
   bgmOn,
   onToggleBgm
 }: {
@@ -743,7 +871,10 @@ function MobileDrawer({
   onMenu: () => void;
   onAddBot: () => void;
   onFillCpu: () => void;
+  onStartRoom: () => void;
   isHost: boolean;
+  onSettings: (settings: Partial<RoomSettings>) => void;
+  profile: LocalProfile;
   bgmOn: boolean;
   onToggleBgm: () => void;
 }) {
@@ -789,7 +920,7 @@ function MobileDrawer({
                     onLootDragEnd();
                   }}
                 >
-                  {slotIcon(slot, 16)}
+                  {item ? <ItemSprite item={item} fallbackSize={16} /> : slotIcon(slot, 16)}
                   <span>
                     <strong>{item?.name ?? equipmentLabels[slot]}</strong>
                     <small>{item ? `${item.role ?? item.rarity} · ${itemStatLine(item)}` : canDrop ? 'drop to equip' : 'empty'}</small>
@@ -814,7 +945,7 @@ function MobileDrawer({
                 }}
                 onDragEnd={onLootDragEnd}
               >
-                {slotIcon(item.slot, 17)}
+                <ItemSprite item={item} />
                 <i>{item.role?.slice(0, 1) ?? '?'}</i>
                 <span>
                   <strong>{item.name}</strong>
@@ -869,6 +1000,22 @@ function MobileDrawer({
             <Users size={19} />
             Fill CPU
           </button>
+          <button className="menu-item" onClick={onStartRoom} disabled={!isHost || game.status !== 'lobby'}>
+            <Play size={19} />
+            Start
+          </button>
+          <button
+            className="menu-item"
+            onClick={() => onSettings({ pace: game.settings.pace === 'quick' ? 'steady' : 'quick' })}
+            disabled={!isHost || game.status !== 'lobby'}
+          >
+            <Settings size={19} />
+            {game.settings.pace}
+          </button>
+          <div className="mobile-profile-summary">
+            <strong>{profile.bestScore}</strong>
+            <span>best score · {profile.wins}/{profile.matches} wins</span>
+          </div>
           <button className="menu-item" onClick={onToggleBgm}>
             {bgmOn ? <Volume2 size={19} /> : <VolumeX size={19} />}
             BGM
@@ -962,11 +1109,34 @@ function TalentTreeDock({
 
 function SellZone({
   active,
-  onDrop
+  player,
+  onDrop,
+  onBuy
 }: {
   active: boolean;
+  player: Player;
   onDrop: (kind: 'card' | 'loot', id: string) => void;
+  onBuy: (offer: ShopOffer) => void;
 }) {
+  const offers = player.shop?.offers ?? [];
+  const remainingSeconds = Math.max(0, Math.ceil((player.shop?.remainingMs ?? 0) / 1000));
+
+  function offerTitle(offer: ShopOffer) {
+    return offer.kind === 'card' ? offer.card.name : offer.loot.name;
+  }
+
+  function offerMeta(offer: ShopOffer) {
+    return offer.kind === 'card'
+      ? `${cardSuit(offer.card)} card`
+      : `${offer.loot.rarity} ${offer.loot.role ?? equipmentLabels[offer.loot.slot]}`;
+  }
+
+  function canBuy(offer: ShopOffer) {
+    if ((player.gold ?? 0) < offer.price) return false;
+    if (offer.kind === 'card') return player.hand.length < 7;
+    return player.loot.length < 10;
+  }
+
   return (
     <div
       className={`sell-zone ${active ? 'active' : ''}`}
@@ -983,12 +1153,61 @@ function SellZone({
         if (kind === 'loot' && lootId) onDrop('loot', lootId);
       }}
     >
-      <Coins size={18} />
-      <span>Sell</span>
+      <div className="shop-head">
+        <Coins size={18} />
+        <span>Market</span>
+        <small>{player.gold ?? 0}g · {remainingSeconds}s</small>
+      </div>
+      <div className="shop-offers">
+        {offers.map((offer) => {
+          const affordable = canBuy(offer);
+          return (
+            <button
+              key={offer.id}
+              type="button"
+              draggable={affordable}
+              className={`shop-offer ${offer.kind} ${affordable ? '' : 'locked'}`}
+              onClick={() => {
+                if (affordable) onBuy(offer);
+              }}
+              onDragStart={(event) => {
+                if (!affordable) {
+                  event.preventDefault();
+                  return;
+                }
+                event.dataTransfer.effectAllowed = 'copy';
+                event.dataTransfer.setData('application/x-loopduel-shop-offer-id', offer.id);
+              }}
+              onDragEnd={(event) => {
+                if (!affordable) return;
+                const target = event.currentTarget.getBoundingClientRect();
+                const droppedOutside = event.clientX < target.left || event.clientX > target.right || event.clientY < target.top || event.clientY > target.bottom;
+                if (droppedOutside) onBuy(offer);
+              }}
+            >
+              {offer.kind === 'card' ? (
+                <span className={`shop-card-glyph ${cardFaceClass(offer.card)}`}>{offer.card.icon}</span>
+              ) : (
+                <span className={`shop-loot-glyph ${offer.loot.slot} ${offer.loot.rarity}`}><ItemSprite item={offer.loot} /></span>
+              )}
+              <span>
+                <strong>{offerTitle(offer)}</strong>
+                <small>{offer.price}g</small>
+              </span>
+              <InfoPopover
+                title={offerTitle(offer)}
+                eyebrow={offerMeta(offer)}
+                lines={offer.kind === 'card' ? [offer.card.text] : itemPopoverLines(offer.loot, player.loadout[offer.loot.slot])}
+                hint={affordable ? 'drag out or click to buy' : (player.gold ?? 0) < offer.price ? 'not enough gold' : offer.kind === 'card' ? 'hand is full' : 'loot bag is full'}
+              />
+            </button>
+          );
+        })}
+      </div>
       <InfoPopover
-        title="Sell"
-        eyebrow="Gold score"
-        body="Drop a hand card or loose item here to delete it and bank gold into your score."
+        title="Market"
+        eyebrow="Personal rotating shop"
+        body="Drop hand cards or loose items here to sell. Drag an offer out or click it to buy."
       />
     </div>
   );
@@ -1026,10 +1245,11 @@ function PlayerPanel({
   const runnerTile = player.board[player.position] ?? player.board[0];
   const runnerLeft = ((runnerTile.coord[0] + 0.5) / 5) * 100;
   const runnerTop = ((runnerTile.coord[1] + 0.5) / 5) * 100;
+  const stunSeconds = Math.ceil((player.stunRemainingMs ?? 0) / 1000);
 
   return (
     <article
-      className={`player-panel ${active ? 'active' : ''} ${focused ? 'focused' : 'dimmed'} ${canRivalTarget ? 'rival-drop-target' : ''} ${player.combat ? 'combat-locked' : ''}`}
+      className={`player-panel ${active ? 'active' : ''} ${focused ? 'focused' : 'dimmed'} ${canRivalTarget ? 'rival-drop-target' : ''} ${player.combat ? 'combat-locked' : ''} ${stunSeconds > 0 ? 'stunned' : ''}`}
       style={{ '--hero-color': player.color } as CSSProperties}
       onClick={() => {
         if (canRivalTarget) {
@@ -1125,13 +1345,14 @@ function PlayerPanel({
             <span className="bc-hp-bar"><i style={{ width: `${hpRatio * 100}%` }} /></span>
             <small>{Math.ceil(player.hp)}/{player.maxHp}</small>
           </div>
-          <div className="bc-meta">Lv {player.level} · Lap {player.laps} · {player.score} pts</div>
+          <div className="bc-meta">Lv {player.level} · Lap {player.laps} · {player.score} pts · Corr {player.soloCorruption ?? 0}</div>
           <div className="bc-stats">
             <span><Zap size={12} /> {player.power}</span>
             <span><Shield size={12} /> {player.guard}</span>
             <span>SPD {player.speed}</span>
           </div>
           <div className="bc-event">{player.event}</div>
+          {stunSeconds > 0 && <div className="bc-stun">stunned {stunSeconds}s</div>}
           {player.marked && <div className="bc-claim">marked</div>}
           <div className="bc-cards">{player.hand.length} cards · {player.loot.length} loot · {player.gold ?? 0} gold</div>
           <InfoPopover
@@ -1141,6 +1362,7 @@ function PlayerPanel({
             lines={[
               `${Math.ceil(player.hp)}/${player.maxHp} HP`,
               `${player.power} power · ${player.guard} guard · ${player.speed} speed`,
+              `${player.soloCorruption ?? 0} corruption · ${player.soloGatesCleared.length}/3 gates`,
               `${player.cardsPlayed} cards played · ${player.rivalHits} rival hits`
             ]}
             className="player-pop"
@@ -1273,7 +1495,7 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
         <div className="help-head">
           <div>
             <strong>Rules</strong>
-            <span>Climb three tiers, then defeat the Loop Tyrant.</span>
+            <span>Break the gates, then defeat the Loop Tyrant.</span>
           </div>
           <button className="icon-action" onClick={onClose}>Close</button>
         </div>
@@ -1292,11 +1514,11 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
           </section>
           <section>
             <h2>Scoring</h2>
-            <p>Level, laps, fights, loot, and banked XP unlock tiers. Each tier reset destroys your board and raises danger and rewards.</p>
+            <p>Level, laps, fights, loot, and banked XP unlock gates. In solo, score opens the gate, but your build must beat the Warden and Crown Gate before the next tier unlocks.</p>
           </section>
           <section>
             <h2>Finale</h2>
-            <p>At {config.goalScore} points in tier III, the Loop Tyrant appears. Defeat him to win; dying restarts the current tier board.</p>
+            <p>At {config.goalScore} points in tier III, the Loop Tyrant appears. Corruption rises from laps, tier clears, and deaths; dying restarts the current tier board and costs gold, tempo, and sometimes loose loot.</p>
           </section>
         </div>
         <div className="help-lists">

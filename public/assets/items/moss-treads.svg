@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Moss Treads">
+  <defs><filter id="glow"><feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#120907" flood-opacity=".85"/><feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#669055" flood-opacity=".5"/></filter></defs>
+  <ellipse cx="32" cy="55" rx="19" ry="5" fill="rgba(0,0,0,.42)"/>
+  <g filter="url(#glow)"><path d="M22 10 L38 12 L38 35 C44 35 50 39 52 47 C41 52 28 51 16 48 L19 35 Z" fill="#669055" stroke="#24140d" stroke-width="4"/><path d="M20 46 C31 49 42 48 51 45" stroke="#ffe08a" stroke-width="3" opacity=".58"/><path d="M24 17 L37 18" stroke="#19100b" stroke-width="3"/></g>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Ash Bow">
+  <defs><filter id="glow"><feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#120907" flood-opacity=".85"/><feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#c46d4a" flood-opacity=".5"/></filter></defs>
+  <ellipse cx="32" cy="55" rx="19" ry="5" fill="rgba(0,0,0,.42)"/>
+  <g filter="url(#glow)"><path d="M24 12 C42 18 43 46 24 52" fill="none" stroke="#24140d" stroke-width="7" stroke-linecap="round"/><path d="M24 12 C42 18 43 46 24 52" fill="none" stroke="#c46d4a" stroke-width="4" stroke-linecap="round"/><path d="M25 12 L25 52" stroke="#e7d8ab" stroke-width="2"/><path d="M18 34 L43 24 L37 34 L43 44 Z" fill="#b07a45" stroke="#24140d" stroke-width="3"/></g>
+</svg>

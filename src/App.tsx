@@ -1,9 +1,10 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Bot, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Shield } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import { Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield } from 'lucide-react';
 import { heroPortraitUrl, statLine } from './game-assets';
-import type { GameConfig, GameState, Loot, Tile } from './types';
+import type { GameConfig, GameState, Loot, RoomSettings, ShopOffer, Tile } from './types';
 import {
   DragCardGhost,
   DragLootGhost,
@@ -24,6 +25,28 @@ function savedPlayerToken() {
   return localStorage.getItem('loopduel.playerToken') ?? '';
 }
 
+function initialRoomId() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('room') ?? localStorage.getItem('loopduel.roomId') ?? 'main';
+}
+
+export type LocalProfile = {
+  matches: number;
+  wins: number;
+  bestScore: number;
+  bestLevel: number;
+};
+
+const emptyProfile: LocalProfile = { matches: 0, wins: 0, bestScore: 0, bestLevel: 1 };
+
+function loadProfile(): LocalProfile {
+  try {
+    return { ...emptyProfile, ...JSON.parse(localStorage.getItem('loopduel.profile') ?? '{}') };
+  } catch {
+    return emptyProfile;
+  }
+}
+
 function App() {
   const socket = useMemo<Socket>(() => io(), []);
   const bgmRef = useRef<HTMLAudioElement | null>(null);
@@ -32,17 +55,21 @@ function App() {
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
   const [name, setName] = useState(() => `Player ${Math.floor(Math.random() * 900 + 100)}`);
-  const [roomId, setRoomId] = useState(() => localStorage.getItem('loopduel.roomId') ?? 'main');
+  const [roomId, setRoomId] = useState(initialRoomId);
   const [heroId, setHeroId] = useState('ember-knight');
+  const [spectatorRoomId, setSpectatorRoomId] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [showHelp, setShowHelp] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(() => localStorage.getItem('loopduel.tutorialSeen') !== 'yes');
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [dragCardId, setDragCardId] = useState<string | null>(null);
   const [dragLootId, setDragLootId] = useState<string | null>(null);
   const [dragPoint, setDragPoint] = useState({ x: 0, y: 0 });
   const [bgmOn, setBgmOn] = useState(() => localStorage.getItem('loopduel.bgm') !== 'off');
+  const [profile, setProfile] = useState(loadProfile);
+  const [recordedFinishId, setRecordedFinishId] = useState<string | null>(null);
   const [mobileDrawer, setMobileDrawer] = useState<'loot' | 'talents' | 'log' | 'menu' | null>(null);
 
   useEffect(() => {
@@ -62,6 +89,7 @@ function App() {
       localStorage.setItem('loopduel.roomId', nextRoomId);
       setPlayerToken(nextToken);
       setRoomId(nextRoomId);
+      setSpectatorRoomId(null);
     });
     socket.on('notice', (message: string) => setNotice(message));
     return () => {
@@ -95,6 +123,11 @@ function App() {
   const activeCard = draggedCard ?? selectedCard;
   const isHost = Boolean(me && game?.hostId === me.id);
 
+  function closeTutorial() {
+    localStorage.setItem('loopduel.tutorialSeen', 'yes');
+    setShowTutorial(false);
+  }
+
   useEffect(() => {
     localStorage.setItem('loopduel.bgm', bgmOn ? 'on' : 'off');
     const audio = bgmRef.current;
@@ -110,6 +143,24 @@ function App() {
     window.addEventListener('pointerdown', play, { once: true });
     return () => window.removeEventListener('pointerdown', play);
   }, [bgmOn, me]);
+
+  useEffect(() => {
+    if (!game || !me || game.status !== 'finished') return;
+    const finishId = `${game.id}:${game.winnerId ?? 'none'}`;
+    if (recordedFinishId === finishId) return;
+    const nextProfile = {
+      matches: profile.matches + 1,
+      wins: profile.wins + (game.winnerId === me.id ? 1 : 0),
+      bestScore: Math.max(profile.bestScore, me.score),
+      bestLevel: Math.max(profile.bestLevel, me.level)
+    };
+    localStorage.setItem('loopduel.profile', JSON.stringify(nextProfile));
+    const updateId = window.setTimeout(() => {
+      setProfile(nextProfile);
+      setRecordedFinishId(finishId);
+    }, 0);
+    return () => window.clearTimeout(updateId);
+  }, [game, me, profile, recordedFinishId]);
 
   useEffect(() => {
     document.body.classList.toggle('card-drag-active', Boolean(draggedCard));
@@ -138,7 +189,26 @@ function App() {
 
   function join() {
     socket.emit('join', { name, heroId, roomId, playerToken: shouldAutoReconnect ? playerToken || undefined : undefined });
+    setSpectatorRoomId(null);
     setSelectedCardId(null);
+  }
+
+  function spectate() {
+    socket.emit('spectate', { roomId });
+    setSpectatorRoomId(roomId);
+    localStorage.setItem('loopduel.roomId', roomId);
+  }
+
+  function inviteUrl(nextRoomId = game?.id ?? roomId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('room', nextRoomId);
+    return url.toString();
+  }
+
+  async function copyInvite(nextRoomId = game?.id ?? roomId) {
+    const url = inviteUrl(nextRoomId);
+    await navigator.clipboard?.writeText(url).catch(() => undefined);
+    setNotice(`Invite copied for room ${nextRoomId}.`);
   }
 
   function addBot() {
@@ -147,6 +217,18 @@ function App() {
 
   function fillCpu() {
     socket.emit('fillCpu');
+  }
+
+  function startRoom() {
+    socket.emit('startRoom');
+  }
+
+  function updateRoomSettings(settings: Partial<RoomSettings>) {
+    socket.emit('updateRoomSettings', settings);
+  }
+
+  function kickPlayer(targetId: string) {
+    socket.emit('kickPlayer', { targetId });
   }
 
   function placeCard(tile: Tile, cardId = activeCard?.instanceId) {
@@ -161,6 +243,14 @@ function App() {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'rival') return;
     socket.emit('playRivalCard', { cardId: card.instanceId, targetId });
+    setSelectedCardId(null);
+    setDragCardId(null);
+  }
+
+  function playBonk(targetId?: string, cardId = activeCard?.instanceId) {
+    const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
+    if (!card || card.kind !== 'bonk') return;
+    socket.emit('playBonkCard', { cardId: card.instanceId, targetId });
     setSelectedCardId(null);
     setDragCardId(null);
   }
@@ -188,6 +278,10 @@ function App() {
     setDragLootId(null);
   }
 
+  function buyShopOffer(offer: ShopOffer) {
+    socket.emit('buyShopOffer', { offerId: offer.id });
+  }
+
   function chooseTrait(traitId: string) {
     socket.emit('chooseTrait', { traitId });
   }
@@ -208,6 +302,56 @@ function App() {
     return <div className="boot">Loopduel</div>;
   }
 
+  if (!me && spectatorRoomId && game.id === spectatorRoomId) {
+    return (
+      <main className="game-shell spectator-shell">
+        {notice && <div className="notice-toast">{notice}</div>}
+        {game.status !== 'finished' && <PhaseStrip game={game} />}
+        <section className="spectator-bar">
+          <div>
+            <strong>Watching room {game.id}</strong>
+            <span>{game.players.length}/{game.maxPlayers} runners · {game.tier.name} · tick {game.tick}</span>
+          </div>
+          <div className="spectator-actions">
+            <button className="icon-action" onClick={() => copyInvite(game.id)}>
+              <Share2 size={18} />
+              Invite
+            </button>
+            <button className="primary-action" onClick={join}>
+              <Play size={18} />
+              Join
+            </button>
+          </div>
+        </section>
+        <section className="play-layout spectator-layout">
+          <section className="arena-grid has-focus">
+            {game.players.map((player, index) => (
+              <PlayerPanel
+                key={player.id}
+                player={player}
+                rank={player.rank}
+                active={false}
+                focused={index === 0}
+                selectedCard={null}
+                draggingCard={null}
+                rivalTargetCard={null}
+                onFocus={() => undefined}
+              />
+            ))}
+          </section>
+          <aside className="spectator-feed">
+            <strong>Leaderboard</strong>
+            {game.leaderboard.map((entry) => (
+              <span key={entry.id}>#{entry.rank} {entry.name} · {entry.score} pts · Lv {entry.level}</span>
+            ))}
+            <strong>Log</strong>
+            {game.log.slice(0, 8).map((line) => <span key={line}>{line}</span>)}
+          </aside>
+        </section>
+      </main>
+    );
+  }
+
   if (!me) {
     return (
       <main className="lobby-shell">
@@ -220,6 +364,12 @@ function App() {
         </section>
 
         <section className="join-panel">
+          <div className="profile-strip" aria-label="Local profile">
+            <span><strong>{profile.matches}</strong> matches</span>
+            <span><strong>{profile.wins}</strong> wins</span>
+            <span><strong>{profile.bestScore}</strong> best</span>
+            <span><strong>{profile.bestLevel}</strong> best level</span>
+          </div>
           <div className="name-row">
             <label htmlFor="player-name">Handle</label>
             <input
@@ -239,6 +389,17 @@ function App() {
               <Play size={18} />
               Enter
             </button>
+            <button className="icon-action" onClick={spectate}>
+              <Eye size={18} />
+              Watch
+            </button>
+            <button className="icon-action" onClick={() => copyInvite(roomId)}>
+              <Share2 size={18} />
+              Invite
+            </button>
+            <span className="join-qr" aria-label={`QR invite for room ${roomId}`}>
+              <QRCodeSVG value={inviteUrl(roomId)} size={80} marginSize={1} />
+            </span>
             <button className="icon-action" onClick={() => setShowHelp(true)}>
               <HelpCircle size={18} />
               Rules
@@ -286,6 +447,17 @@ function App() {
     ? [focusedPlayer, ...game.players.filter((player) => player.id !== focusedPlayer.id)]
     : game.players;
   const rivalTargetCard = activeCard?.kind === 'rival' ? activeCard : null;
+  const bonkTargetCard = activeCard?.kind === 'bonk' ? activeCard : null;
+  const highestScoreRival = game.players
+    .filter((player) => player.id !== me.id)
+    .sort((a, b) => {
+      const scoreDiff = b.score - a.score;
+      if (scoreDiff !== 0) return scoreDiff;
+      return a.name.localeCompare(b.name);
+    })[0] ?? null;
+  const bonkTargets = bonkTargetCard?.targetMode === 'chosen'
+    ? game.players.filter((player) => player.id !== me.id)
+    : highestScoreRival ? [highestScoreRival] : [];
 
   return (
     <main className="game-shell">
@@ -294,6 +466,19 @@ function App() {
 
       {game.status !== 'finished' && <PhaseStrip game={game} />}
       <MobileStatusBar player={me} game={game} />
+      <section className="room-actions">
+        <span>Room {game.id}</span>
+        {game.status === 'lobby' && (
+          <button className="primary-action" onClick={startRoom} disabled={!isHost || game.players.length === 0}>
+            <Play size={16} />
+            Start Match
+          </button>
+        )}
+        <button className="icon-action" onClick={() => copyInvite(game.id)}>
+          <Share2 size={16} />
+          Invite
+        </button>
+      </section>
 
       {game.status === 'finished' && game.winner && (
         <section className="winner-strip" style={{ '--hero-color': game.winner.color } as CSSProperties}>
@@ -305,6 +490,36 @@ function App() {
             <RotateCcw size={18} />
             Rematch
           </button>
+        </section>
+      )}
+      {game.status === 'finished' && (
+        <section className="match-summary">
+          <div className="summary-board">
+            {game.leaderboard.slice(0, 4).map((entry) => {
+              const player = game.players.find((item) => item.id === entry.id);
+              return (
+                <article
+                  className={`summary-card ${entry.id === game.winnerId ? 'winner' : ''}`}
+                  key={entry.id}
+                  style={{ '--hero-color': player?.color ?? '#d2b15c' } as CSSProperties}
+                >
+                  <span className="summary-rank">#{entry.rank}</span>
+                  <strong>{entry.name}</strong>
+                  <small>{entry.score} pts</small>
+                  <div>
+                    <span>Lv {entry.level}</span>
+                    <span>{entry.laps} laps</span>
+                    <span>{player?.kos ?? 0} KOs</span>
+                    <span>{player?.rivalHits ?? 0} hits</span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <div className="summary-log">
+            <strong>Final turns</strong>
+            {game.log.slice(0, 4).map((line) => <span key={line}>{line}</span>)}
+          </div>
         </section>
       )}
 
@@ -319,20 +534,24 @@ function App() {
               focused={player.id === focusedPlayerId}
               selectedCard={player.id === me.id ? activeCard : null}
               draggingCard={player.id === me.id ? activeCard : null}
-              rivalTargetCard={player.id !== me.id ? rivalTargetCard : null}
+              rivalTargetCard={player.id !== me.id && (!bonkTargetCard || bonkTargetCard.targetMode === 'chosen' || player.id === highestScoreRival?.id) ? rivalTargetCard ?? bonkTargetCard : null}
               onTile={player.id === me.id ? placeCard : undefined}
-              onRivalTarget={player.id !== me.id ? (cardId) => playRival(player.id, cardId) : undefined}
-              onRivalTile={player.id !== me.id ? (tileIndex, cardId) => playRivalOnTile(player.id, tileIndex, cardId) : undefined}
+              onRivalTarget={player.id !== me.id ? (cardId) => {
+                const card = me.hand.find((item) => item.instanceId === cardId) ?? activeCard;
+                if (card?.kind === 'bonk') playBonk(player.id, cardId);
+                else playRival(player.id, cardId);
+              } : undefined}
+              onRivalTile={player.id !== me.id && rivalTargetCard ? (tileIndex, cardId) => playRivalOnTile(player.id, tileIndex, cardId) : undefined}
               onFocus={() => focusBoard(player.id)}
             />
           ))}
         </section>
         <MobileRivalStrip
-          players={game.players.filter((player) => player.id !== me.id)}
+          players={bonkTargetCard ? bonkTargets : game.players.filter((player) => player.id !== me.id)}
           focusedId={focusedPlayerId}
-          activeCard={rivalTargetCard}
+          activeCard={rivalTargetCard ?? bonkTargetCard}
           onFocus={focusBoard}
-          onTarget={(targetId) => playRival(targetId)}
+          onTarget={(targetId) => bonkTargetCard ? playBonk(targetId) : playRival(targetId)}
         />
         <section className="control-dock">
           <div className="mobile-tray-head">
@@ -368,25 +587,27 @@ function App() {
           {activeCard && (
             <div className={`action-hint ${activeCard.kind}`}>
               <strong>{activeCard.icon} {activeCard.name}</strong>
-              <span>{activeCard.kind === 'terrain' ? 'choose a loop tile' : 'choose a rival or road trap'}</span>
+              <span>{activeCard.kind === 'terrain' ? 'choose a loop tile' : activeCard.kind === 'bonk' ? (activeCard.targetMode === 'chosen' ? 'choose who gets stunned' : 'bonks the leading rival') : 'choose a rival or road trap'}</span>
             </div>
           )}
-          {rivalTargetCard && (
+          {(rivalTargetCard || bonkTargetCard) && (
             <div className="target-row">
-              <span className="target-label">strike</span>
-              {game.players.filter((player) => player.id !== me.id).map((target) => (
+              <span className="target-label">{bonkTargetCard ? 'bonk' : 'strike'}</span>
+              {(bonkTargetCard ? bonkTargets : game.players.filter((player) => player.id !== me.id)).map((target) => (
                 <button
                   key={target.id}
                   className="target-chip"
                   style={{ '--hero-color': target.color } as CSSProperties}
-                  onClick={() => playRival(target.id)}
+                  onClick={() => bonkTargetCard ? playBonk(target.id) : playRival(target.id)}
                   onDragOver={(event) => {
                     event.preventDefault();
                     event.dataTransfer.dropEffect = 'link';
                   }}
                   onDrop={(event) => {
                     event.preventDefault();
-                    playRival(target.id, event.dataTransfer.getData('text/plain') || rivalTargetCard.instanceId);
+                    const cardId = event.dataTransfer.getData('text/plain') || (rivalTargetCard ?? bonkTargetCard)?.instanceId;
+                    if (bonkTargetCard) playBonk(target.id, cardId);
+                    else playRival(target.id, cardId);
                   }}
                 >
                   <img src={heroPortraitUrl(target.heroId)} alt={target.name} />
@@ -395,7 +616,7 @@ function App() {
                     eyebrow="Rival target"
                     body={`Lv ${target.level} · ${target.score} pts · ${Math.ceil(target.hp)}/${target.maxHp} HP`}
                     lines={[`${target.hand.length} cards`, `${target.loot.length} loot`, `${target.deaths} knockdowns`]}
-                    hint="Drop a rival card here"
+                    hint={bonkTargetCard ? 'Drop a bonk card here' : 'Drop a rival card here'}
                   />
                 </button>
               ))}
@@ -418,7 +639,10 @@ function App() {
           onMenu={() => setShowMenu(true)}
           onAddBot={addBot}
           onFillCpu={fillCpu}
+          onStartRoom={startRoom}
           isHost={isHost}
+          onSettings={updateRoomSettings}
+          profile={profile}
           bgmOn={bgmOn}
           onToggleBgm={() => setBgmOn((on) => !on)}
         />
@@ -440,21 +664,76 @@ function App() {
           onMenu={() => setShowMenu(true)}
           onAddBot={addBot}
           onFillCpu={fillCpu}
+          onStartRoom={startRoom}
           isHost={isHost}
+          onSettings={updateRoomSettings}
+          profile={profile}
           bgmOn={bgmOn}
           onToggleBgm={() => setBgmOn((on) => !on)}
         />
       </section>
       {draggedCard && <DragCardGhost card={draggedCard} x={dragPoint.x} y={dragPoint.y} />}
       {draggedLoot && <DragLootGhost item={draggedLoot} x={dragPoint.x} y={dragPoint.y} />}
-      <SellZone active={Boolean(dragCardId || dragLootId)} onDrop={handleSellDrop} />
+      <SellZone
+        active={Boolean(dragCardId || dragLootId)}
+        player={me}
+        onDrop={handleSellDrop}
+        onBuy={buyShopOffer}
+      />
       {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}
+      {showTutorial && game.status !== 'finished' && (
+        <section className="tutorial-overlay" role="dialog" aria-modal="true">
+          <div className="tutorial-panel">
+            <div className="tutorial-head">
+              <strong>First Run</strong>
+              <button className="icon-action" onClick={closeTutorial}>Close</button>
+            </div>
+            <div className="tutorial-steps">
+              <article>
+                <span>1</span>
+                <strong>Build the loop</strong>
+                <p>Drop terrain cards onto your board. Safe tiles keep you alive; danger tiles pay XP and loot.</p>
+              </article>
+              <article>
+                <span>2</span>
+                <strong>Equip and choose traits</strong>
+                <p>Loot and talents turn early survival into enough power for the Warden, Crown Gate, and Tyrant.</p>
+              </article>
+              <article>
+                <span>3</span>
+                <strong>Control rivals</strong>
+                <p>Rival and bonk cards slow the leader. In solo, the deck favors terrain so the run stays build-focused.</p>
+              </article>
+              <article>
+                <span>4</span>
+                <strong>Claim the loop</strong>
+                <p>Score opens each gate. The final clear needs tier III, one more lap, and a clean boss fight.</p>
+              </article>
+            </div>
+            <div className="tutorial-actions">
+              <button className="icon-action" onClick={() => setShowHelp(true)}>
+                <HelpCircle size={18} />
+                Rules
+              </button>
+              <button className="primary-action" onClick={closeTutorial}>
+                <Play size={18} />
+                Start
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
       {showMenu && (
         <GameMenu
           game={game}
           isHost={isHost}
           onAddBot={addBot}
           onFillCpu={fillCpu}
+          onStartRoom={startRoom}
+          onKickPlayer={kickPlayer}
+          onSettings={updateRoomSettings}
+          inviteUrl={inviteUrl(game.id)}
+          profile={profile}
           onReset={() => { resetRoom(); setShowMenu(false); }}
           onRules={() => { setShowMenu(false); setShowHelp(true); }}
           onClose={() => setShowMenu(false)}

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Glass Pike">
+  <defs><filter id="glow"><feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#120907" flood-opacity=".85"/><feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#9be8ff" flood-opacity=".5"/></filter></defs>
+  <ellipse cx="32" cy="55" rx="19" ry="5" fill="rgba(0,0,0,.42)"/>
+  <g filter="url(#glow)"><path d="M18 51 L34 8 L48 20 L27 54 Z" fill="#9be8ff" stroke="#24140d" stroke-width="4"/><path d="M25 45 L17 55 M27 46 L38 55" stroke="#d8c68f" stroke-width="4" stroke-linecap="round"/><path d="M33 14 L29 43" stroke="#fff3bc" stroke-width="1.5" opacity=".75"/></g>
+</svg>

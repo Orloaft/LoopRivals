@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Loop Hauberk">
+  <defs><filter id="glow"><feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#120907" flood-opacity=".85"/><feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#d8aa4d" flood-opacity=".5"/></filter></defs>
+  <ellipse cx="32" cy="55" rx="19" ry="5" fill="rgba(0,0,0,.42)"/>
+  <g filter="url(#glow)"><path d="M21 10 L43 10 L51 24 L45 55 L19 55 L13 24 Z" fill="#d8aa4d" stroke="#24140d" stroke-width="4"/><path d="M22 16 L42 16 L39 48 L25 48 Z" fill="#3a2a22" opacity=".28"/><path d="M18 28 L46 28 M21 40 L43 40" stroke="#ffe08a" stroke-width="2" opacity=".58"/></g>
+</svg>

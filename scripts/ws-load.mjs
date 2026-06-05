@@ -49,26 +49,22 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function waitForServer(server) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('server did not start within 15s')), 15_000);
+async function waitForServer(server) {
+  server.stdout.on('data', (data) => process.stdout.write(data.toString()));
+  server.stderr.on('data', (data) => process.stderr.write(data.toString()));
 
-    function onData(data) {
-      const line = data.toString();
-      process.stdout.write(line);
-      if (line.includes('Loopduel listening')) {
-        clearTimeout(timeout);
-        resolve();
-      }
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    if (server.exitCode !== null) throw new Error(`server exited early with code ${server.exitCode}`);
+    try {
+      const response = await fetch(`${url}/healthz`);
+      if (response.ok) return;
+    } catch {
+      // Keep polling while the production server starts.
     }
-
-    server.stdout.on('data', onData);
-    server.stderr.on('data', (data) => process.stderr.write(data.toString()));
-    server.on('exit', (code) => {
-      clearTimeout(timeout);
-      reject(new Error(`server exited early with code ${code}`));
-    });
-  });
+    await wait(200);
+  }
+  throw new Error('server did not start within 15s');
 }
 
 function roomPositionKey(player) {
@@ -193,6 +189,9 @@ async function main() {
       for (let playerIndex = 0; playerIndex < playersPerRoom; playerIndex += 1) {
         clients.push(await connectClient(roomIndex, playerIndex));
       }
+    }
+    for (let roomIndex = 0; roomIndex < rooms; roomIndex += 1) {
+      clients.find((client) => client.playerToken === `load-${roomIndex}-p0`)?.emit('startRoom');
     }
 
     const actionTimer = setInterval(() => {

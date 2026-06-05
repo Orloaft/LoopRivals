@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Duel Cloak">
+  <defs><filter id="glow"><feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#120907" flood-opacity=".85"/><feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#9d1f35" flood-opacity=".5"/></filter></defs>
+  <ellipse cx="32" cy="55" rx="19" ry="5" fill="rgba(0,0,0,.42)"/>
+  <g filter="url(#glow)"><path d="M22 11 L42 11 C50 25 51 43 44 56 C35 51 27 51 19 56 C13 42 14 25 22 11 Z" fill="#9d1f35" stroke="#24140d" stroke-width="4"/><path d="M31 14 C27 28 27 42 24 54" stroke="#ffd98b" stroke-width="2" opacity=".7"/><circle cx="32" cy="14" r="5" fill="#d8c68f" stroke="#24140d" stroke-width="3"/></g>
+</svg>

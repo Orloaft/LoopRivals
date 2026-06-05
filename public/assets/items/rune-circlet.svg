@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Rune Circlet">
+  <defs><filter id="glow"><feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#120907" flood-opacity=".85"/><feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#66d4d8" flood-opacity=".5"/></filter></defs>
+  <ellipse cx="32" cy="55" rx="19" ry="5" fill="rgba(0,0,0,.42)"/>
+  <g filter="url(#glow)"><ellipse cx="32" cy="34" rx="21" ry="9" fill="none" stroke="#24140d" stroke-width="7"/><ellipse cx="32" cy="34" rx="21" ry="9" fill="none" stroke="#66d4d8" stroke-width="4"/><circle cx="32" cy="24" r="6" fill="#68e5e0" stroke="#24140d" stroke-width="3"/><path d="M22 32 L18 22 M42 32 L46 22" stroke="#d8c68f" stroke-width="3"/></g>
+</svg>

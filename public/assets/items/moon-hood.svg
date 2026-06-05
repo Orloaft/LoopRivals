@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Moon Hood">
+  <defs><filter id="glow"><feDropShadow dx="0" dy="2" stdDeviation="1.4" flood-color="#120907" flood-opacity=".85"/><feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#7788d8" flood-opacity=".5"/></filter></defs>
+  <ellipse cx="32" cy="55" rx="19" ry="5" fill="rgba(0,0,0,.42)"/>
+  <g filter="url(#glow)"><path d="M15 51 C17 24 24 10 33 9 C45 13 51 28 49 51 Z" fill="#7788d8" stroke="#24140d" stroke-width="4"/><path d="M23 46 C24 29 29 22 34 21 C40 23 43 31 42 46 Z" fill="#171321" stroke="#24140d" stroke-width="3"/></g>
+</svg>

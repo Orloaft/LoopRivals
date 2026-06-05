@@ -36,6 +36,10 @@ export function simulateMatch(seed, options = {}) {
       level: player.level,
       laps: player.laps,
       deaths: player.deaths,
+      loopTier: player.loopTier,
+      maxHp: player.maxHp,
+      power: player.power,
+      guard: player.guard,
       rivalHits: player.rivalHits,
       tilesPlaced: player.tilesPlaced
     }))
@@ -44,7 +48,16 @@ export function simulateMatch(seed, options = {}) {
 
 export function runBalanceSuite(matchCount = 120) {
   const wins = Object.fromEntries(heroes.map((hero) => [hero.id, 0]));
-  const totals = Object.fromEntries(heroes.map((hero) => [hero.id, { appearances: 0, score: 0, deaths: 0, rivalHits: 0 }]));
+  const totals = Object.fromEntries(heroes.map((hero) => [hero.id, {
+    appearances: 0,
+    score: 0,
+    deaths: 0,
+    rivalHits: 0,
+    loopTier: 0,
+    maxHp: 0,
+    power: 0,
+    guard: 0
+  }]));
   const matches = [];
 
   for (let seed = 1; seed <= matchCount; seed += 1) {
@@ -56,6 +69,10 @@ export function runBalanceSuite(matchCount = 120) {
       totals[player.heroId].score += player.score;
       totals[player.heroId].deaths += player.deaths;
       totals[player.heroId].rivalHits += player.rivalHits;
+      totals[player.heroId].loopTier += player.loopTier;
+      totals[player.heroId].maxHp += player.maxHp;
+      totals[player.heroId].power += player.power;
+      totals[player.heroId].guard += player.guard;
     }
   }
 
@@ -67,14 +84,23 @@ export function runBalanceSuite(matchCount = 120) {
       winRate: wins[hero.id] / matchCount,
       avgScore: Math.round(total.score / Math.max(1, total.appearances)),
       avgDeaths: Number((total.deaths / Math.max(1, total.appearances)).toFixed(2)),
-      avgRivalHits: Number((total.rivalHits / Math.max(1, total.appearances)).toFixed(2))
+      avgRivalHits: Number((total.rivalHits / Math.max(1, total.appearances)).toFixed(2)),
+      avgLoopTier: Number((total.loopTier / Math.max(1, total.appearances)).toFixed(2)),
+      avgMaxHp: Number((total.maxHp / Math.max(1, total.appearances)).toFixed(2)),
+      avgPower: Number((total.power / Math.max(1, total.appearances)).toFixed(2)),
+      avgGuard: Number((total.guard / Math.max(1, total.appearances)).toFixed(2))
     };
   });
+
+  const winRates = heroesReport.map((hero) => hero.winRate);
+  const scores = heroesReport.map((hero) => hero.avgScore);
 
   return {
     matchCount,
     finishedRate: matches.filter((match) => match.finished).length / matchCount,
     avgSeconds: Math.round(matches.reduce((sum, match) => sum + match.seconds, 0) / matchCount),
+    winRateSpread: Number((Math.max(...winRates) - Math.min(...winRates)).toFixed(3)),
+    avgScoreSpread: Math.max(...scores) - Math.min(...scores),
     heroes: heroesReport
   };
 }
