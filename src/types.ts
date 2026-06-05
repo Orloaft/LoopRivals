@@ -74,6 +74,7 @@ export type Tile = {
   coord: [number, number];
   type: string;
   charges: number;
+  expiresOnLap?: number | null;
 };
 
 export type MatchTier = {
@@ -162,6 +163,10 @@ export type Player = {
   cardsPlayed: number;
   tilesPlaced: number;
   deaths: number;
+  loopTier: number;
+  tierStartScore: number;
+  tierStartLap: number;
+  bossAttempts: number;
   soloGatesCleared: number[];
   marked: boolean;
   curse: number;

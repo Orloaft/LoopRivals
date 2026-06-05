@@ -300,38 +300,94 @@ test('talent tree budgets stay in a tight balance band', () => {
   }
 });
 
-test('reaching the goal score starts a claim lap instead of ending immediately', () => {
-  const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
-  room.players.leader = player;
+test('placed terrain expires after its loop lifetime', () => {
+  const player = testApi.createPlayer('shaper', 'Shaper', 'moss-warden');
+  const card = {
+    id: 'grove',
+    instanceId: 'grove-expiry',
+    name: 'Grove',
+    kind: 'terrain',
+    tile: 'grove',
+    icon: '♣',
+    text: '+XP fights.'
+  };
+  player.hand = [card];
+  room.players.shaper = player;
   room.status = 'running';
-  player.level = Math.ceil(testApi.goalScore / 390);
 
-  const winner = testApi.checkWinner(room);
-  const snapshot = testApi.roomSnapshot(room);
+  testApi.playTerrain(room, player, card.instanceId, 2);
 
-  assert.equal(winner, null);
-  assert.equal(snapshot.status, 'running');
-  assert.equal(snapshot.winnerId, null);
-  assert.equal(snapshot.claim.playerId, player.id);
-  assert.equal(snapshot.tier.id, 4);
-  assert.equal(player.marked, true);
+  assert.equal(player.board[2].type, 'grove');
+  assert.equal(player.board[2].expiresOnLap, 3);
+
+  player.position = 15;
+  player.laps = 2;
+  player.nextMoveAt = room.now;
+  testApi.runRoomStep(room, { advanceMs: 1 });
+
+  assert.equal(player.laps, 3);
+  assert.equal(player.board[2].type, 'road');
+  assert.equal(player.board[2].expiresOnLap, undefined);
 });
 
-test('claim lap finishes after the claimant completes another lap', () => {
+test('tier progression resets the player board and increases loop tier', () => {
+  const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
+  room.players.leader = player;
+  room.status = 'running';
+  player.level = 5;
+  player.board[4].type = 'crypt';
+
+  testApi.checkWinner(room);
+
+  assert.equal(player.loopTier, 2);
+  assert.equal(player.position, 0);
+  assert.equal(player.board.every((tile, index) => tile.type === (index === 0 ? 'camp' : 'road')), true);
+  assert.equal(testApi.roomSnapshot(room).tier.id, 2);
+});
+
+test('reaching the final score in tier three culminates in a boss fight', () => {
   const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
   room.players.leader = player;
   room.status = 'running';
   player.level = Math.ceil(testApi.goalScore / 390);
-  player.laps = 3;
+  player.maxHp = 220;
+  player.hp = 220;
+  player.power = 50;
+  player.guard = 80;
 
-  testApi.checkWinner(room);
-  player.laps = 4;
+  assert.equal(testApi.checkWinner(room), null);
+  assert.equal(player.loopTier, 3);
+  assert.equal(player.combat, null);
+
+  player.laps = player.tierStartLap + 1;
   const winner = testApi.checkWinner(room);
   const snapshot = testApi.roomSnapshot(room);
 
-  assert.equal(winner.id, player.id);
-  assert.equal(snapshot.status, 'finished');
-  assert.equal(snapshot.winnerId, player.id);
+  assert.equal(player.loopTier, 3);
+  assert.equal(snapshot.claim, null);
+  assert.equal(snapshot.tier.id, 3);
+  assert.equal(player.combat.enemyName, 'The Loop Tyrant');
+  assert.equal(winner?.id ?? snapshot.winnerId, player.id);
+});
+
+test('death restarts the current tier board without ending the game', () => {
+  const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
+  room.players.leader = player;
+  room.status = 'running';
+  player.loopTier = 3;
+  player.position = 7;
+  player.board[4].type = 'crypt';
+  player.hp = 0;
+
+  testApi.checkWinner(room);
+  testApi.triggerTile(room, player, player.board[player.position]);
+  const snapshot = testApi.roomSnapshot(room);
+
+  assert.equal(player.deaths, 1);
+  assert.equal(player.loopTier, 3);
+  assert.equal(player.position, 0);
+  assert.equal(player.board[4].type, 'road');
+  assert.equal(snapshot.status, 'running');
 });
 
 test('unstable loop marks the leader and rival cards hit marked runners harder', () => {
@@ -363,16 +419,17 @@ test('unstable loop marks the leader and rival cards hit marked runners harder',
   assert.equal(leader.hp, hpBefore - 11);
 });
 
-test('solo tier gates trigger before the crown claim', () => {
+test('tier three marks the leader before the boss race', () => {
   const player = testApi.createPlayer('solo', 'Solo', 'ember-knight');
   room.players.solo = player;
   room.status = 'running';
-  player.level = 5;
+  player.level = 12;
 
   testApi.checkWinner(room);
 
-  assert.deepEqual(player.soloGatesCleared, [1800]);
-  assert.equal(player.combat.enemyName, 'Loop Warden');
+  assert.equal(player.loopTier, 3);
+  assert.equal(testApi.roomSnapshot(room).tier.id, 3);
+  assert.equal(player.marked, true);
 });
 
 test('solo rooms draw terrain cards instead of unusable rival cards', () => {

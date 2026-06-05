@@ -1077,7 +1077,7 @@ function PlayerPanel({
                 eyebrow={`Tile ${tile.index}`}
                 body={tileDescription(tile)}
                 lines={[
-                  tile.charges > 0 ? `${tile.charges} charge${tile.charges === 1 ? '' : 's'} left` : 'Permanent tile',
+                  tile.charges > 0 ? `${tile.charges} charge${tile.charges === 1 ? '' : 's'} left` : tile.expiresOnLap ? `Expires in ${Math.max(0, tile.expiresOnLap - player.laps)} loop${tile.expiresOnLap - player.laps === 1 ? '' : 's'}` : 'Permanent tile',
                   player.position === tile.index ? `${player.name} is here` : 'Loop path'
                 ]}
                 hint={canPlaceTerrain ? `Drop ${selectedCard?.name} here` : canPlaceRivalTile ? `Arm ${rivalTargetCard?.name} here` : undefined}
@@ -1258,7 +1258,7 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
         <div className="help-head">
           <div>
             <strong>Rules</strong>
-            <span>Reach {config.goalScore}, then close a claim lap.</span>
+            <span>Climb three tiers, then defeat the Loop Tyrant.</span>
           </div>
           <button className="icon-action" onClick={onClose}>Close</button>
         </div>
@@ -1269,7 +1269,7 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
           </section>
           <section>
             <h2>Cards</h2>
-            <p>Terrain cards alter your own loop. Rival cards target another runner. Hands fill over time up to 7 cards.</p>
+            <p>Terrain cards alter your own loop for a few completed laps, then expire back into road. Rival cards target another runner.</p>
           </section>
           <section>
             <h2>Progress</h2>
@@ -1277,11 +1277,11 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
           </section>
           <section>
             <h2>Scoring</h2>
-            <p>Level, laps, fights, loot, and banked XP unlock tiers. At {config.goalScore} points the leader must complete one marked claim lap.</p>
+            <p>Level, laps, fights, loot, and banked XP unlock tiers. Each tier reset destroys your board and raises danger and rewards.</p>
           </section>
           <section>
-            <h2>Solo</h2>
-            <p>Solo runs add gate fights at each tier. Break the crown gate, then finish the crown lap to win.</p>
+            <h2>Finale</h2>
+            <p>At {config.goalScore} points in tier III, the Loop Tyrant appears. Defeat him to win; dying restarts the current tier board.</p>
           </section>
         </div>
         <div className="help-lists">

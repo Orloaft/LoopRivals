@@ -4,13 +4,12 @@ export const goalScore = 12600;
 // 2.4 keeps the board readable while restoring the "always moving" pressure.
 const timeScale = 2.4;
 export const matchTiers = [
-  { id: 1, name: 'Opening Loop', minScore: 0, text: 'Shape your road and find an identity.' },
-  { id: 2, name: 'Rivals Awaken', minScore: 1800, text: 'Disruption and engine tiles start to matter.' },
-  { id: 3, name: 'Unstable Loop', minScore: 4500, text: 'The leader is marked and the loop pushes back.' },
-  { id: 4, name: 'Claim Phase', minScore: goalScore, text: 'Complete a marked claim lap to win.' }
+  { id: 1, name: 'Tier I: Opening Loop', minScore: 0, text: 'Build a temporary road and get strong enough to ascend.' },
+  { id: 2, name: 'Tier II: Hungry Loop', minScore: 1800, text: 'The board resets, enemies hit harder, and rewards climb.' },
+  { id: 3, name: 'Tier III: Dying Loop', minScore: 4500, text: 'The board resets again. Survive long enough to challenge the loop boss.' }
 ];
-const claimTimeoutMs = 90000 * timeScale;
-const soloGateScores = [1800, 4500, goalScore];
+const tileLoopLifeByTier = { 1: 3, 2: 2, 3: 2 };
+const finalBossScore = goalScore;
 
 const combatEncounters = {
   'wolf grove': {
@@ -84,6 +83,12 @@ const combatEncounters = {
     enemyName: 'Crown Gate',
     backgroundId: 'forge',
     effect: 'ember'
+  },
+  'loop tyrant': {
+    enemyId: 'crypt-wraith',
+    enemyName: 'The Loop Tyrant',
+    backgroundId: 'crypt',
+    effect: 'spectral'
   }
 };
 
@@ -134,9 +139,9 @@ export const heroes = [
     title: 'rival control',
     icon: '🏹',
     color: '#4ab9ef',
-    maxHp: 42,
-    power: 7,
-    guard: 4,
+    maxHp: 45,
+    power: 8,
+    guard: 5,
     speed: 5,
     sabotage: 1,
     text: 'A control specialist who scores by disrupting whoever is leading.'
@@ -440,6 +445,10 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     cardsPlayed: 0,
     tilesPlaced: 0,
     deaths: 0,
+    loopTier: 1,
+    tierStartScore: 0,
+    tierStartLap: 0,
+    bossAttempts: 0,
     soloGatesCleared: [],
     claimStartedAt: null,
     claimStartLap: null,
@@ -531,6 +540,7 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
   if (!tile || tile.type === 'camp') return;
   tile.type = card.tile;
   tile.charges = card.tile === 'mire' ? 5 : 0;
+  tile.expiresOnLap = player.laps + tileLoopLife(player);
   player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
   player.cardsPlayed += 1;
   player.tilesPlaced += 1;
@@ -707,69 +717,15 @@ function tierForScore(value) {
   return [...matchTiers].reverse().find((tier) => value >= tier.minScore) ?? matchTiers[0];
 }
 
-function isSoloRoom(room) {
-  return activePlayerCount(room) === 1;
-}
-
 function updateTier(room) {
   const top = leader(room);
-  const nextTier = tierForScore(top ? score(top) : 0);
+  const nextTier = matchTiers[(top?.loopTier ?? 1) - 1] ?? tierForScore(top ? score(top) : 0);
   if ((room.tier?.id ?? 1) === nextTier.id) return;
   room.tier = nextTier;
   addLog(room, `${nextTier.name}: ${nextTier.text}`);
 }
 
-function maybeTriggerSoloGate(room, player) {
-  if (!isSoloRoom(room)) return false;
-  const cleared = new Set(player.soloGatesCleared ?? []);
-  const nextGate = soloGateScores.find((gateScore) => score(player) >= gateScore && !cleared.has(gateScore));
-  if (!nextGate) return false;
-
-  player.soloGatesCleared = [...cleared, nextGate];
-  const finalGate = nextGate >= goalScore;
-  fight(room, player, finalGate ? 'crown gate' : 'gate warden', finalGate ? 17 : 12 + player.soloGatesCleared.length * 2, finalGate ? 28 : 18);
-  player.event = finalGate ? 'broke the crown gate' : `cleared gate ${player.soloGatesCleared.length}`;
-  addLog(room, `${player.name} ${finalGate ? 'broke the crown gate' : `defeated solo gate ${player.soloGatesCleared.length}`}.`);
-  return true;
-}
-
-function startClaim(room, player) {
-  room.tier = matchTiers[3];
-  player.hp = player.maxHp;
-  player.armor += 2;
-  room.claim = {
-    playerId: player.id,
-    startedAt: now(room),
-    expiresAt: now(room) + claimTimeoutMs,
-    startLap: player.laps,
-    deathsAtStart: player.deaths,
-    mode: isSoloRoom(room) ? 'solo-crown-lap' : 'marked-claim-lap'
-  };
-  for (const candidate of Object.values(room.players)) candidate.marked = candidate.id === player.id;
-  player.claimStartedAt = room.claim.startedAt;
-  player.claimStartLap = player.laps;
-  player.claimDeathsAtStart = player.deaths;
-  player.event = isSoloRoom(room) ? 'started the crown lap' : 'marked for the claim lap';
-  addLog(room, `${player.name} reached ${goalScore} and started the ${isSoloRoom(room) ? 'crown lap' : 'claim lap'}.`);
-}
-
-function clearClaim(room, reason) {
-  if (!room.claim) return;
-  const claimant = room.players[room.claim.playerId];
-  if (claimant) {
-    claimant.marked = false;
-    claimant.claimStartedAt = null;
-    claimant.claimStartLap = null;
-    claimant.event = reason;
-  }
-  room.claim = null;
-}
-
 function updateMarks(room) {
-  if (room.claim) {
-    for (const player of Object.values(room.players)) player.marked = player.id === room.claim.playerId;
-    return;
-  }
   const top = leader(room);
   for (const player of Object.values(room.players)) {
     player.marked = Boolean(top && room.tier?.id >= 3 && player.id === top.id);
@@ -781,46 +737,87 @@ function finishClaim(room, player) {
   room.finishedAt = now(room);
   room.winnerId = player.id;
   player.marked = false;
-  player.event = 'claimed the loop';
-  addLog(room, `${player.name} claimed the loop with ${score(player)} points.`);
+  player.event = 'defeated the Loop Tyrant';
+  addLog(room, `${player.name} defeated the Loop Tyrant and won with ${score(player)} points.`);
   return player;
-}
-
-function updateClaim(room) {
-  if (!room.claim) return null;
-  const claimant = room.players[room.claim.playerId];
-  if (!claimant) {
-    room.claim = null;
-    return null;
-  }
-  if (claimant.deaths > room.claim.deathsAtStart) {
-    addLog(room, `${claimant.name}'s claim was interrupted by a knockout.`);
-    clearClaim(room, 'claim interrupted');
-    return null;
-  }
-  if (now(room) >= room.claim.expiresAt) {
-    addLog(room, `${claimant.name}'s claim expired before the loop closed.`);
-    clearClaim(room, 'claim expired');
-    return null;
-  }
-  if (claimant.laps > room.claim.startLap) return finishClaim(room, claimant);
-  return null;
 }
 
 function updateEndgame(room) {
   if (room.status !== 'running') return null;
+  for (const player of Object.values(room.players)) promotePlayerIfReady(room, player);
   updateTier(room);
   updateMarks(room);
-  const claimantResult = updateClaim(room);
-  if (claimantResult) return claimantResult;
-  if (room.claim) return null;
 
-  for (const player of Object.values(room.players)) maybeTriggerSoloGate(room, player);
   const contender = Object.values(room.players)
-    .filter((player) => score(player) >= goalScore)
+    .filter((player) => (player.loopTier ?? 1) >= 3 && player.laps > (player.tierStartLap ?? 0) && score(player) >= finalBossScore && !isCombatLocked(room, player))
     .sort((a, b) => score(b) - score(a))[0];
   if (!contender) return null;
-  startClaim(room, contender);
+  return challengeLoopBoss(room, contender);
+}
+
+function loopTierForScore(value) {
+  if (value >= matchTiers[2].minScore) return 3;
+  if (value >= matchTiers[1].minScore) return 2;
+  return 1;
+}
+
+function tileLoopLife(player) {
+  return tileLoopLifeByTier[player.loopTier ?? 1] ?? 2;
+}
+
+function resetTile(tile) {
+  tile.type = tile.index === 0 ? 'camp' : 'road';
+  tile.charges = 0;
+  delete tile.expiresOnLap;
+}
+
+function resetPlayerBoard(player) {
+  for (const tile of player.board) resetTile(tile);
+  player.position = 0;
+}
+
+function promotePlayerIfReady(room, player) {
+  const currentTier = player.loopTier ?? 1;
+  const nextTier = loopTierForScore(score(player));
+  if (nextTier <= currentTier) return false;
+  player.loopTier = Math.min(3, currentTier + 1);
+  player.tierStartScore = score(player);
+  player.tierStartLap = player.laps;
+  resetPlayerBoard(player);
+  player.hp = player.maxHp;
+  player.armor = Math.max(player.armor, player.loopTier);
+  player.combat = null;
+  player.event = `entered tier ${player.loopTier}`;
+  addLog(room, `${player.name} entered tier ${player.loopTier}; their loop collapsed into fresh road.`);
+  if (loopTierForScore(score(player)) > player.loopTier) return promotePlayerIfReady(room, player);
+  return true;
+}
+
+function challengeLoopBoss(room, player) {
+  player.bossAttempts = (player.bossAttempts ?? 0) + 1;
+  player.hp = player.maxHp;
+  player.armor = Math.max(player.armor, 3);
+  const survived = fight(room, player, 'loop tyrant', 42 + player.bossAttempts * 3, 160, 5);
+  if (!survived) {
+    resolveDefeat(room, player);
+    addLog(room, `${player.name} was broken by the Loop Tyrant and must rebuild tier 3.`);
+    return null;
+  }
+  return finishClaim(room, player);
+}
+
+function expireLoopTiles(room, player) {
+  let expired = 0;
+  for (const tile of player.board) {
+    if (tile.type === 'camp' || tile.type === 'road' || !tile.expiresOnLap) continue;
+    if (player.laps < tile.expiresOnLap) continue;
+    resetTile(tile);
+    expired += 1;
+  }
+  if (expired > 0) {
+    player.event = `${expired} tile${expired === 1 ? '' : 's'} expired`;
+    addLog(room, `${player.name}'s loop shed ${expired} expired tile${expired === 1 ? '' : 's'}.`);
+  }
   updateMarks(room);
   return null;
 }
@@ -878,7 +875,8 @@ function blankBoard() {
     index,
     coord,
     type: index === 0 ? 'camp' : 'road',
-    charges: 0
+    charges: 0,
+    expiresOnLap: null
   }));
 }
 
@@ -898,7 +896,7 @@ function xpNeeded(player) {
 function drawCard(room = null, preferredKind = null) {
   const soloPool = room ? activePlayerCount(room) <= 1 : false;
   const tierId = room?.tier?.id ?? 1;
-  const rivalChance = tierId >= 3 ? 0.52 : tierId === 2 ? 0.44 : 0.36;
+  const rivalChance = tierId >= 3 ? 0.44 : tierId === 2 ? 0.38 : 0.3;
   const pool = preferredKind === 'terrain'
     ? terrainCards
     : preferredKind === 'rival'
@@ -1050,17 +1048,21 @@ function encounterStack(room, player, tile, baseCount = 1) {
 
 function fight(room, player, label, threat, reward, enemyCount = 1) {
   const hpBefore = player.hp;
+  const tier = player.loopTier ?? room.tier?.id ?? 1;
+  const tierThreat = (tier - 1) * 5;
+  const tierReward = 1 + (tier - 1) * 0.28;
   const cursePenalty = player.curse > 0 ? 3 : 0;
   const heroBonus = player.heroId === 'ember-knight' && player.hp < player.maxHp * 0.45 ? 2 : 0;
   const graveBonus = player.heroId === 'grave-singer' && threat >= 10 ? 4 : 0;
   const power = Math.max(4, player.power + Math.floor(player.level / 3));
-  const enemyMaxHp = clamp(threat * 2 + reward + player.level * 4 + enemyCount * 12, 24, 160);
+  const scaledThreat = threat + tierThreat;
+  const enemyMaxHp = clamp(scaledThreat * 2 + reward + player.level * 4 + enemyCount * 12, 24, label === 'loop tyrant' ? 260 : 180);
   const rounds = clamp(Math.ceil(enemyMaxHp / power), enemyCount, enemyCount + 5);
   const stackedPressure = (enemyCount - 1) * 2 + Math.max(0, rounds - 2);
-  const damage = clamp(threat + stackedPressure + cursePenalty - Math.floor(player.guard / 1.7) - player.armor, 2, 26);
+  const damage = clamp(scaledThreat + stackedPressure + cursePenalty - Math.floor(player.guard / 1.7) - player.armor, 2, label === 'loop tyrant' ? 48 : 32);
   player.hp -= damage;
   player.armor = Math.max(0, player.armor - 1);
-  const xpReward = reward + heroBonus + graveBonus + (enemyCount - 1) * 5 + Math.max(0, rounds - enemyCount) * 2;
+  const xpReward = Math.round((reward + heroBonus + graveBonus + (enemyCount - 1) * 5 + Math.max(0, rounds - enemyCount) * 2) * tierReward);
   addXp(room, player, xpReward);
   player.kos += enemyCount;
   player.event = `${label}: ${enemyCount} foe${enemyCount === 1 ? '' : 's'}, -${damage} hp, +${xpReward} xp`;
@@ -1101,6 +1103,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   const vagrantLuck = player.heroId === 'night-vagrant' ? 0.1 : 0;
   if (random(room) < 0.17 + player.lootLuck + vagrantLuck + xpReward / 220) drawLoot(room, player);
   if (player.curse > 0) player.curse -= 1;
+  return player.hp > 0;
 }
 
 function splitDamage(total, parts) {
@@ -1166,11 +1169,13 @@ function revivePlayer(room, player) {
   player.deaths += 1;
   player.hp = Math.ceil(player.maxHp * 0.58);
   player.power += player.revivePower;
-  player.position = 0;
+  resetPlayerBoard(player);
+  player.tierStartLap = player.laps;
+  player.combat = null;
   player.hand = player.hand.slice(0, 3);
-  player.event = 'fell, then revived at camp';
+  player.event = `fell, then restarted tier ${player.loopTier ?? 1}`;
   player.lastEventAt = now(room);
-  addLog(room, `${player.name} got knocked back to camp.`);
+  addLog(room, `${player.name} got knocked back to the start of tier ${player.loopTier ?? 1}.`);
 }
 
 function resolveDefeat(room, player) {
@@ -1261,6 +1266,7 @@ function advancePlayer(room, player) {
   player.position = (player.position + 1) % boardPath.length;
   if (player.position === 0) {
     player.laps += 1;
+    expireLoopTiles(room, player);
     player.hp = clamp(player.hp + player.lapHeal, 0, player.maxHp);
     addXp(room, player, 4);
     if (player.hand.length < 7 && random(room) < 0.38) player.hand.push(drawCard(room));
@@ -1373,6 +1379,7 @@ export const testApi = {
   maxPlayers,
   goalScore,
   playRival,
+  playTerrain,
   resetRoom,
   refreshPendingTraits,
   roomSnapshot,
