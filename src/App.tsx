@@ -18,10 +18,15 @@ import {
   SellZone
 } from './game-ui';
 
+function savedPlayerToken() {
+  return localStorage.getItem('loopduel.playerToken') ?? '';
+}
+
 function App() {
   const socket = useMemo<Socket>(() => io(), []);
   const bgmRef = useRef<HTMLAudioElement | null>(null);
-  const [playerToken, setPlayerToken] = useState(() => localStorage.getItem('loopduel.playerToken') ?? '');
+  const shouldAutoReconnect = import.meta.env.PROD;
+  const [playerToken, setPlayerToken] = useState(() => shouldAutoReconnect ? savedPlayerToken() : '');
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
   const [name, setName] = useState(() => `Player ${Math.floor(Math.random() * 900 + 100)}`);
@@ -39,7 +44,8 @@ function App() {
 
   useEffect(() => {
     socket.on('connect', () => {
-      const savedToken = localStorage.getItem('loopduel.playerToken');
+      if (!shouldAutoReconnect) return;
+      const savedToken = savedPlayerToken();
       const savedRoom = localStorage.getItem('loopduel.roomId') ?? 'main';
       if (savedToken) socket.emit('join', { name, heroId, roomId: savedRoom, playerToken: savedToken });
     });
@@ -62,7 +68,7 @@ function App() {
       socket.off('session');
       socket.off('notice');
     };
-  }, [heroId, name, socket]);
+  }, [heroId, name, shouldAutoReconnect, socket]);
 
   // Esc toggles the game menu (and closes the rules overlay first if it's open).
   useEffect(() => {
@@ -102,7 +108,7 @@ function App() {
   }, [bgmOn, me]);
 
   function join() {
-    socket.emit('join', { name, heroId, roomId, playerToken: playerToken || undefined });
+    socket.emit('join', { name, heroId, roomId, playerToken: shouldAutoReconnect ? playerToken || undefined : undefined });
     setSelectedCardId(null);
   }
 
