@@ -333,6 +333,14 @@ function itemStatParts(item: Loot) {
   return parts.length > 0 ? parts : ['No stats'];
 }
 
+function itemPopoverLines(item: Loot, equipped: Loot | null | undefined) {
+  return [
+    `Stats: ${itemStatLine(item)}`,
+    `Equip change: ${itemDeltaLine(item, equipped)}`,
+    `Slot: ${equipmentLabels[item.slot]} · Role: ${item.role ?? 'Mixed'}`
+  ];
+}
+
 function statValue(item: Loot | null | undefined, stat: keyof Pick<Loot, 'power' | 'guard' | 'speed' | 'maxHp' | 'sabotage' | 'lapHeal' | 'terrainScore' | 'revivePower'>) {
   return item?.[stat] ?? 0;
 }
@@ -415,8 +423,14 @@ function CardFace({ card, popover = true }: { card: Card; popover?: boolean }) {
   return (
     <>
       <span className="card-corner top">{card.icon}</span>
-      <span className="card-art">
-        <span>{card.icon}</span>
+      <span className={`card-art ${card.kind === 'rival' ? 'rival-art' : 'terrain-art'}`}>
+        {card.kind === 'terrain' ? (
+          <span className={`card-tile-preview tile ${card.tile ?? 'road'}`}>
+            <span className="tile-glyph">{card.icon}</span>
+          </span>
+        ) : (
+          <span>{card.icon}</span>
+        )}
       </span>
       <span className="card-pips" aria-hidden="true">
         <i />
@@ -429,7 +443,7 @@ function CardFace({ card, popover = true }: { card: Card; popover?: boolean }) {
         <InfoPopover
           title={card.name}
           eyebrow={`${cardSuit(card)} ${card.kind}`}
-          body={card.text}
+          lines={[card.text, card.kind === 'terrain' ? `Places as the ${tileNames[card.tile ?? 'road'] ?? card.name} board tile.` : 'Targets a rival runner or one open rival road tile.']}
           hint={card.kind === 'terrain' ? 'Drag onto your loop or click, then choose a tile' : 'Drag onto a rival portrait or click, then choose a target'}
           className="card-pop"
         />
@@ -634,7 +648,7 @@ function PlayerSideDock({
                   <InfoPopover
                     title={item.name}
                     eyebrow={`${item.rarity} ${item.role ?? item.slot}`}
-                    body={`${itemStatLine(item)} · ${itemDeltaLine(item, player.loadout[item.slot])}`}
+                    lines={itemPopoverLines(item, player.loadout[item.slot])}
                     hint="click or drag to equip"
                   />
                 </button>
@@ -915,7 +929,8 @@ function TalentTreeDock({
                 if (availableNode) onChoose(trait.id);
               }}
             >
-              <span>{traitGlyph(trait.name)}</span>
+              <span className="talent-glyph">{traitGlyph(trait.name)}</span>
+              <strong className="talent-node-label">{trait.name}</strong>
               <InfoPopover
                 title={trait.name}
                 eyebrow={state === 'available' ? 'Available talent' : state === 'learned' ? 'Learned talent' : `Tier ${trait.tier}`}

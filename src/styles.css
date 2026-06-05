@@ -434,8 +434,9 @@ input:focus {
 }
 
 .play-layout {
+  isolation: isolate;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(286px, 22vw, 356px);
+  grid-template-columns: minmax(0, 1fr) clamp(326px, 26vw, 430px);
   grid-template-areas:
     "arena dock"
     "controls dock";
@@ -445,8 +446,10 @@ input:focus {
 }
 
 .arena-grid {
-  --focus-board: min(62vh, calc((100vw - 430px) * 0.74), 620px);
+  --focus-board: min(62vh, calc((100vw - 500px) * 0.74), 620px);
   --mini-board: min(calc((var(--focus-board) - 28px) / 3), 196px);
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: var(--focus-board) var(--mini-board);
   grid-auto-rows: var(--mini-board);
@@ -1273,6 +1276,8 @@ input:focus {
 }
 
 .control-dock {
+  position: relative;
+  z-index: 40;
   grid-area: controls;
   display: flex;
   align-items: flex-end;
@@ -1451,7 +1456,7 @@ input:focus {
     0 18px 32px rgba(0, 0, 0, 0.62),
     0 0 18px color-mix(in srgb, var(--gold) 35%, transparent),
     inset 0 0 0 2px rgba(0, 0, 0, 0.28);
-  z-index: 6;
+  z-index: 80;
 }
 
 .hand-card.selected {
@@ -1462,7 +1467,7 @@ input:focus {
     0 0 0 2px rgba(240, 217, 140, 0.35),
     0 0 24px color-mix(in srgb, var(--gold) 58%, transparent),
     inset 0 0 0 2px rgba(0, 0, 0, 0.28);
-  z-index: 7;
+  z-index: 90;
 }
 
 .hand-card.dragging {
@@ -1559,13 +1564,13 @@ body.loot-drag-active * {
   z-index: 1;
   display: grid;
   place-items: center;
-  align-self: end;
+  align-self: center;
   justify-self: center;
-  width: 48%;
+  width: 78%;
   aspect-ratio: 1;
-  margin: 0 0 16px;
-  border: 1px solid rgba(255, 235, 161, 0.28);
-  border-radius: 50%;
+  margin: 6px 0 0;
+  border: 1px solid rgba(255, 235, 161, 0.46);
+  border-radius: 4px;
   background:
     radial-gradient(circle at 50% 36%, rgba(255, 245, 197, 0.32), rgba(17, 11, 6, 0.52) 68%),
     rgba(10, 7, 4, 0.42);
@@ -1574,11 +1579,44 @@ body.loot-drag-active * {
     0 2px 8px rgba(0, 0, 0, 0.34);
 }
 
+.card-art.terrain-art {
+  overflow: visible;
+  background: rgba(15, 12, 8, 0.42);
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, 0.28),
+    0 4px 10px rgba(0, 0, 0, 0.42);
+}
+
 .hand-card.rival .card-art {
   border-color: rgba(255, 198, 186, 0.26);
+  border-radius: 50%;
   background:
     radial-gradient(circle at 50% 32%, rgba(255, 197, 174, 0.32), rgba(94, 20, 30, 0.32) 48%, rgba(8, 3, 5, 0.26) 74%),
     rgba(90, 18, 27, 0.18);
+}
+
+.card-tile-preview.tile {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-color: rgba(245, 219, 144, 0.52);
+  border-radius: 3px;
+  cursor: inherit;
+  image-rendering: pixelated;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 2px 0 rgba(0, 0, 0, 0.52);
+}
+
+.card-tile-preview.tile::before {
+  filter: brightness(1.3) saturate(1.08) contrast(1.08);
+}
+
+.card-tile-preview.tile::after {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.13), transparent 42%, rgba(0, 0, 0, 0.08)),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.18), transparent 18%, transparent 82%, rgba(0, 0, 0, 0.18));
 }
 
 .card-art span {
@@ -1710,14 +1748,18 @@ body.loot-drag-active * {
   z-index: 70;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  width: max-content;
-  max-width: 240px;
-  padding: 9px 11px;
-  border: 1px solid var(--gold);
+  gap: 7px;
+  width: min(380px, calc(100vw - 32px));
+  max-width: 380px;
+  padding: 14px 16px;
+  border: 2px solid var(--gold);
   border-radius: 4px;
-  background: rgba(9, 9, 8, 0.98);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(210, 177, 92, 0.12);
+  background:
+    linear-gradient(180deg, rgba(61, 43, 22, 0.96), rgba(17, 14, 10, 0.98)),
+    #15120f;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.72),
+    inset 0 0 0 2px rgba(255, 239, 169, 0.08);
   text-align: left;
   opacity: 0;
   visibility: hidden;
@@ -1765,13 +1807,15 @@ body.loot-drag-active * {
 }
 
 .card-pop {
-  bottom: calc(100% + 14px);
-  max-width: 250px;
+  bottom: calc(100% + 18px);
+  width: min(420px, calc(100vw - 32px));
+  max-width: 420px;
 }
 
 .tile-pop {
   bottom: calc(100% + 10px);
-  max-width: 230px;
+  width: min(360px, calc(100vw - 32px));
+  max-width: 360px;
 }
 
 .player-pop {
@@ -1780,27 +1824,29 @@ body.loot-drag-active * {
 
 .hover-pop strong {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 0.92rem;
+  font-size: 1.12rem;
+  line-height: 1.08;
   color: var(--parchment);
 }
 
 .hover-pop em {
   color: var(--gold-bright);
-  font-size: 0.68rem;
+  font-size: 0.76rem;
   font-style: normal;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .hover-pop span {
-  color: var(--muted);
-  font-size: 0.78rem;
-  line-height: 1.3;
+  color: #f0d9a0;
+  font-size: 0.92rem;
+  line-height: 1.38;
 }
 
 .hover-pop small {
   color: var(--moss);
-  font-size: 0.68rem;
+  font-size: 0.78rem;
+  line-height: 1.3;
 }
 
 /* Rival target chips. */
@@ -1912,13 +1958,14 @@ body.loot-drag-active * {
 /* Right-side player dock: paperdoll, bespoke loadout slots, loot, traits, feed. */
 .player-side-dock {
   position: sticky;
+  z-index: 30;
   top: 10px;
   grid-area: dock;
   display: grid;
   gap: 10px;
   min-width: 0;
-  max-height: calc(100vh - 194px);
-  overflow: visible auto;
+  max-height: none;
+  overflow: visible;
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--hero-color) 45%, var(--line));
   border-radius: 6px;
@@ -2362,12 +2409,12 @@ body.loot-drag-active * {
 .talent-tree-entry {
   position: relative;
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) auto;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
-  min-height: 58px;
-  padding: 7px 9px;
-  border: 1px solid rgba(210, 177, 92, 0.2);
+  gap: 11px;
+  min-height: 70px;
+  padding: 9px 11px;
+  border: 2px solid rgba(255, 224, 138, 0.28);
   border-radius: 6px;
   color: var(--parchment);
   background:
@@ -2394,7 +2441,7 @@ body.loot-drag-active * {
 
 .talent-tree-medallion {
   display: block;
-  width: 48px;
+  width: 58px;
   aspect-ratio: 1;
   background:
     var(--talent-icon) center / contain no-repeat,
@@ -2414,7 +2461,7 @@ body.loot-drag-active * {
   overflow: hidden;
   font-family: Georgia, "Times New Roman", serif;
   color: var(--parchment);
-  font-size: 0.94rem;
+  font-size: 1.08rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2423,7 +2470,7 @@ body.loot-drag-active * {
 .talent-mode-head span {
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2434,7 +2481,7 @@ body.loot-drag-active * {
 
 .talent-tree-mode {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -2472,9 +2519,9 @@ body.loot-drag-active * {
 
 .talent-tree-board {
   position: relative;
-  min-height: 390px;
+  min-height: 500px;
   overflow: visible;
-  border: 1px solid rgba(210, 177, 92, 0.18);
+  border: 2px solid rgba(255, 224, 138, 0.28);
   border-radius: 6px;
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.36)),
@@ -2491,7 +2538,7 @@ body.loot-drag-active * {
   border-radius: 4px;
   background:
     url('/assets/ui/talent-connector-v1.png') center 54% / 64% auto no-repeat;
-  opacity: 0.18;
+  opacity: 0.28;
 }
 
 .talent-lines {
@@ -2503,27 +2550,27 @@ body.loot-drag-active * {
 }
 
 .talent-lines line {
-  stroke: rgba(210, 177, 92, 0.22);
-  stroke-width: 1.4;
+  stroke: rgba(255, 224, 138, 0.36);
+  stroke-width: 2.2;
   stroke-linecap: round;
   filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.7));
 }
 
 .talent-lines line.available {
   stroke: color-mix(in srgb, var(--moss) 78%, var(--gold-bright));
-  stroke-width: 2;
+  stroke-width: 3.2;
 }
 
 .talent-lines line.learned {
   stroke: var(--gold-bright);
-  stroke-width: 2;
+  stroke-width: 3;
 }
 
 .talent-node {
   position: absolute;
   display: grid;
   place-items: center;
-  width: 56px;
+  width: 72px;
   aspect-ratio: 1;
   padding: 0;
   border: 0;
@@ -2532,26 +2579,43 @@ body.loot-drag-active * {
     var(--talent-icon) center / 64% 64% no-repeat,
     url('/assets/ui/talent-node-locked-v1.png') center / contain no-repeat;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   font-weight: 950;
   transform: translate(-50%, -50%);
   filter: saturate(0.75) brightness(0.78);
 }
 
-.talent-node span:not(.hover-pop) {
+.talent-glyph {
   position: absolute;
   left: 50%;
-  bottom: -4px;
+  bottom: 4px;
   display: grid;
   place-items: center;
-  min-width: 20px;
-  height: 17px;
-  padding: 0 4px;
-  border: 1px solid rgba(210, 177, 92, 0.24);
+  min-width: 24px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 224, 138, 0.46);
   border-radius: 999px;
   color: var(--gold-bright);
-  background: rgba(0, 0, 0, 0.72);
+  background: rgba(0, 0, 0, 0.78);
   text-shadow: 0 1px 0 #000;
+  transform: translateX(-50%);
+}
+
+.talent-node-label {
+  position: absolute;
+  left: 50%;
+  top: calc(100% - 2px);
+  width: 104px;
+  color: #fff3c6;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.66rem;
+  font-weight: 950;
+  line-height: 1.05;
+  text-align: center;
+  text-shadow:
+    0 1px 0 #000,
+    0 0 6px rgba(0, 0, 0, 0.86);
   transform: translateX(-50%);
 }
 
@@ -2559,7 +2623,7 @@ body.loot-drag-active * {
   background:
     var(--talent-icon) center / 64% 64% no-repeat,
     url('/assets/ui/talent-node-available-v1.png') center / contain no-repeat;
-  filter: brightness(1.08) saturate(1.08) drop-shadow(0 0 10px rgba(118, 170, 78, 0.36));
+  filter: brightness(1.16) saturate(1.14) drop-shadow(0 0 16px rgba(118, 170, 78, 0.58));
   animation: trait-pulse 1.55s ease-in-out infinite;
 }
 
@@ -2567,7 +2631,7 @@ body.loot-drag-active * {
   background:
     var(--talent-icon) center / 64% 64% no-repeat,
     url('/assets/ui/talent-node-learned-v1.png') center / contain no-repeat;
-  filter: brightness(1.06) saturate(1.1) drop-shadow(0 0 7px rgba(210, 177, 92, 0.24));
+  filter: brightness(1.1) saturate(1.14) drop-shadow(0 0 10px rgba(210, 177, 92, 0.38));
 }
 
 .talent-node.locked {
@@ -2577,6 +2641,13 @@ body.loot-drag-active * {
 .talent-node:hover,
 .talent-node:focus-visible {
   z-index: 9;
+}
+
+.talent-node .hover-pop {
+  top: calc(100% + 24px);
+  bottom: auto;
+  width: min(340px, calc(100vw - 32px));
+  max-width: 340px;
 }
 
 .side-trait {
