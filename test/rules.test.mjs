@@ -157,9 +157,23 @@ test('danger terrain can stack multiple enemies into one longer combat lock', ()
   assert.ok(player.combat.beats.length >= player.combat.rounds);
   assert.ok(player.combat.beats.some((beat) => beat.attacker === 'hero'));
   assert.ok(player.combat.beats.some((beat) => beat.attacker === 'enemy'));
-  assert.ok(player.combat.durationMs >= 240 + player.combat.beats.length * 135);
-  assert.ok(player.combat.durationMs < 1100 + player.combat.enemyCount * 260 + player.combat.rounds * 90);
+  assert.ok(player.combat.durationMs >= 360 + player.combat.beats.length * 203);
+  assert.ok(player.combat.durationMs < 1600 + player.combat.enemyCount * 390 + player.combat.rounds * 135);
   assert.equal(player.combat.enemyName, 'Bone Host');
+});
+
+test('players have a complete paperdoll loadout with varied equipment slots', () => {
+  const player = testApi.createPlayer('gear-test', 'Gear Test', 'ember-knight');
+
+  assert.deepEqual(Object.keys(player.loadout), testApi.equipmentSlots);
+
+  const boots = { id: 'swift-boots', slot: 'boots', name: 'Road Boots', rarity: 'rare', power: 0, guard: 0, speed: 2, maxHp: 0 };
+  player.loot = [boots];
+
+  testApi.equip(player, boots.id);
+
+  assert.equal(player.loadout.boots.id, boots.id);
+  assert.equal(player.speed, 7);
 });
 
 test('active combat stops runner movement until the bespoke combat beat expires', () => {

@@ -6,6 +6,7 @@ import { heroPortraitUrl, statLine } from './game-assets';
 import type { GameConfig, GameState, Loot, Tile } from './types';
 import {
   DragCardGhost,
+  DragLootGhost,
   GameMenu,
   HandBar,
   HelpOverlay,
@@ -90,6 +91,7 @@ function App() {
   const me = game?.players.find((player) => player.id === playerToken) ?? null;
   const selectedCard = me?.hand.find((card) => card.instanceId === selectedCardId) ?? null;
   const draggedCard = me?.hand.find((card) => card.instanceId === dragCardId) ?? null;
+  const draggedLoot = me?.loot.find((item) => item.id === dragLootId) ?? null;
   const activeCard = draggedCard ?? selectedCard;
   const isHost = Boolean(me && game?.hostId === me.id);
 
@@ -111,7 +113,13 @@ function App() {
 
   useEffect(() => {
     document.body.classList.toggle('card-drag-active', Boolean(draggedCard));
-    if (!draggedCard) return () => document.body.classList.remove('card-drag-active');
+    document.body.classList.toggle('loot-drag-active', Boolean(draggedLoot));
+    if (!draggedCard && !draggedLoot) {
+      return () => {
+        document.body.classList.remove('card-drag-active');
+        document.body.classList.remove('loot-drag-active');
+      };
+    }
 
     function trackDrag(event: DragEvent) {
       if (event.clientX === 0 && event.clientY === 0) return;
@@ -122,10 +130,11 @@ function App() {
     window.addEventListener('dragover', trackDrag, true);
     return () => {
       document.body.classList.remove('card-drag-active');
+      document.body.classList.remove('loot-drag-active');
       window.removeEventListener('drag', trackDrag, true);
       window.removeEventListener('dragover', trackDrag, true);
     };
-  }, [draggedCard]);
+  }, [draggedCard, draggedLoot]);
 
   function join() {
     socket.emit('join', { name, heroId, roomId, playerToken: shouldAutoReconnect ? playerToken || undefined : undefined });
@@ -400,8 +409,12 @@ function App() {
           lines={game.log}
           onEquip={equip}
           onChoose={chooseTrait}
-          onLootDragStart={(id) => setDragLootId(id)}
+          onLootDragStart={(id, point) => {
+            setDragLootId(id);
+            setDragPoint(point);
+          }}
           onLootDragEnd={() => setDragLootId(null)}
+          draggingLootId={dragLootId}
           onMenu={() => setShowMenu(true)}
           onAddBot={addBot}
           onFillCpu={fillCpu}
@@ -418,8 +431,12 @@ function App() {
           onClose={() => setMobileDrawer(null)}
           onEquip={equip}
           onChoose={chooseTrait}
-          onLootDragStart={(id) => setDragLootId(id)}
+          onLootDragStart={(id, point) => {
+            setDragLootId(id);
+            setDragPoint(point);
+          }}
           onLootDragEnd={() => setDragLootId(null)}
+          draggingLootId={dragLootId}
           onMenu={() => setShowMenu(true)}
           onAddBot={addBot}
           onFillCpu={fillCpu}
@@ -429,6 +446,7 @@ function App() {
         />
       </section>
       {draggedCard && <DragCardGhost card={draggedCard} x={dragPoint.x} y={dragPoint.y} />}
+      {draggedLoot && <DragLootGhost item={draggedLoot} x={dragPoint.x} y={dragPoint.y} />}
       <SellZone active={Boolean(dragCardId || dragLootId)} onDrop={handleSellDrop} />
       {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}
       {showMenu && (

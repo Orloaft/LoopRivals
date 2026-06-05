@@ -49,9 +49,11 @@ export type Trait = {
   }>;
 };
 
+export type EquipmentSlot = 'weapon' | 'shield' | 'helm' | 'armor' | 'gloves' | 'boots' | 'ring' | 'charm';
+
 export type Loot = {
   id: string;
-  slot: 'weapon' | 'charm' | 'armor';
+  slot: EquipmentSlot;
   name: string;
   rarity: 'common' | 'rare' | 'relic';
   power: number;
@@ -128,11 +130,7 @@ export type Player = {
   board: Tile[];
   hand: Card[];
   loot: Loot[];
-  loadout: {
-    weapon: Loot | null;
-    charm: Loot | null;
-    armor: Loot | null;
-  };
+  loadout: Record<EquipmentSlot, Loot | null>;
   gold: number;
   traits: string[];
   pendingTraits: string[];

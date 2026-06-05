@@ -237,10 +237,20 @@ export const talentTrees = {
 
 export const traits = Object.values(talentTrees).flat();
 
+export const equipmentSlots = ['weapon', 'shield', 'helm', 'armor', 'gloves', 'boots', 'ring', 'charm'];
+const combatWindupMs = 180;
+const combatBeatMs = 203;
+const combatTailMs = 360;
+
 const lootNames = {
   weapon: ['Glass Pike', 'Moonblade', 'Ash Bow', 'Thorn Mace', 'Cinder Wand'],
-  charm: ['Lucky Tooth', 'War Drum', 'Soft Lantern', 'Hex Needle', 'Green Sigil'],
-  armor: ['Patchwork Mail', 'Duel Cloak', 'Tin Aegis', 'Mire Boots', 'Bone Plate']
+  shield: ['Tin Aegis', 'Root Buckler', 'Mirror Ward', 'Crypt Kite', 'Cinder Guard'],
+  helm: ['Crowncap Helm', 'Ashen Sallet', 'Moon Hood', 'Bone Visor', 'Rune Circlet'],
+  armor: ['Patchwork Mail', 'Duel Cloak', 'Grave Harness', 'Briar Plate', 'Loop Hauberk'],
+  gloves: ['Mire Grips', 'Duelist Wraps', 'Ember Gaunts', 'Thorn Claws', 'Hex Mitts'],
+  boots: ['Road Boots', 'Softstep Greaves', 'Moss Treads', 'Spur Sabatons', 'Wyrm Soles'],
+  ring: ['Red Loop Ring', 'Lucky Band', 'Vow Signet', 'Black Market Seal', 'Grove Coil'],
+  charm: ['Lucky Tooth', 'War Drum', 'Soft Lantern', 'Hex Needle', 'Green Sigil']
 };
 
 export const boardPath = [
@@ -367,7 +377,7 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     board: blankBoard(),
     hand: [drawCard(room, 'terrain'), drawCard(room, 'terrain')],
     loot: [],
-    loadout: { weapon: null, charm: null, armor: null },
+    loadout: emptyLoadout(),
     gold: 0,
     traits: [],
     pendingTraits: [],
@@ -548,7 +558,7 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
     }
     target.event = 'landslide on the path';
   } else if (card.id === 'cutpurse') {
-    const unequipped = target.loot.filter((item) => !Object.values(target.loadout).some((equipped) => equipped?.id === item.id));
+    const unequipped = target.loot.filter((item) => !Object.values(normalizeLoadout(target)).some((equipped) => equipped?.id === item.id));
     if (unequipped.length > 0) {
       const stolen = unequipped[rand(room, unequipped.length)];
       target.loot = target.loot.filter((item) => item.id !== stolen.id);
@@ -591,7 +601,7 @@ export function chooseTrait(player, traitId) {
 export function equip(player, itemId) {
   const item = player.loot.find((entry) => entry.id === itemId);
   if (!item) return;
-  player.loadout[item.slot] = item;
+  normalizeLoadout(player)[item.slot] = item;
   recalcStats(player);
   player.event = `equipped ${item.name}`;
 }
@@ -614,7 +624,7 @@ export function sellLoot(room, player, itemId) {
   if (!player) return false;
   const item = player.loot.find((entry) => entry.id === itemId);
   if (!item) return false;
-  if (Object.values(player.loadout).some((equipped) => equipped?.id === item.id)) return false;
+  if (Object.values(normalizeLoadout(player)).some((equipped) => equipped?.id === item.id)) return false;
   const value = Math.max(18, Math.round(bestItemScore(item) * 4));
   player.loot = player.loot.filter((entry) => entry.id !== itemId);
   player.gold = (player.gold ?? 0) + value;
@@ -834,6 +844,15 @@ function blankBoard() {
   }));
 }
 
+function emptyLoadout() {
+  return Object.fromEntries(equipmentSlots.map((slot) => [slot, null]));
+}
+
+function normalizeLoadout(player) {
+  player.loadout = { ...emptyLoadout(), ...(player.loadout ?? {}) };
+  return player.loadout;
+}
+
 function xpNeeded(player) {
   return 24 + player.level * 13;
 }
@@ -854,19 +873,20 @@ function drawCard(room = null, preferredKind = null) {
 }
 
 function drawLoot(room, player) {
-  const slot = sample(room, ['weapon', 'charm', 'armor']);
+  const slot = sample(room, equipmentSlots);
   const rarityRoll = random(room) + player.level * 0.04 + player.lootLuck;
   const rarity = rarityRoll > 1.08 ? 'relic' : rarityRoll > 0.76 ? 'rare' : 'common';
   const scale = rarity === 'relic' ? 3 : rarity === 'rare' ? 2 : 1;
+  const secondary = rand(room, 2);
   const item = {
     id: randomId(room, 'loot'),
     slot,
     name: `${rarity === 'relic' ? 'Relic ' : rarity === 'rare' ? 'Bright ' : ''}${sample(room, lootNames[slot])}`,
     rarity,
-    power: slot === 'weapon' ? scale + rand(room, 2) : rand(room, 2),
-    guard: slot === 'armor' ? scale + rand(room, 2) : rand(room, 2),
-    speed: slot === 'charm' ? scale : 0,
-    maxHp: slot === 'armor' ? scale * 3 : 0
+    power: ['weapon', 'gloves', 'ring'].includes(slot) ? scale + secondary : slot === 'helm' ? rand(room, 2) : 0,
+    guard: ['shield', 'armor', 'helm'].includes(slot) ? scale + secondary : slot === 'boots' ? rand(room, 2) : 0,
+    speed: ['boots', 'charm', 'gloves'].includes(slot) ? Math.max(1, scale - (slot === 'gloves' ? 1 : 0)) : 0,
+    maxHp: ['armor', 'shield', 'helm'].includes(slot) ? scale * (slot === 'armor' ? 3 : 2) : slot === 'ring' || slot === 'charm' ? scale : 0
   };
   player.loot.unshift(item);
   player.loot = player.loot.slice(0, 10);
@@ -902,7 +922,7 @@ function recalcStats(player) {
     revivePower += trait.bonus.revivePower ?? 0;
   }
 
-  for (const item of Object.values(player.loadout)) {
+  for (const item of Object.values(normalizeLoadout(player))) {
     if (!item) continue;
     maxHp += item.maxHp ?? 0;
     power += item.power ?? 0;
@@ -1002,7 +1022,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     heroDamage: damage,
     power
   });
-  const durationMs = 240 + beats.length * 135;
+  const durationMs = combatTailMs + beats.length * combatBeatMs;
   player.combat = {
     ...encounter,
     label,
@@ -1050,7 +1070,7 @@ function combatBeats({ rounds, enemyMaxHp, heroHpBefore, heroHpAfter, heroDamage
     enemyHp = Math.max(0, enemyHp - strikeDamage);
     beats.push({
       attacker: 'hero',
-      atMs: 120 + beats.length * 135,
+      atMs: combatWindupMs + beats.length * combatBeatMs,
       damage: strikeDamage,
       heroHp,
       enemyHp
@@ -1062,7 +1082,7 @@ function combatBeats({ rounds, enemyMaxHp, heroHpBefore, heroHpAfter, heroDamage
     heroHp = Math.max(heroHpAfter, heroHp - counterDamage);
     beats.push({
       attacker: 'enemy',
-      atMs: 120 + beats.length * 135,
+      atMs: combatWindupMs + beats.length * combatBeatMs,
       damage: counterDamage,
       heroHp,
       enemyHp
@@ -1073,7 +1093,7 @@ function combatBeats({ rounds, enemyMaxHp, heroHpBefore, heroHpAfter, heroDamage
   if (!lastBeat || lastBeat.enemyHp !== 0) {
     beats.push({
       attacker: 'hero',
-      atMs: 120 + beats.length * 135,
+      atMs: combatWindupMs + beats.length * combatBeatMs,
       damage: enemyHp,
       heroHp,
       enemyHp: 0
@@ -1244,8 +1264,8 @@ function botThink(room, player) {
   if (!player.isBot || room.tick % 3 !== 0 || room.status === 'finished') return;
   if (player.pendingTraits.length > 0) chooseTrait(player, chooseBotTrait(player));
 
-  for (const slot of ['weapon', 'armor', 'charm']) {
-    const current = player.loadout[slot];
+  for (const slot of equipmentSlots) {
+    const current = normalizeLoadout(player)[slot];
     const best = player.loot
       .filter((item) => item.slot === slot)
       .sort((a, b) => bestItemScore(b) - bestItemScore(a))[0];
@@ -1275,6 +1295,8 @@ export const testApi = {
   createPlayer,
   createRoom,
   disconnectPlayer,
+  equipmentSlots,
+  equip,
   fillCpuOpponents,
   hasRoomForPlayer,
   joinRoom,

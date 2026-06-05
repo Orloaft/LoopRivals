@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { ArrowLeft, Bot, Coins, Crown, GitBranch, Hand, HelpCircle, RotateCcw, ScrollText, Shield, Sparkles, Swords, Users, Volume2, VolumeX, Zap } from 'lucide-react';
+import { ArrowLeft, Bot, Coins, Crown, Footprints, Gem, GitBranch, Hand, HardHat, HelpCircle, RotateCcw, ScrollText, Shield, Shirt, Sparkles, Swords, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import {
   combatBackgroundUrl,
   combatEnemyUrl,
@@ -7,7 +7,19 @@ import {
   heroSpriteUrl,
   talentIconUrl
 } from './game-assets';
-import type { Card, Combat, CombatBeat, GameConfig, GameState, Loot, Player, Tile, Trait } from './types';
+import type { Card, Combat, CombatBeat, EquipmentSlot, GameConfig, GameState, Loot, Player, Tile, Trait } from './types';
+
+const equipmentSlots: EquipmentSlot[] = ['weapon', 'shield', 'helm', 'armor', 'gloves', 'boots', 'ring', 'charm'];
+const equipmentLabels: Record<EquipmentSlot, string> = {
+  weapon: 'Weapon',
+  shield: 'Shield',
+  helm: 'Helm',
+  armor: 'Armor',
+  gloves: 'Gloves',
+  boots: 'Boots',
+  ring: 'Ring',
+  charm: 'Charm'
+};
 
 const tileNames: Record<string, string> = {
   road: 'Road',
@@ -282,7 +294,12 @@ function GameMenu({
 // Lucide icon for an equipment slot / loot item, used across the compact dock.
 function slotIcon(slot: string, size = 14) {
   if (slot === 'weapon') return <Swords size={size} />;
-  if (slot === 'armor') return <Shield size={size} />;
+  if (slot === 'shield') return <Shield size={size} />;
+  if (slot === 'helm') return <HardHat size={size} />;
+  if (slot === 'armor') return <Shirt size={size} />;
+  if (slot === 'gloves') return <Hand size={size} />;
+  if (slot === 'boots') return <Footprints size={size} />;
+  if (slot === 'ring') return <Gem size={size} />;
   return <Sparkles size={size} />;
 }
 
@@ -390,6 +407,19 @@ function DragCardGhost({ card, x, y }: { card: Card; x: number; y: number }) {
   );
 }
 
+function DragLootGhost({ item, x, y }: { item: Loot; x: number; y: number }) {
+  return (
+    <div
+      className={`drag-loot-ghost side-loot ${item.slot} ${item.rarity}`}
+      style={{ '--drag-x': `${x}px`, '--drag-y': `${y}px` } as CSSProperties}
+      aria-hidden="true"
+    >
+      {slotIcon(item.slot, 22)}
+      <span>{item.name}</span>
+    </div>
+  );
+}
+
 function PlayerSideDock({
   player,
   config,
@@ -399,6 +429,7 @@ function PlayerSideDock({
   onChoose,
   onLootDragStart,
   onLootDragEnd,
+  draggingLootId,
   onMenu,
   onAddBot,
   onFillCpu,
@@ -412,8 +443,9 @@ function PlayerSideDock({
   lines: string[];
   onEquip: (item: Loot) => void;
   onChoose: (traitId: string) => void;
-  onLootDragStart: (itemId: string) => void;
+  onLootDragStart: (itemId: string, point: { x: number; y: number }) => void;
   onLootDragEnd: () => void;
+  draggingLootId: string | null;
   onMenu: () => void;
   onAddBot: () => void;
   onFillCpu: () => void;
@@ -429,6 +461,7 @@ function PlayerSideDock({
   const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
   const equippedIds = new Set(Object.values(player.loadout).filter(Boolean).map((item) => item?.id));
   const looseLoot = player.loot.filter((item) => !equippedIds.has(item.id));
+  const draggingLoot = draggingLootId ? player.loot.find((item) => item.id === draggingLootId) ?? null : null;
 
   return (
     <aside className="player-side-dock" style={{ '--hero-color': player.color } as CSSProperties}>
@@ -467,19 +500,37 @@ function PlayerSideDock({
         />
       ) : (
         <>
-          <div className="paperdoll">
+          <div className={`paperdoll ${draggingLoot ? 'loot-dragging' : ''}`}>
             <div className="paperdoll-body">
               <img src={heroSpriteUrl(player.heroId)} alt="" />
             </div>
-            {(['weapon', 'armor', 'charm'] as const).map((slot) => {
+            {equipmentSlots.map((slot) => {
               const item = player.loadout[slot];
+              const canDrop = Boolean(draggingLoot && draggingLoot.slot === slot);
               return (
-                <div key={slot} className={`paper-slot ${slot} ${item ? 'filled' : ''}`} tabIndex={0}>
+                <div
+                  key={slot}
+                  className={`paper-slot ${slot} ${item ? 'filled' : ''} ${canDrop ? 'drop-ready' : ''} ${draggingLoot && !canDrop ? 'drop-muted' : ''}`}
+                  tabIndex={0}
+                  onDragOver={(event) => {
+                    if (!canDrop) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDrop={(event) => {
+                    if (!canDrop || !draggingLoot) return;
+                    event.preventDefault();
+                    onEquip(draggingLoot);
+                    onLootDragEnd();
+                  }}
+                >
                   {slotIcon(slot, 18)}
+                  {item && <span className="paper-slot-rarity" />}
                   <InfoPopover
-                    title={item?.name ?? `${slot} slot`}
-                    eyebrow={item ? `${item.rarity} ${slot}` : 'Loadout'}
-                    body={item ? itemStatLine(item) : 'No item equipped.'}
+                    title={item?.name ?? `${equipmentLabels[slot]} slot`}
+                    eyebrow={item ? `${item.rarity} ${equipmentLabels[slot]}` : 'Loadout'}
+                    body={item ? itemStatLine(item) : canDrop ? `Drop ${draggingLoot?.name ?? 'item'} here.` : 'No item equipped.'}
+                    hint={canDrop ? 'drop to equip' : undefined}
                   />
                 </div>
               );
@@ -523,7 +574,7 @@ function PlayerSideDock({
                     event.dataTransfer.setData('application/x-loopduel-kind', 'loot');
                     event.dataTransfer.setData('application/x-loopduel-loot-id', item.id);
                     event.dataTransfer.setData('text/plain', item.id);
-                    onLootDragStart(item.id);
+                    onLootDragStart(item.id, { x: event.clientX, y: event.clientY });
                   }}
                   onDragEnd={onLootDragEnd}
                 >
@@ -589,6 +640,7 @@ function MobileDrawer({
   onChoose,
   onLootDragStart,
   onLootDragEnd,
+  draggingLootId,
   onMenu,
   onAddBot,
   onFillCpu,
@@ -604,8 +656,9 @@ function MobileDrawer({
   onClose: () => void;
   onEquip: (item: Loot) => void;
   onChoose: (traitId: string) => void;
-  onLootDragStart: (itemId: string) => void;
+  onLootDragStart: (itemId: string, point: { x: number; y: number }) => void;
   onLootDragEnd: () => void;
+  draggingLootId: string | null;
   onMenu: () => void;
   onAddBot: () => void;
   onFillCpu: () => void;
@@ -621,6 +674,7 @@ function MobileDrawer({
   const learned = tree.filter((trait) => player.traits.includes(trait.id));
   const equippedIds = new Set(Object.values(player.loadout).filter(Boolean).map((item) => item?.id));
   const looseLoot = player.loot.filter((item) => !equippedIds.has(item.id));
+  const draggingLoot = draggingLootId ? player.loot.find((item) => item.id === draggingLootId) ?? null : null;
 
   return (
     <aside className="mobile-drawer" style={{ '--hero-color': player.color } as CSSProperties}>
@@ -635,14 +689,29 @@ function MobileDrawer({
       {mode === 'loot' && (
         <div className="mobile-drawer-body">
           <div className="mobile-loadout">
-            {(['weapon', 'armor', 'charm'] as const).map((slot) => {
+            {equipmentSlots.map((slot) => {
               const item = player.loadout[slot];
+              const canDrop = Boolean(draggingLoot && draggingLoot.slot === slot);
               return (
-                <div key={slot} className={`mobile-loadout-slot ${slot} ${item ? 'filled' : ''}`}>
+                <div
+                  key={slot}
+                  className={`mobile-loadout-slot ${slot} ${item ? 'filled' : ''} ${canDrop ? 'drop-ready' : ''}`}
+                  onDragOver={(event) => {
+                    if (!canDrop) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDrop={(event) => {
+                    if (!canDrop || !draggingLoot) return;
+                    event.preventDefault();
+                    onEquip(draggingLoot);
+                    onLootDragEnd();
+                  }}
+                >
                   {slotIcon(slot, 16)}
                   <span>
-                    <strong>{item?.name ?? slot}</strong>
-                    <small>{item ? itemStatLine(item) : 'empty'}</small>
+                    <strong>{item?.name ?? equipmentLabels[slot]}</strong>
+                    <small>{item ? itemStatLine(item) : canDrop ? 'drop to equip' : 'empty'}</small>
                   </span>
                 </div>
               );
@@ -660,7 +729,7 @@ function MobileDrawer({
                   event.dataTransfer.setData('application/x-loopduel-kind', 'loot');
                   event.dataTransfer.setData('application/x-loopduel-loot-id', item.id);
                   event.dataTransfer.setData('text/plain', item.id);
-                  onLootDragStart(item.id);
+                  onLootDragStart(item.id, { x: event.clientX, y: event.clientY });
                 }}
                 onDragEnd={onLootDragEnd}
               >
@@ -1136,7 +1205,7 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
           </section>
           <section>
             <h2>Progress</h2>
-            <p>XP levels you up and offers traits. Loot rolls from fights and forges, then equips into weapon, armor, or charm slots.</p>
+            <p>XP levels you up and offers traits. Loot rolls from fights and forges, then equips into paperdoll slots by item type.</p>
           </section>
           <section>
             <h2>Scoring</h2>
@@ -1165,6 +1234,7 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
 export {
   GameMenu,
   DragCardGhost,
+  DragLootGhost,
   HandBar,
   HelpOverlay,
   InfoPopover,

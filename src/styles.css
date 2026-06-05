@@ -983,15 +983,15 @@ input:focus {
 }
 
 .hero-combat.combat-attacking img {
-  animation: hero-strike 135ms cubic-bezier(0.12, 0.94, 0.2, 1) both;
+  animation: hero-strike 203ms cubic-bezier(0.12, 0.94, 0.2, 1) both;
 }
 
 .enemy-combat.combat-attacking img {
-  animation: enemy-strike 135ms cubic-bezier(0.12, 0.94, 0.2, 1) both;
+  animation: enemy-strike 203ms cubic-bezier(0.12, 0.94, 0.2, 1) both;
 }
 
 .combat-taking-hit img {
-  animation: combat-hit-shake 145ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  animation: combat-hit-shake 218ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
 }
 
 .combat-name {
@@ -1498,8 +1498,48 @@ input:focus {
     inset 0 0 0 2px rgba(0, 0, 0, 0.28);
 }
 
+.drag-loot-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 91;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 118px);
+  align-items: center;
+  gap: 8px;
+  width: 176px;
+  min-height: 52px;
+  padding: 6px 10px 6px 7px;
+  border: 1px solid rgba(240, 217, 140, 0.42);
+  border-radius: 6px;
+  color: var(--gold-bright);
+  background:
+    linear-gradient(180deg, rgba(210, 177, 92, 0.2), rgba(0, 0, 0, 0.42)),
+    #12100d;
+  box-shadow:
+    0 18px 34px rgba(0, 0, 0, 0.62),
+    0 0 18px color-mix(in srgb, var(--gold) 34%, transparent);
+  pointer-events: none;
+  transform:
+    translate3d(calc(var(--drag-x) - 24px), calc(var(--drag-y) - 25px), 0)
+    rotate(1.5deg)
+    scale(1.03);
+  animation: drag-card-float 520ms ease-in-out infinite alternate;
+}
+
+.drag-loot-ghost span {
+  overflow: hidden;
+  color: var(--parchment);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 body.card-drag-active,
-body.card-drag-active * {
+body.card-drag-active *,
+body.loot-drag-active,
+body.loot-drag-active * {
   cursor: var(--cursor-grabbing) !important;
 }
 
@@ -1637,6 +1677,16 @@ body.card-drag-active * {
 
   to {
     translate: 0 3px;
+  }
+}
+
+@keyframes slot-drop-pulse {
+  from {
+    scale: 1;
+  }
+
+  to {
+    scale: 1.08;
   }
 }
 
@@ -1999,7 +2049,7 @@ body.card-drag-active * {
 
 .paperdoll {
   position: relative;
-  min-height: 250px;
+  min-height: 286px;
   overflow: visible;
   border: 1px solid rgba(210, 177, 92, 0.16);
   border-radius: 6px;
@@ -2012,10 +2062,10 @@ body.card-drag-active * {
 .paperdoll-body {
   position: absolute;
   left: 50%;
-  top: 52%;
+  top: 53%;
   display: grid;
   place-items: center;
-  width: 38%;
+  width: 34%;
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
 }
@@ -2047,7 +2097,7 @@ body.card-drag-active * {
   position: absolute;
   display: grid;
   place-items: center;
-  width: 64px;
+  width: 52px;
   aspect-ratio: 1;
   color: rgba(240, 217, 140, 0.68);
   background-position: center;
@@ -2058,26 +2108,80 @@ body.card-drag-active * {
 
 .paper-slot.weapon {
   left: 5%;
-  top: 16%;
+  top: 39%;
   background-image: url('/assets/ui/item-slot-weapon-v1.png');
 }
 
-.paper-slot.armor {
+.paper-slot.shield {
   right: 5%;
-  top: 16%;
+  top: 39%;
   background-image: url('/assets/ui/item-slot-armor-v1.png');
 }
 
-.paper-slot.charm {
+.paper-slot.helm {
   left: 50%;
-  bottom: 4%;
+  top: 5%;
   background-image: url('/assets/ui/item-slot-charm-v1.png');
   transform: translateX(-50%);
+}
+
+.paper-slot.armor {
+  left: 50%;
+  top: 31%;
+  background-image: url('/assets/ui/item-slot-armor-v1.png');
+  transform: translateX(-50%);
+}
+
+.paper-slot.gloves {
+  left: 17%;
+  top: 62%;
+  background-image: url('/assets/ui/item-slot-weapon-v1.png');
+}
+
+.paper-slot.boots {
+  right: 17%;
+  top: 62%;
+  background-image: url('/assets/ui/item-slot-armor-v1.png');
+}
+
+.paper-slot.ring {
+  left: 8%;
+  top: 12%;
+  background-image: url('/assets/ui/item-slot-charm-v1.png');
+}
+
+.paper-slot.charm {
+  right: 8%;
+  top: 12%;
+  background-image: url('/assets/ui/item-slot-charm-v1.png');
 }
 
 .paper-slot.filled {
   color: var(--gold-bright);
   filter: saturate(1.12) brightness(1.08);
+}
+
+.paper-slot.drop-ready {
+  z-index: 9;
+  color: var(--gold-bright);
+  animation: slot-drop-pulse 680ms ease-in-out infinite alternate;
+  filter: saturate(1.22) brightness(1.14) drop-shadow(0 0 12px color-mix(in srgb, var(--gold) 58%, transparent));
+}
+
+.paper-slot.drop-muted {
+  opacity: 0.46;
+  filter: grayscale(0.35) brightness(0.72);
+}
+
+.paper-slot-rarity {
+  position: absolute;
+  right: 9px;
+  bottom: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
 }
 
 .paper-slot svg {
@@ -2142,6 +2246,20 @@ body.card-drag-active * {
 
 .side-loot.armor {
   color: #c9dfeb;
+}
+
+.side-loot.shield,
+.side-loot.helm {
+  color: #b8d8f0;
+}
+
+.side-loot.gloves,
+.side-loot.ring {
+  color: #ffd58a;
+}
+
+.side-loot.boots {
+  color: #c1efc5;
 }
 
 .side-loot.charm {
@@ -3231,10 +3349,10 @@ body.card-drag-active * {
 
   .paperdoll {
     display: grid;
-    grid-template-columns: minmax(86px, 0.8fr) repeat(3, minmax(48px, 1fr));
+    grid-template-columns: minmax(76px, 0.9fr) repeat(4, minmax(42px, 1fr));
     align-items: center;
     gap: 6px;
-    min-height: 88px;
+    min-height: 126px;
     padding: 8px;
     background:
       linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.36)),
@@ -3254,10 +3372,11 @@ body.card-drag-active * {
   .paperdoll-body {
     width: 76px;
     justify-self: center;
+    grid-row: span 2;
   }
 
   .paper-slot {
-    width: 52px;
+    width: 46px;
     justify-self: center;
   }
 
@@ -3351,7 +3470,7 @@ body.card-drag-active * {
   }
 
   .mobile-loadout {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     margin-bottom: 7px;
   }
 
@@ -3372,6 +3491,11 @@ body.card-drag-active * {
     gap: 6px;
     min-height: 48px;
     padding: 6px;
+  }
+
+  .mobile-loadout-slot.drop-ready {
+    border-color: var(--gold-bright);
+    box-shadow: inset 0 0 0 1px rgba(240, 217, 140, 0.3), 0 0 12px rgba(210, 177, 92, 0.18);
   }
 
   .mobile-loadout-slot.filled,
@@ -3494,7 +3618,7 @@ body.card-drag-active * {
   }
 
   .paper-slot {
-    width: 58px;
+    width: 46px;
   }
 
   .topbar {
