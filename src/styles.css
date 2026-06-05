@@ -1785,6 +1785,12 @@ body.loot-drag-active * {
 .equip-slot:focus-visible .hover-pop,
 .loot-chip:hover .hover-pop,
 .loot-chip:focus-visible .hover-pop,
+.rail-hp-orb:hover .hover-pop,
+.rail-hp-orb:focus-within .hover-pop,
+.rail-stat-tile:hover .hover-pop,
+.rail-stat-tile:focus-within .hover-pop,
+.loop-tier-card:hover .hover-pop,
+.loop-tier-card:focus-within .hover-pop,
 .paper-slot:hover .hover-pop,
 .paper-slot:focus-visible .hover-pop,
 .side-loot:hover .hover-pop,
@@ -1970,9 +1976,9 @@ body.loot-drag-active * {
   border: 1px solid color-mix(in srgb, var(--hero-color) 45%, var(--line));
   border-radius: 6px;
   background:
-    linear-gradient(180deg, rgba(255, 226, 118, 0.16), rgba(114, 69, 31, 0.18)),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px),
-    #2b2117;
+    linear-gradient(180deg, rgba(255, 226, 118, 0.14), rgba(114, 69, 31, 0.15)),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.028) 0 1px, transparent 1px 3px),
+    #241b13;
   box-shadow:
     0 18px 48px rgba(0, 0, 0, 0.42),
     inset 0 0 0 2px rgba(255, 232, 159, 0.1);
@@ -1980,14 +1986,14 @@ body.loot-drag-active * {
 
 .side-dock-head {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
 }
 
 .side-dock-head img {
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   border: 1px solid color-mix(in srgb, var(--hero-color) 58%, var(--gold));
   border-radius: 4px;
   object-fit: cover;
@@ -2005,7 +2011,7 @@ body.loot-drag-active * {
   overflow: hidden;
   font-family: Georgia, "Times New Roman", serif;
   color: var(--parchment);
-  font-size: 1.05rem;
+  font-size: 0.96rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2013,7 +2019,7 @@ body.loot-drag-active * {
 .side-dock-head span {
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.68rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2023,132 +2029,171 @@ body.loot-drag-active * {
   filter: drop-shadow(0 1px 1px #000);
 }
 
-.side-stat-row {
+.rail-vitals {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  align-items: center;
-  gap: 8px;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 7px;
+}
+
+.rail-hp-orb {
+  --hp-ratio: 100%;
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-height: 64px;
+  border: 1px solid rgba(255, 224, 138, 0.36);
+  border-radius: 5px;
   color: var(--parchment);
-  font-size: 0.76rem;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(27, 10, 11, 0.88) 0 48%, transparent 49%),
+    conic-gradient(var(--blood) 0 var(--hp-ratio), rgba(0, 0, 0, 0.55) var(--hp-ratio) 100%),
+    #4a271c;
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, 0.38),
+    0 4px 0 rgba(0, 0, 0, 0.28);
   font-variant-numeric: tabular-nums;
 }
 
-.side-hp {
-  height: 10px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 224, 138, 0.48);
-  border-radius: 3px;
-  background: #3c1b1a;
+.rail-hp-orb strong {
+  color: #fff1bc;
+  font-size: 1rem;
+  line-height: 1;
 }
 
-.side-hp i {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, var(--blood), var(--gold-bright));
+.rail-hp-orb span {
+  color: var(--gold);
+  font-size: 0.6rem;
+  font-weight: 950;
+  line-height: 1;
 }
 
-.build-strip {
+.rail-stat-grid {
   display: grid;
-  grid-template-columns: repeat(3, auto) minmax(0, 1fr);
-  align-items: center;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 5px;
-  padding: 5px;
-  border: 1px solid rgba(255, 224, 138, 0.28);
-  border-radius: 4px;
-  color: var(--ink);
-  background:
-    linear-gradient(180deg, #ffe6a1, #d59143);
-  box-shadow: inset 0 -2px 0 rgba(93, 45, 22, 0.36);
 }
 
-.build-strip span,
-.build-strip strong {
-  display: inline-flex;
+.rail-stat-tile {
+  position: relative;
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
-  gap: 3px;
+  justify-items: center;
+  gap: 2px;
   min-width: 0;
-  min-height: 22px;
-  padding: 2px 5px;
-  border: 1px solid rgba(81, 38, 16, 0.28);
+  min-height: 29px;
+  padding: 3px 5px;
+  border: 1px solid rgba(255, 224, 138, 0.26);
   border-radius: 3px;
-  background: rgba(255, 247, 203, 0.62);
-  font-size: 0.7rem;
+  color: var(--gold-bright);
+  background:
+    linear-gradient(180deg, rgba(255, 224, 138, 0.1), rgba(0, 0, 0, 0.28)),
+    #15110e;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.36);
+}
+
+.rail-stat-tile b {
+  color: var(--parchment);
+  font-size: 0.72rem;
   font-weight: 950;
   font-variant-numeric: tabular-nums;
 }
 
-.build-strip strong {
-  overflow: hidden;
-  justify-content: flex-start;
-  color: #332014;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.side-stat-row em {
-  color: var(--gold-bright);
-  font-style: normal;
-  font-weight: 900;
-}
-
-.side-stat-row small {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--gold);
-  font-size: 0.72rem;
-  font-weight: 900;
-}
-
-.phase-card {
+.loop-tier-card {
+  --tier-progress: 0%;
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 64px;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
+  gap: 7px;
+  padding: 7px;
   border: 1px solid rgba(255, 224, 138, 0.3);
   border-radius: 4px;
-  background: rgba(69, 48, 27, 0.7);
+  background:
+    linear-gradient(180deg, rgba(99, 61, 30, 0.76), rgba(41, 27, 18, 0.82));
 }
 
-.phase-card.claimant {
+.loop-tier-card.claimant {
   border-color: color-mix(in srgb, var(--hero-color) 62%, var(--gold-bright));
   background: color-mix(in srgb, var(--hero-color) 14%, rgba(0, 0, 0, 0.34));
 }
 
-.phase-card div {
+.loop-tier-pips {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.loop-tier-pips span,
+.loop-tier-pips svg {
+  display: grid;
+  place-items: center;
+  min-height: 28px;
+  border: 1px solid rgba(255, 224, 138, 0.22);
+  border-radius: 3px;
+  color: rgba(240, 217, 140, 0.42);
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 0.74rem;
+  font-weight: 950;
+}
+
+.loop-tier-pips span.done,
+.loop-tier-pips span.active {
+  color: var(--gold-bright);
+  border-color: rgba(255, 224, 138, 0.52);
+  background:
+    radial-gradient(circle at 50% 34%, color-mix(in srgb, var(--hero-color) 28%, transparent), transparent 64%),
+    rgba(0, 0, 0, 0.34);
+}
+
+.loop-tier-meter {
+  grid-column: 1 / -1;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.46);
+}
+
+.loop-tier-meter i {
+  display: block;
+  width: var(--tier-progress);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--gold), var(--hero-color));
+}
+
+.loop-tier-meta {
   display: grid;
   gap: 2px;
-  min-width: 0;
+  justify-items: end;
 }
 
-.phase-card strong {
+.loop-tier-meta strong,
+.loop-tier-meta span {
   overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-tier-meta strong {
   color: var(--parchment);
-  font-size: 0.78rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.phase-card span {
-  overflow: hidden;
-  color: var(--muted);
   font-size: 0.7rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 950;
 }
 
-.phase-card small {
+.loop-tier-meta span {
   color: var(--gold-bright);
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
 }
 
 .paperdoll {
   position: relative;
-  min-height: 286px;
+  min-height: 236px;
   overflow: visible;
   border: 2px solid rgba(255, 224, 138, 0.42);
   border-radius: 4px;
@@ -2197,7 +2242,7 @@ body.loot-drag-active * {
   position: absolute;
   display: grid;
   place-items: center;
-  width: 52px;
+  width: 46px;
   aspect-ratio: 1;
   color: rgba(255, 224, 138, 0.84);
   background-position: center;
@@ -2302,6 +2347,15 @@ body.loot-drag-active * {
   color: var(--gold-bright);
 }
 
+.side-section-title.icon-title {
+  min-height: 20px;
+}
+
+.side-section-title.icon-title > svg {
+  color: var(--gold-bright);
+  filter: drop-shadow(0 1px 1px #000);
+}
+
 .side-section-title strong {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 0.96rem;
@@ -2339,6 +2393,11 @@ body.loot-drag-active * {
 .side-loot {
   background-image: url('/assets/ui/loot-slot-v1.png');
   filter: saturate(1.18) brightness(1.1);
+}
+
+.side-loot.empty {
+  opacity: 0.36;
+  filter: grayscale(0.38) brightness(0.78);
 }
 
 .side-loot.weapon {
@@ -2409,11 +2468,11 @@ body.loot-drag-active * {
 .talent-tree-entry {
   position: relative;
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) auto;
+  grid-template-columns: 42px minmax(0, 1fr) 28px;
   align-items: center;
-  gap: 11px;
-  min-height: 70px;
-  padding: 9px 11px;
+  gap: 8px;
+  min-height: 56px;
+  padding: 7px;
   border: 2px solid rgba(255, 224, 138, 0.28);
   border-radius: 6px;
   color: var(--parchment);
@@ -2441,12 +2500,64 @@ body.loot-drag-active * {
 
 .talent-tree-medallion {
   display: block;
-  width: 58px;
+  width: 42px;
   aspect-ratio: 1;
   background:
     var(--talent-icon) center / contain no-repeat,
     url('/assets/ui/talent-node-learned-v1.png') center / contain no-repeat;
   filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.55));
+}
+
+.talent-rune-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+  min-width: 0;
+}
+
+.talent-rune-strip i {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 224, 138, 0.22);
+  border-radius: 50%;
+  color: rgba(240, 217, 140, 0.36);
+  background: rgba(0, 0, 0, 0.26);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.52rem;
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.talent-rune-strip i.learned {
+  color: var(--gold-bright);
+  border-color: rgba(255, 224, 138, 0.46);
+  background:
+    radial-gradient(circle, rgba(210, 177, 92, 0.32), transparent 64%),
+    rgba(0, 0, 0, 0.42);
+}
+
+.talent-rune-strip i.pending {
+  color: #0d170c;
+  border-color: color-mix(in srgb, var(--moss) 75%, var(--gold-bright));
+  background: linear-gradient(180deg, var(--gold-bright), var(--moss));
+  box-shadow: 0 0 9px color-mix(in srgb, var(--moss) 42%, transparent);
+}
+
+.talent-tree-entry > strong {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 224, 138, 0.32);
+  border-radius: 50%;
+  color: var(--gold-bright);
+  background: rgba(0, 0, 0, 0.36);
+  font-size: 0.76rem;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
 }
 
 .talent-tree-entry-copy {
@@ -2677,8 +2788,8 @@ body.loot-drag-active * {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 7px;
-  min-height: 34px;
-  padding: 7px 9px;
+  min-height: 30px;
+  padding: 5px 8px;
   border: 1px solid rgba(255, 224, 138, 0.28);
   border-radius: 4px;
   color: var(--gold-bright);
@@ -2687,8 +2798,9 @@ body.loot-drag-active * {
 
 .side-feed > span:not(.hover-pop) {
   overflow: hidden;
-  color: var(--muted);
-  font-size: 0.76rem;
+  color: var(--parchment);
+  font-size: 0.72rem;
+  font-weight: 950;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2696,7 +2808,7 @@ body.loot-drag-active * {
 .side-controls {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  gap: 5px;
 }
 
 .side-control-button {
@@ -2704,10 +2816,9 @@ body.loot-drag-active * {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
   min-width: 0;
-  height: 36px;
-  padding: 0 7px;
+  height: 34px;
+  padding: 0;
   border: 1px solid rgba(210, 177, 92, 0.34);
   border-radius: 5px;
   color: var(--gold-bright);

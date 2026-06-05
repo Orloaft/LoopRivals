@@ -341,6 +341,13 @@ function itemPopoverLines(item: Loot, equipped: Loot | null | undefined) {
   ];
 }
 
+function shortTierName(name: string) {
+  return name
+    .replace(/\s+loop$/i, '')
+    .replace(/^tier\s+/i, 'T')
+    .slice(0, 12);
+}
+
 function statValue(item: Loot | null | undefined, stat: keyof Pick<Loot, 'power' | 'guard' | 'speed' | 'maxHp' | 'sabotage' | 'lapHeal' | 'terrainScore' | 'revivePower'>) {
   return item?.[stat] ?? 0;
 }
@@ -355,17 +362,6 @@ function itemDeltaLine(item: Loot, equipped: Loot | null | undefined) {
     .filter(([, value]) => value !== 0)
     .map(([label, value]) => `${Number(value) > 0 ? '+' : ''}${value}${label}`);
   return parts.length > 0 ? parts.join(' ') : 'sidegrade';
-}
-
-function loadoutRole(player: Player) {
-  const equipped = Object.values(player.loadout).filter(Boolean) as Loot[];
-  const roles = equipped.reduce<Record<string, number>>((counts, item) => {
-    const role = item.role ?? 'Mixed';
-    counts[role] = (counts[role] ?? 0) + 1;
-    return counts;
-  }, {});
-  const [role, count] = Object.entries(roles).sort((a, b) => b[1] - a[1])[0] ?? ['Unbuilt', 0];
-  return `${role} ${count}/${equipmentSlots.length}`;
 }
 
 function HandBar({
@@ -520,6 +516,10 @@ function PlayerSideDock({
   const equippedIds = new Set(Object.values(player.loadout).filter(Boolean).map((item) => item?.id));
   const looseLoot = player.loot.filter((item) => !equippedIds.has(item.id));
   const draggingLoot = draggingLootId ? player.loot.find((item) => item.id === draggingLootId) ?? null : null;
+  const nextTier = config.matchTiers.find((tier) => tier.id > player.loopTier);
+  const tierProgress = nextTier
+    ? Math.max(0, Math.min(100, ((player.score - player.tierStartScore) / Math.max(1, nextTier.minScore - player.tierStartScore)) * 100))
+    : Math.max(0, Math.min(100, (player.score / game.goalScore) * 100));
 
   return (
     <aside className="player-side-dock" style={{ '--hero-color': player.color } as CSSProperties}>
@@ -527,32 +527,47 @@ function PlayerSideDock({
         <img src={heroPortraitUrl(player.heroId)} alt="" />
         <div>
           <strong>{player.name}</strong>
-          <span>{hero?.name ?? 'Runner'} · Rank {player.rank} · {game.tier.name}</span>
+          <span>{hero?.name ?? 'Runner'}</span>
         </div>
         {player.rank === 1 && <Crown size={18} />}
       </div>
 
-      <div className="side-stat-row">
-        <span className="side-hp"><i style={{ width: `${hpRatio}%` }} /></span>
-        <b>{Math.ceil(player.hp)}/{player.maxHp}</b>
-        <em>{player.score}</em>
-        <small><Coins size={12} /> {player.gold ?? 0}</small>
-      </div>
-
-      <div className="build-strip" aria-label="Current loadout stats">
-        <span><Swords size={13} /> {player.power}</span>
-        <span><Shield size={13} /> {player.guard}</span>
-        <span><Footprints size={13} /> {player.speed}</span>
-        <strong>{loadoutRole(player)}</strong>
-      </div>
-
-      <div className={`phase-card ${game.claim?.playerId === player.id ? 'claimant' : ''}`}>
-        <div>
-          <strong>{game.claim?.playerId === player.id ? 'Claim lap active' : game.tier.name}</strong>
-          <span>{game.claim ? `${game.claim.claimantName} has ${Math.ceil(game.claim.remainingMs / 1000)}s to close the loop.` : game.tier.text}</span>
+      <section className="rail-vitals" aria-label="Runner vitals">
+        <div className="rail-hp-orb" style={{ '--hp-ratio': `${hpRatio}%` } as CSSProperties}>
+          <strong>{Math.ceil(player.hp)}</strong>
+          <span>{player.maxHp}</span>
+          <InfoPopover title="Health" body={`${Math.ceil(player.hp)}/${player.maxHp} HP`} />
         </div>
-        <small>{player.soloGatesCleared.length}/3 gates</small>
-      </div>
+        <div className="rail-stat-grid" aria-label="Runner stats">
+          <span className="rail-stat-tile"><Swords size={15} /><b>{player.power}</b><InfoPopover title="Power" body="Damage output before combat effects." /></span>
+          <span className="rail-stat-tile"><Shield size={15} /><b>{player.guard}</b><InfoPopover title="Guard" body="Damage reduction and survival pressure." /></span>
+          <span className="rail-stat-tile"><Footprints size={15} /><b>{player.speed}</b><InfoPopover title="Speed" body="Movement tempo around the loop." /></span>
+          <span className="rail-stat-tile"><Sparkles size={15} /><b>{player.score}</b><InfoPopover title="Score" body={`${player.score}/${game.goalScore} toward the boss race.`} /></span>
+          <span className="rail-stat-tile"><Coins size={15} /><b>{player.gold ?? 0}</b><InfoPopover title="Gold" body="Spendable run currency." /></span>
+          <span className="rail-stat-tile"><Zap size={15} /><b>{player.level}</b><InfoPopover title="Level" body={`${player.xp} XP. Talent choices unlock as you level.`} /></span>
+        </div>
+      </section>
+
+      <section className={`loop-tier-card ${game.claim?.playerId === player.id ? 'claimant' : ''}`} style={{ '--tier-progress': `${tierProgress}%` } as CSSProperties}>
+        <div className="loop-tier-pips" aria-label="Loop tier">
+          {config.matchTiers.slice(0, 3).map((tier) => (
+            <span key={tier.id} className={tier.id < player.loopTier ? 'done' : tier.id === player.loopTier ? 'active' : ''}>
+              {tier.id}
+            </span>
+          ))}
+          <Crown size={16} />
+        </div>
+        <div className="loop-tier-meter"><i /></div>
+        <div className="loop-tier-meta">
+          <strong>{game.claim?.playerId === player.id ? `${Math.ceil((game.claim?.remainingMs ?? 0) / 1000)}s` : shortTierName(game.tier.name)}</strong>
+          <span>{player.soloGatesCleared.length}/3</span>
+        </div>
+        <InfoPopover
+          title={game.claim?.playerId === player.id ? 'Boss mark active' : game.tier.name}
+          body={game.claim ? `${game.claim.claimantName} is closing a marked lap.` : game.tier.text}
+          hint={`${player.soloGatesCleared.length}/3 gates cleared`}
+        />
+      </section>
 
       {dockMode === 'talents' ? (
         <TalentTreeDock
@@ -602,29 +617,31 @@ function PlayerSideDock({
             })}
           </div>
 
-          <section className={`dock-section side-talents ${pending.length > 0 ? 'has-pending' : ''}`}>
-            <div className="side-section-title">
-              <strong>Talents</strong>
+          <section className={`dock-section side-talents ${pending.length > 0 ? 'has-pending' : ''}`} aria-label="Talents">
+            <div className="side-section-title icon-title">
+              <GitBranch size={15} />
               <span>{learned.length}/{tree.length}</span>
             </div>
             <button className={`talent-tree-entry ${pending.length > 0 ? 'pending' : ''}`} onClick={() => setDockMode('talents')}>
               <span className="talent-tree-medallion" style={{ '--talent-icon': `url(${talentIconUrl(player.heroId)})` } as CSSProperties} />
-              <span className="talent-tree-entry-copy">
-                <strong>{pending.length > 0 ? `${pending.length} talent choice${pending.length === 1 ? '' : 's'}` : 'Open talent tree'}</strong>
-                <small>{pending.length > 0 ? 'Choose an available glowing node.' : learned.length > 0 ? `${learned[learned.length - 1].name} learned` : 'Level up to awaken the first node.'}</small>
+              <span className="talent-rune-strip">
+                {[...pending, ...learned].slice(0, 6).map((trait) => (
+                  <i key={trait.id} className={pending.some((item) => item.id === trait.id) ? 'pending' : 'learned'}>{traitGlyph(trait.name)}</i>
+                ))}
+                {[...Array(Math.max(0, Math.min(6, tree.length || 6) - Math.min(6, pending.length + learned.length)))].map((_, index) => <i key={`empty-${index}`} />)}
               </span>
-              <GitBranch size={18} />
+              <strong>{pending.length > 0 ? pending.length : player.talentPoints}</strong>
               <InfoPopover
                 title={`${hero?.name ?? 'Hero'} talent tree`}
                 eyebrow={pending.length > 0 ? 'Unlock ready' : 'Hero growth'}
-                body={pending.length > 0 ? 'Open the tree and choose one highlighted node.' : 'Each hero has a bespoke seven-node progression tree.'}
+                body={pending.length > 0 ? 'Open the tree and choose one highlighted node.' : learned.length > 0 ? `${learned[learned.length - 1].name} learned most recently.` : 'Level up to awaken the first node.'}
               />
             </button>
           </section>
 
           <section className="dock-section loot-section">
-            <div className="side-section-title">
-              <strong>Loot</strong>
+            <div className="side-section-title icon-title">
+              <Gem size={15} />
               <span>{looseLoot.length}/10</span>
             </div>
             <div className="side-loot-grid">
@@ -653,13 +670,15 @@ function PlayerSideDock({
                   />
                 </button>
               ))}
-              {looseLoot.length === 0 && <span className="side-empty">No loose loot.</span>}
+              {[...Array(Math.max(0, 10 - Math.min(10, looseLoot.length)))].map((_, index) => (
+                <span key={`empty-loot-${index}`} className="side-loot empty" aria-hidden="true" />
+              ))}
             </div>
           </section>
 
           <div className="side-feed" tabIndex={0}>
             <ScrollText size={16} />
-            <span>{lines[0] ?? 'The loop is quiet.'}</span>
+            <span>{lines.length}</span>
             <InfoPopover
               title="Event log"
               lines={lines.slice(0, 8)}
@@ -668,24 +687,20 @@ function PlayerSideDock({
           </div>
 
           <div className="side-controls">
-            <button className="side-control-button" onClick={onMenu}>
+            <button className="side-control-button" onClick={onMenu} aria-label="Menu">
               <Bot size={15} />
-              <span>Menu</span>
               <InfoPopover title="Menu" eyebrow={isHost ? 'Host controls' : 'Room menu'} body={`Room ${game.id} · ${game.players.length}/${game.maxPlayers} runners`} />
             </button>
-            <button className="side-control-button" onClick={onAddBot} disabled={!isHost}>
+            <button className="side-control-button" onClick={onAddBot} disabled={!isHost} aria-label="Add bot">
               <Bot size={15} />
-              <span>Bot</span>
               <InfoPopover title="Add bot" body={isHost ? 'Adds one CPU opponent if a seat is open.' : 'Only the room host can add opponents.'} />
             </button>
-            <button className="side-control-button" onClick={onFillCpu} disabled={!isHost}>
+            <button className="side-control-button" onClick={onFillCpu} disabled={!isHost} aria-label="Fill CPU match">
               <Users size={15} />
-              <span>Fill</span>
               <InfoPopover title="Fill CPU match" body={isHost ? 'Fills every open seat with CPU opponents.' : 'Only the room host can fill the match.'} />
             </button>
-            <button className="side-control-button" onClick={onToggleBgm}>
+            <button className="side-control-button" onClick={onToggleBgm} aria-label="Toggle music">
               {bgmOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
-              <span>BGM</span>
               <InfoPopover title="Crypt of Neon Glass" eyebrow="BGM" body={bgmOn ? 'Music is playing.' : 'Music is muted.'} />
             </button>
           </div>
