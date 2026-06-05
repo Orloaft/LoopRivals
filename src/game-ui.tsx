@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { ArrowLeft, Bot, Coins, Crown, GitBranch, Hand, HelpCircle, RotateCcw, ScrollText, Shield, Sparkles, Swords, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import {
   combatBackgroundUrl,
@@ -7,7 +7,7 @@ import {
   heroSpriteUrl,
   talentIconUrl
 } from './game-assets';
-import type { Card, Combat, GameConfig, GameState, Loot, Player, Tile, Trait } from './types';
+import type { Card, Combat, CombatBeat, GameConfig, GameState, Loot, Player, Tile, Trait } from './types';
 
 const tileNames: Record<string, string> = {
   road: 'Road',
@@ -1003,11 +1003,35 @@ function PlayerPanel({
 function CombatOverlay({ player }: { player: Player }) {
   const combat = player.combat;
   if (!combat) return null;
+  return <CombatOverlayBody player={player} combat={combat} />;
+}
 
-  const heroBefore = Math.max(0, Math.min(100, (combat.heroHpBefore / combat.heroMaxHp) * 100));
-  const heroAfter = Math.max(0, Math.min(100, (combat.heroHpAfter / combat.heroMaxHp) * 100));
-  const enemyBefore = Math.max(0, Math.min(100, (combat.enemyHpBefore / combat.enemyMaxHp) * 100));
-  const enemyAfter = Math.max(0, Math.min(100, (combat.enemyHpAfter / combat.enemyMaxHp) * 100));
+function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat }) {
+  const [presentation] = useState(() => ({
+    beats: combat.beats?.length ? combat.beats : fallbackCombatBeats(combat),
+    durationMs: combat.durationMs,
+    heroHpAfter: combat.heroHpAfter,
+    enemyHpAfter: combat.enemyHpAfter
+  }));
+  const beats = presentation.beats;
+  const [activeBeatIndex, setActiveBeatIndex] = useState(-1);
+  const [displayHp, setDisplayHp] = useState({
+    hero: combat.heroHpBefore,
+    enemy: combat.enemyHpBefore
+  });
+  const activeBeat = activeBeatIndex >= 0 ? beats[activeBeatIndex] : null;
+
+  useEffect(() => {
+    const timers = beats.map((beat, index) => window.setTimeout(() => {
+      setActiveBeatIndex(index);
+      setDisplayHp({ hero: beat.heroHp, enemy: beat.enemyHp });
+    }, beat.atMs));
+    timers.push(window.setTimeout(() => {
+      setDisplayHp({ hero: presentation.heroHpAfter, enemy: presentation.enemyHpAfter });
+    }, Math.max(0, presentation.durationMs - 140)));
+
+    return () => timers.forEach(window.clearTimeout);
+  }, [presentation, beats]);
 
   return (
     <div className="combat-overlay" style={{
@@ -1015,14 +1039,13 @@ function CombatOverlay({ player }: { player: Player }) {
       '--combat-duration': `${combat.durationMs ?? 5200}ms`
     } as CSSProperties}>
       <div className="combat-vignette" />
-      <div className="combatant hero-combat">
-        <img src={heroSpriteUrl(player.heroId)} alt="" />
+      <div className={`combatant hero-combat ${activeBeat?.attacker === 'hero' ? 'combat-attacking' : ''} ${activeBeat?.attacker === 'enemy' ? 'combat-taking-hit' : ''}`}>
+        <img key={`hero-${activeBeatIndex}-${activeBeat?.attacker ?? 'idle'}`} src={heroSpriteUrl(player.heroId)} alt="" />
         <div className="combat-name">{player.name}</div>
         <CombatBar
-          current={Math.ceil(Math.max(0, combat.heroHpAfter))}
+          current={Math.ceil(Math.max(0, displayHp.hero))}
           max={combat.heroMaxHp}
-          before={heroBefore}
-          after={heroAfter}
+          value={displayHp.hero}
         />
         <InfoPopover
           title={player.name}
@@ -1032,16 +1055,21 @@ function CombatOverlay({ player }: { player: Player }) {
         />
       </div>
       <div className="combat-impact">
-        <div className={combatFxClass(combat.effect)} aria-hidden="true" />
+        {activeBeat && <div key={`fx-${activeBeatIndex}`} className={combatFxClass(combat.effect)} aria-hidden="true" />}
         <strong>{combat.label}</strong>
         {combat.enemyCount > 1 && <em>{combat.enemyCount} foes · {combat.rounds} clashes</em>}
-        <span>-{combat.damage} HP</span>
+        <span>{activeBeat ? `-${activeBeat.damage} HP` : 'Fight'}</span>
         <small>+{combat.reward} XP</small>
+        {activeBeat && (
+          <b key={`${activeBeatIndex}-${activeBeat.attacker}`} className={`combat-damage-float ${activeBeat.attacker}`}>
+            -{activeBeat.damage}
+          </b>
+        )}
       </div>
-      <div className="combatant enemy-combat">
-        <img src={combatEnemyUrl(combat.enemyId)} alt="" />
+      <div className={`combatant enemy-combat ${activeBeat?.attacker === 'enemy' ? 'combat-attacking' : ''} ${activeBeat?.attacker === 'hero' ? 'combat-taking-hit' : ''}`}>
+        <img key={`enemy-${activeBeatIndex}-${activeBeat?.attacker ?? 'idle'}`} src={combatEnemyUrl(combat.enemyId)} alt="" />
         <div className="combat-name">{combat.enemyName}</div>
-        <CombatBar current={combat.enemyHpAfter} max={combat.enemyMaxHp} before={enemyBefore} after={enemyAfter} />
+        <CombatBar current={Math.ceil(Math.max(0, displayHp.enemy))} max={combat.enemyMaxHp} value={displayHp.enemy} />
         <InfoPopover
           title={combat.enemyName}
           eyebrow="Enemy"
@@ -1053,10 +1081,31 @@ function CombatOverlay({ player }: { player: Player }) {
   );
 }
 
-function CombatBar({ current, max, before, after }: { current: number; max: number; before: number; after: number }) {
+function fallbackCombatBeats(combat: Combat): CombatBeat[] {
+  const beats: CombatBeat[] = [
+    {
+      attacker: 'hero',
+      atMs: 120,
+      damage: combat.enemyHpBefore - combat.enemyHpAfter,
+      heroHp: combat.heroHpBefore,
+      enemyHp: combat.enemyHpAfter
+    },
+    {
+      attacker: 'enemy',
+      atMs: 260,
+      damage: combat.damage,
+      heroHp: combat.heroHpAfter,
+      enemyHp: combat.enemyHpAfter
+    }
+  ];
+  return beats.filter((beat) => beat.damage > 0);
+}
+
+function CombatBar({ current, max, value }: { current: number; max: number; value: number }) {
+  const hpRatio = Math.max(0, Math.min(100, (value / max) * 100));
   return (
     <div className="combat-hp">
-      <span style={{ '--hp-before': `${before}%`, '--hp-after': `${after}%` } as CSSProperties} />
+      <span style={{ width: `${hpRatio}%` }} />
       <small>{current}/{max}</small>
     </div>
   );

@@ -102,9 +102,18 @@ export type Combat = {
   enemyHpBefore: number;
   enemyHpAfter: number;
   enemyMaxHp: number;
+  beats?: CombatBeat[];
   startedAt: number;
   expiresAt: number;
   durationMs: number;
+};
+
+export type CombatBeat = {
+  attacker: 'hero' | 'enemy';
+  atMs: number;
+  damage: number;
+  heroHp: number;
+  enemyHp: number;
 };
 
 export type Player = {

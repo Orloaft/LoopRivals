@@ -11,7 +11,6 @@ export const matchTiers = [
 ];
 const claimTimeoutMs = 90000 * timeScale;
 const soloGateScores = [1800, 4500, goalScore];
-const combatBaseDisplayMs = 1100;
 
 const combatEncounters = {
   'wolf grove': {
@@ -995,7 +994,15 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     effect: 'ember'
   };
   const timestamp = now(room);
-  const durationMs = combatBaseDisplayMs + enemyCount * 260 + rounds * 90;
+  const beats = combatBeats({
+    rounds,
+    enemyMaxHp,
+    heroHpBefore: hpBefore,
+    heroHpAfter: player.hp,
+    heroDamage: damage,
+    power
+  });
+  const durationMs = 240 + beats.length * 135;
   player.combat = {
     ...encounter,
     label,
@@ -1009,6 +1016,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     enemyHpBefore: enemyMaxHp,
     enemyHpAfter: 0,
     enemyMaxHp,
+    beats,
     startedAt: timestamp,
     expiresAt: timestamp + durationMs,
     durationMs
@@ -1016,6 +1024,65 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   const vagrantLuck = player.heroId === 'night-vagrant' ? 0.1 : 0;
   if (random(room) < 0.17 + player.lootLuck + vagrantLuck + xpReward / 220) drawLoot(room, player);
   if (player.curse > 0) player.curse -= 1;
+}
+
+function splitDamage(total, parts) {
+  if (parts <= 0) return [];
+  const base = Math.floor(total / parts);
+  let remainder = total % parts;
+  return Array.from({ length: parts }, () => {
+    const damage = base + (remainder > 0 ? 1 : 0);
+    remainder -= 1;
+    return damage;
+  }).filter((damage) => damage > 0);
+}
+
+function combatBeats({ rounds, enemyMaxHp, heroHpBefore, heroHpAfter, heroDamage, power }) {
+  const counterDamages = splitDamage(heroDamage, Math.min(rounds, Math.max(1, heroDamage)));
+  let enemyHp = enemyMaxHp;
+  let heroHp = heroHpBefore;
+  let counterIndex = 0;
+  const beats = [];
+
+  for (let round = 0; round < rounds && enemyHp > 0; round += 1) {
+    const isFinisher = round === rounds - 1;
+    const strikeDamage = isFinisher ? enemyHp : Math.min(enemyHp, Math.max(1, power + (round % 2)));
+    enemyHp = Math.max(0, enemyHp - strikeDamage);
+    beats.push({
+      attacker: 'hero',
+      atMs: 120 + beats.length * 135,
+      damage: strikeDamage,
+      heroHp,
+      enemyHp
+    });
+
+    if (enemyHp <= 0 || counterIndex >= counterDamages.length) continue;
+    const counterDamage = counterDamages[counterIndex];
+    counterIndex += 1;
+    heroHp = Math.max(heroHpAfter, heroHp - counterDamage);
+    beats.push({
+      attacker: 'enemy',
+      atMs: 120 + beats.length * 135,
+      damage: counterDamage,
+      heroHp,
+      enemyHp
+    });
+  }
+
+  const lastBeat = beats.at(-1);
+  if (!lastBeat || lastBeat.enemyHp !== 0) {
+    beats.push({
+      attacker: 'hero',
+      atMs: 120 + beats.length * 135,
+      damage: enemyHp,
+      heroHp,
+      enemyHp: 0
+    });
+  }
+
+  const finalBeat = beats.at(-1);
+  if (finalBeat && finalBeat.heroHp !== heroHpAfter) finalBeat.heroHp = heroHpAfter;
+  return beats;
 }
 
 function revivePlayer(room, player) {

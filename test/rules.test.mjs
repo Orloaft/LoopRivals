@@ -154,8 +154,11 @@ test('danger terrain can stack multiple enemies into one longer combat lock', ()
 
   assert.ok(player.combat.enemyCount >= 3);
   assert.ok(player.combat.rounds >= player.combat.enemyCount);
-  assert.ok(player.combat.durationMs >= 1100 + player.combat.enemyCount * 260 + player.combat.rounds * 90);
-  assert.ok(player.combat.durationMs < 1500 * 2.4 + player.combat.enemyCount * 450 * 2.4 + player.combat.rounds * 160 * 2.4);
+  assert.ok(player.combat.beats.length >= player.combat.rounds);
+  assert.ok(player.combat.beats.some((beat) => beat.attacker === 'hero'));
+  assert.ok(player.combat.beats.some((beat) => beat.attacker === 'enemy'));
+  assert.ok(player.combat.durationMs >= 240 + player.combat.beats.length * 135);
+  assert.ok(player.combat.durationMs < 1100 + player.combat.enemyCount * 260 + player.combat.rounds * 90);
   assert.equal(player.combat.enemyName, 'Bone Host');
 });
 
