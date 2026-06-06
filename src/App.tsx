@@ -5,7 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield } from 'lucide-react';
 import { heroPortraitUrl, statLine } from './game-assets';
 import { authoritativeCursor, clampCursorAtMovementStop, reconcileVisualCursor, visualCursorForPlayer } from './movement';
-import type { GameConfig, GameState, Loot, RoomSettings, ShopOffer, Tile } from './types';
+import type { GameConfig, GameState, Loot, RoomDelta, RoomSettings, ShopOffer, Tile } from './types';
 import {
   DragCardGhost,
   DragLootGhost,
@@ -158,20 +158,30 @@ function App() {
   const [profile, setProfile] = useState(loadProfile);
   const [recordedFinishId, setRecordedFinishId] = useState<string | null>(null);
   const [mobileDrawer, setMobileDrawer] = useState<'loot' | 'talents' | 'log' | 'menu' | null>(null);
+  const lastRoomEventSeqRef = useRef(0);
 
   useEffect(() => {
     socket.on('connect', () => {
       setSocketConnected(true);
+      const savedRoom = localStorage.getItem('loopduel.roomId') ?? 'main';
+      if (lastRoomEventSeqRef.current > 0) {
+        socket.emit('room:resume', { roomId: savedRoom, fromSeq: lastRoomEventSeqRef.current });
+      }
       if (!shouldAutoReconnect) return;
       const savedToken = savedPlayerToken();
-      const savedRoom = localStorage.getItem('loopduel.roomId') ?? 'main';
       if (savedToken) socket.emit('join', { name, heroId, roomId: savedRoom, playerToken: savedToken });
     });
     socket.on('config', (payload: GameConfig) => {
       setConfig(payload);
       setHeroId(payload.heroes[0]?.id ?? 'ember-knight');
     });
-    socket.on('state', (payload: GameState) => setGame({ ...payload, receivedAt: Date.now() }));
+    socket.on('state', (payload: GameState) => {
+      lastRoomEventSeqRef.current = Math.max(lastRoomEventSeqRef.current, payload.runtime?.eventSeq ?? 0);
+      setGame({ ...payload, receivedAt: Date.now() });
+    });
+    socket.on('room:delta', (payload: RoomDelta) => {
+      lastRoomEventSeqRef.current = Math.max(lastRoomEventSeqRef.current, payload.lastSeq ?? 0);
+    });
     socket.on('session', ({ playerToken: nextToken, roomId: nextRoomId }: { playerToken: string; roomId: string }) => {
       localStorage.setItem('loopduel.playerToken', nextToken);
       localStorage.setItem('loopduel.roomId', nextRoomId);
@@ -186,6 +196,7 @@ function App() {
       socket.off('connect');
       socket.off('config');
       socket.off('state');
+      socket.off('room:delta');
       socket.off('session');
       socket.off('notice');
       socket.off('disconnect');

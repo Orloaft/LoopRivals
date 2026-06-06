@@ -5,7 +5,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import {
-  absorbRoomClockDrift,
   addBot,
   buyShopOffer,
   chooseTrait,
@@ -13,6 +12,7 @@ import {
   disconnectPlayer,
   equip,
   fillCpuOpponents,
+  hasRoomForPlayer,
   joinRoom,
   kickPlayer,
   playBonk,
@@ -21,14 +21,13 @@ import {
   publicConfig,
   resetRoom,
   restoreRoom,
-  roomSnapshot,
-  runRoomStep,
   sellCard,
   sellLoot,
   serializeRoom,
   startRoom,
   updateRoomSettings
 } from './rules.mjs';
+import { createRoomRuntime } from './runtime.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
@@ -46,6 +45,7 @@ const buildVersion = readPackageVersion();
 const buildSha = process.env.LOOPDUEL_BUILD_SHA ?? process.env.GITHUB_SHA ?? null;
 
 const rooms = new Map();
+const runtimes = new Map();
 let persistenceDirty = false;
 let lastPersistenceError = null;
 let lastPersistenceSaveAt = null;
@@ -77,10 +77,11 @@ function loadPersistedRooms() {
     const payload = JSON.parse(fs.readFileSync(persistencePath, 'utf8'));
     const savedRooms = Array.isArray(payload?.rooms) ? payload.rooms : [];
     let restored = 0;
-    for (const snapshot of savedRooms) {
-      const room = restoreRoom(snapshot, { markDisconnected: true });
+    for (const savedRoom of savedRooms) {
+      const room = restoreRoom(savedRoom?.state ?? savedRoom, { markDisconnected: true });
       if (!room) continue;
       rooms.set(room.id, room);
+      runtimes.set(room.id, createRoomRuntime(room, savedRoom?.runtime));
       restored += 1;
     }
     logEvent('info', 'rooms_restored', { persistencePath, restored });
@@ -100,9 +101,12 @@ function savePersistedRooms({ force = false } = {}) {
   try {
     fs.mkdirSync(path.dirname(persistencePath), { recursive: true });
     const payload = {
-      version: 1,
+      version: 2,
       savedAt: Date.now(),
-      rooms: [...rooms.values()].map((room) => serializeRoom(room))
+      rooms: [...rooms.values()].map((room) => ({
+        state: serializeRoom(room),
+        runtime: getRuntime(room).serialize()
+      }))
     };
     const tempPath = `${persistencePath}.tmp`;
     fs.writeFileSync(tempPath, `${JSON.stringify(payload)}\n`);
@@ -149,14 +153,44 @@ function cleanRoomId(value) {
 function getRoom(roomId = 'main') {
   const id = cleanRoomId(roomId);
   if (!rooms.has(id)) {
-    rooms.set(id, createRoom(id));
+    const room = createRoom(id);
+    rooms.set(id, room);
+    runtimes.set(id, createRoomRuntime(room));
     markPersistenceDirty();
   }
-  return rooms.get(id);
+  const room = rooms.get(id);
+  if (!runtimes.has(id)) runtimes.set(id, createRoomRuntime(room));
+  return room;
 }
 
-function emitRoom(io, room) {
-  io.to(room.id).emit('state', roomSnapshot(room));
+function findRoom(roomId = 'main') {
+  return rooms.get(cleanRoomId(roomId)) ?? null;
+}
+
+function getRuntime(room) {
+  if (!runtimes.has(room.id)) runtimes.set(room.id, createRoomRuntime(room));
+  return runtimes.get(room.id);
+}
+
+function emitRuntimeEvents(io, room, events) {
+  if (!events || events.length === 0) return;
+  io.to(room.id).emit('room:delta', {
+    roomId: room.id,
+    events,
+    firstSeq: events[0].seq,
+    lastSeq: events.at(-1).seq
+  });
+}
+
+function emitRoom(io, room, reason = 'recovery') {
+  io.to(room.id).emit('state', getRuntime(room).snapshot(reason));
+}
+
+function commitRoomCommand(io, room, name, context, mutator) {
+  const { events, result } = getRuntime(room).commitCommand(name, context, mutator);
+  emitRuntimeEvents(io, room, events);
+  emitRoom(io, room, name);
+  return result;
 }
 
 function getSocketPlayer(socket) {
@@ -231,6 +265,7 @@ function cleanupRooms(io) {
     if ((room.lastActivityAt ?? room.startedAt) > cutoff) continue;
     io.to(room.id).emit('notice', 'Room expired after being idle.');
     rooms.delete(roomId);
+    runtimes.delete(roomId);
     markPersistenceDirty();
   }
 }
@@ -286,7 +321,8 @@ async function startServer() {
 
   io.on('connection', (socket) => {
     socket.emit('config', publicConfig());
-    socket.emit('state', roomSnapshot(getRoom('main')));
+    const mainRoom = getRoom('main');
+    socket.emit('state', getRuntime(mainRoom).snapshot('connect'));
 
     onPlayerAction(socket, 'spectate', ({ roomId } = {}) => {
       const room = getRoom(roomId);
@@ -294,16 +330,41 @@ async function startServer() {
       socket.join(room.id);
       socket.data.roomId = room.id;
       socket.data.playerId = null;
-      socket.emit('state', roomSnapshot(room));
+      socket.emit('state', getRuntime(room).snapshot('spectate'));
       socket.emit('notice', `Watching room ${room.id}.`);
     });
 
-    onPlayerAction(socket, 'join', ({ name, heroId, roomId, playerToken, guidedRun = false } = {}) => {
+    onPlayerAction(socket, 'room:resume', ({ roomId, fromSeq } = {}) => {
+      const room = findRoom(roomId ?? socket.data.roomId);
+      if (!room) return;
+      const runtime = getRuntime(room);
+      const events = runtime.eventsSince(fromSeq);
+      if (!events) {
+        socket.emit('state', runtime.snapshot('resume-too-old'));
+        return;
+      }
+      socket.emit('room:delta', {
+        roomId: room.id,
+        events,
+        firstSeq: events[0]?.seq ?? runtime.eventSeq + 1,
+        lastSeq: events.at(-1)?.seq ?? runtime.eventSeq
+      });
+    });
+
+    onPlayerAction(socket, 'join', ({ name, heroId, roomId, playerToken, guidedRun = false, commandId = null } = {}) => {
       const room = getRoom(roomId);
       const playerId = String(playerToken || crypto.randomUUID());
-      const result = joinRoom(room, { playerId, name, heroId, guidedRun: Boolean(guidedRun) });
+      if (!room.players[playerId] && !hasRoomForPlayer(room)) {
+        socket.emit('notice', 'Room is full. Try another room code.');
+        return;
+      }
+      const mutation = getRuntime(room).commitCommand('join', {
+        playerId,
+        commandId,
+        payload: { name, heroId, guidedRun: Boolean(guidedRun) }
+      }, () => joinRoom(room, { playerId, name, heroId, guidedRun: Boolean(guidedRun) }));
 
-      if (result.full) {
+      if (mutation.result.full) {
         socket.emit('notice', 'Room is full. Try another room code.');
         return;
       }
@@ -316,134 +377,202 @@ async function startServer() {
       socket.data.playerId = playerId;
       socket.emit('session', { playerToken: playerId, roomId: room.id });
       markPersistenceDirty();
-      emitRoom(io, room);
+      emitRuntimeEvents(io, room, mutation.events);
+      emitRoom(io, room, 'join');
     });
 
     onPlayerAction(socket, 'addBot', () => {
       const { room, authorized } = requireHost(socket);
       if (!authorized) return;
-      addBot(room);
-      markPersistenceDirty();
-      emitRoom(io, room);
+      commitRoomCommand(io, room, 'addBot', { playerId: socket.data.playerId }, () => {
+        const bot = addBot(room);
+        if (bot) markPersistenceDirty();
+        return Boolean(bot);
+      });
     });
 
     onPlayerAction(socket, 'fillCpu', () => {
       const { room, authorized } = requireHost(socket);
       if (!authorized) return;
-      fillCpuOpponents(room);
-      markPersistenceDirty();
-      emitRoom(io, room);
+      commitRoomCommand(io, room, 'fillCpu', { playerId: socket.data.playerId }, () => {
+        const added = fillCpuOpponents(room);
+        if (added.length > 0) markPersistenceDirty();
+        return added.length > 0;
+      });
     });
 
     onPlayerAction(socket, 'startRoom', () => {
       const { room, authorized } = requireHost(socket);
       if (!authorized) return;
-      if (startRoom(room)) {
-        markPersistenceDirty();
-        emitRoom(io, room);
-      }
+      commitRoomCommand(io, room, 'startRoom', { playerId: socket.data.playerId }, () => {
+        const started = startRoom(room);
+        if (started) markPersistenceDirty();
+        return started;
+      });
     });
 
     onPlayerAction(socket, 'updateRoomSettings', (settings = {}) => {
       const { room, authorized } = requireHost(socket);
       if (!authorized) return;
-      if (updateRoomSettings(room, settings)) {
-        markPersistenceDirty();
-        emitRoom(io, room);
-      }
+      commitRoomCommand(io, room, 'updateRoomSettings', {
+        playerId: socket.data.playerId,
+        commandId: settings.commandId,
+        payload: settings
+      }, () => {
+        const updated = updateRoomSettings(room, settings);
+        if (updated) markPersistenceDirty();
+        return updated;
+      });
     });
 
-    onPlayerAction(socket, 'kickPlayer', ({ targetId } = {}) => {
+    onPlayerAction(socket, 'kickPlayer', ({ targetId, commandId = null } = {}) => {
       const { room, player, authorized } = requireHost(socket);
       if (!authorized) return;
       if (String(targetId) === player.id) {
         socket.emit('notice', 'The host cannot kick themselves.');
         return;
       }
-      if (kickPlayer(room, String(targetId))) {
-        markPersistenceDirty();
-        emitRoom(io, room);
-      }
+      commitRoomCommand(io, room, 'kickPlayer', {
+        playerId: player.id,
+        commandId,
+        payload: { targetId }
+      }, () => {
+        const kicked = kickPlayer(room, String(targetId));
+        if (kicked) markPersistenceDirty();
+        return kicked;
+      });
     });
 
-    onPlayerAction(socket, 'placeCard', ({ cardId, tileIndex } = {}) => {
+    onPlayerAction(socket, 'placeCard', ({ cardId, tileIndex, commandId = null } = {}) => {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
-      playTerrain(room, player, cardId, Number(tileIndex));
-      touchRoom(room);
-      emitRoom(io, room);
+      commitRoomCommand(io, room, 'placeCard', {
+        playerId: player.id,
+        commandId,
+        payload: { cardId, tileIndex }
+      }, () => {
+        const played = playTerrain(room, player, cardId, Number(tileIndex));
+        if (played) touchRoom(room);
+        return played;
+      });
     });
 
-    onPlayerAction(socket, 'playRivalCard', ({ cardId, targetId, tileIndex } = {}) => {
+    onPlayerAction(socket, 'playRivalCard', ({ cardId, targetId, tileIndex, commandId = null } = {}) => {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
-      playRival(room, player, cardId, targetId, Number.isFinite(Number(tileIndex)) ? Number(tileIndex) : null);
-      touchRoom(room);
-      emitRoom(io, room);
+      commitRoomCommand(io, room, 'playRivalCard', {
+        playerId: player.id,
+        commandId,
+        payload: { cardId, targetId, tileIndex }
+      }, () => {
+        const played = playRival(room, player, cardId, targetId, Number.isFinite(Number(tileIndex)) ? Number(tileIndex) : null);
+        if (played) touchRoom(room);
+        return played;
+      });
     });
 
-    onPlayerAction(socket, 'playBonkCard', ({ cardId, targetId } = {}) => {
+    onPlayerAction(socket, 'playBonkCard', ({ cardId, targetId, commandId = null } = {}) => {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
-      playBonk(room, player, cardId, targetId);
-      touchRoom(room);
-      emitRoom(io, room);
+      commitRoomCommand(io, room, 'playBonkCard', {
+        playerId: player.id,
+        commandId,
+        payload: { cardId, targetId }
+      }, () => {
+        const played = playBonk(room, player, cardId, targetId);
+        if (played) touchRoom(room);
+        return played;
+      });
     });
 
-    onPlayerAction(socket, 'sellCard', ({ cardId } = {}) => {
+    onPlayerAction(socket, 'sellCard', ({ cardId, commandId = null } = {}) => {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
-      sellCard(room, player, cardId);
-      touchRoom(room);
-      emitRoom(io, room);
+      commitRoomCommand(io, room, 'sellCard', {
+        playerId: player.id,
+        commandId,
+        payload: { cardId }
+      }, () => {
+        const sold = sellCard(room, player, cardId);
+        if (sold) touchRoom(room);
+        return sold;
+      });
     });
 
-    onPlayerAction(socket, 'sellLoot', ({ itemId } = {}) => {
+    onPlayerAction(socket, 'sellLoot', ({ itemId, commandId = null } = {}) => {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
-      sellLoot(room, player, itemId);
-      touchRoom(room);
-      emitRoom(io, room);
+      commitRoomCommand(io, room, 'sellLoot', {
+        playerId: player.id,
+        commandId,
+        payload: { itemId }
+      }, () => {
+        const sold = sellLoot(room, player, itemId);
+        if (sold) touchRoom(room);
+        return sold;
+      });
     });
 
-    onPlayerAction(socket, 'buyShopOffer', ({ offerId } = {}) => {
+    onPlayerAction(socket, 'buyShopOffer', ({ offerId, commandId = null } = {}) => {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
-      buyShopOffer(room, player, offerId);
-      touchRoom(room);
-      emitRoom(io, room);
+      commitRoomCommand(io, room, 'buyShopOffer', {
+        playerId: player.id,
+        commandId,
+        payload: { offerId }
+      }, () => {
+        const bought = buyShopOffer(room, player, offerId);
+        if (bought) touchRoom(room);
+        return bought;
+      });
     });
 
-    onPlayerAction(socket, 'equip', ({ itemId } = {}) => {
+    onPlayerAction(socket, 'equip', ({ itemId, commandId = null } = {}) => {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
-      equip(player, itemId);
-      touchRoom(room);
-      emitRoom(io, room);
+      commitRoomCommand(io, room, 'equip', {
+        playerId: player.id,
+        commandId,
+        payload: { itemId }
+      }, () => {
+        const equipped = equip(player, itemId, room);
+        if (equipped) touchRoom(room);
+        return equipped;
+      });
     });
 
-    onPlayerAction(socket, 'chooseTrait', ({ traitId } = {}) => {
+    onPlayerAction(socket, 'chooseTrait', ({ traitId, commandId = null } = {}) => {
       const { room, player } = getSocketPlayer(socket);
       if (!player) return;
-      chooseTrait(player, traitId);
-      touchRoom(room);
-      emitRoom(io, room);
+      commitRoomCommand(io, room, 'chooseTrait', {
+        playerId: player.id,
+        commandId,
+        payload: { traitId }
+      }, () => {
+        const chosen = chooseTrait(player, traitId, room);
+        if (chosen) touchRoom(room);
+        return chosen;
+      });
     });
 
     onPlayerAction(socket, 'resetRoom', () => {
       const { room, authorized } = requireHost(socket);
       if (!authorized) return;
-      resetRoom(room);
-      touchRoom(room);
-      emitRoom(io, room);
+      commitRoomCommand(io, room, 'resetRoom', { playerId: socket.data.playerId }, () => {
+        resetRoom(room);
+        touchRoom(room);
+        return true;
+      });
     });
 
     socket.on('disconnect', () => {
       if (!socket.data.playerId) return;
       const room = getRoom(socket.data.roomId);
-      disconnectPlayer(room, socket.data.playerId);
-      markPersistenceDirty();
-      emitRoom(io, room);
+      commitRoomCommand(io, room, 'disconnect', { playerId: socket.data.playerId }, () => {
+        const disconnected = disconnectPlayer(room, socket.data.playerId);
+        if (disconnected) markPersistenceDirty();
+        return disconnected;
+      });
     });
   });
 
@@ -454,9 +583,9 @@ async function startServer() {
     const elapsedMs = currentSimulationAt - lastSimulationAt;
     lastSimulationAt = currentSimulationAt;
     for (const room of rooms.values()) {
-      absorbRoomClockDrift(room, elapsedMs, simulationIntervalMs);
-      runRoomStep(room);
-      emitRoom(io, room);
+      const events = getRuntime(room).step(elapsedMs, simulationIntervalMs);
+      emitRuntimeEvents(io, room, events);
+      if (events.length > 0) emitRoom(io, room, 'simulation');
     }
     if (rooms.size > 0) markPersistenceDirty();
   }, simulationIntervalMs);

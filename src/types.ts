@@ -284,6 +284,14 @@ export type GameState = {
   status: 'lobby' | 'running' | 'finished';
   tick: number;
   now: number;
+  runtime?: {
+    protocol: number;
+    reason: string;
+    snapshotSeq: number;
+    eventSeq: number;
+    journalBaseSeq: number;
+    generatedAt: number;
+  };
   authority?: {
     paused: boolean;
     reason: 'waiting-for-host' | null;
@@ -302,4 +310,20 @@ export type GameState = {
   winner: Player | null;
   leaderboard: LeaderboardEntry[];
   players: Player[];
+};
+
+export type RoomEvent = {
+  seq: number;
+  type: string;
+  roomId: string;
+  tick: number;
+  serverTime: number;
+  payload: Record<string, unknown>;
+};
+
+export type RoomDelta = {
+  roomId: string;
+  events: RoomEvent[];
+  firstSeq: number;
+  lastSeq: number;
 };

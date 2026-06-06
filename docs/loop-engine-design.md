@@ -53,8 +53,31 @@ Combat must pause the movement timeline itself. A combat tile should schedule th
 - Avoid React state updates every frame for runner motion once the renderer grows; write CSS variables or use a small external presentation store.
 - Batch incoming socket events and apply them once per frame.
 
-## Current Bridge
+## Runtime Bridge
 
-The current code still receives full snapshots, but live rooms now expose `moveStartedAt`, `nextMoveAt`, and per-tile `movementStopKind`. The runner renders behind server time by more than one server tick and uses the actual segment duration as its visual speed. If the server snapshot is late, the client can continue through known pass-through tiles instead of stopping at every tile boundary. Combat pushes the next `moveStartedAt` forward, so resolving combat does not produce a catch-up sprint.
+Live rooms now run through `server/runtime.mjs`, which is the boundary between Socket.IO transport and `server/rules.mjs` simulation. The runtime records accepted/rejected commands, assigns room event sequence numbers, drains semantic events emitted inside the rules layer, and wraps recovery snapshots with:
 
-Simulated balance rooms keep their old compact timing so tests and CPU economics remain comparable while the live presentation model changes. The next real engine step is replacing snapshot-driven movement with sequenced movement segment events.
+```ts
+{
+  runtime: {
+    protocol: 1,
+    reason: 'connect' | 'join' | 'simulation' | string,
+    snapshotSeq: number,
+    eventSeq: number,
+    journalBaseSeq: number,
+    generatedAt: number
+  }
+}
+```
+
+The current browser still consumes full `state` snapshots for compatibility, but it also tracks sequenced `room:delta` packets. Those live packets are the migration path for movement/combat/loot animation without making every visual moment depend on a whole-room snapshot.
+
+The server emits domain events such as `commandAccepted`, `commandRejected`, `playerJoined`, `cardPlayed`, `cardDrawn`, `tileChanged`, `movementSegment`, `tileResolved`, `combatStarted`, `combatEnded`, `lootGranted`, `lapCompleted`, `tierChanged`, `roomAuthorityPaused`, `roomAuthorityResumed`, and `matchFinished`. These are emitted where the rules mutate state, then sequenced by the runtime. Diff-derived events remain only a fallback diagnostic for mutations that do not yet emit semantic events.
+
+Snapshots are still sent after each command and after simulation steps that produce domain events, but bare server clock ticks no longer force full-room `state` packets. The runtime gives us the sequence numbers and event journal needed to later make snapshots join/reconnect/checkpoint packets instead of the normal animation feed. Clients may request `room:resume` with the last event sequence they observed; the server replays recent journal events or sends a recovery snapshot when the requested sequence has fallen out of the bounded journal.
+
+Persistence now stores both room state and the bounded runtime journal. That is still a single-process persistence model, but it is no longer just raw room JSON; it preserves the command/event foundation needed for replay windows and future room migration.
+
+The visual bridge remains the same: live rooms expose `moveStartedAt`, `nextMoveAt`, and per-tile `movementStopKind`. The runner renders behind server time by more than one server tick and uses the actual segment duration as its visual speed. If the server snapshot is late, the client can continue through known pass-through tiles instead of stopping at every tile boundary. Combat pushes the next `moveStartedAt` forward, so resolving combat does not produce a catch-up sprint.
+
+Simulated balance rooms keep their old compact timing so tests and CPU economics remain comparable while the live presentation model changes. The next engine step is teaching the client to project movement/combat directly from sequenced events, then reducing routine snapshot cadence once reconnect/recovery coverage is strong.

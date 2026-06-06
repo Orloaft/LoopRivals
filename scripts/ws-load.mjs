@@ -17,6 +17,7 @@ const rooms = Number(args.get('rooms') ?? 8);
 const playersPerRoom = Number(args.get('players') ?? 4);
 const durationMs = Number(args.get('duration-ms') ?? 20_000);
 const actionIntervalMs = Number(args.get('action-interval-ms') ?? 450);
+const maxLiveIntervalMs = Number(args.get('max-live-interval-ms') ?? 3_200);
 const port = Number(args.get('port') ?? 45_000 + Math.floor(Math.random() * 10_000));
 const url = `http://127.0.0.1:${port}`;
 
@@ -33,6 +34,8 @@ const connectLatencies = [];
 const sessionLatencies = [];
 let stateUpdates = 0;
 let stateBytes = 0;
+let deltaUpdates = 0;
+let deltaBytes = 0;
 
 function percentile(values, pct) {
   if (values.length === 0) return 0;
@@ -71,18 +74,23 @@ function roomPositionKey(player) {
   return `${player.id}:${player.position}:${player.laps}`;
 }
 
-function recordState(client, state) {
-  const now = Date.now();
-  if (client.lastStateAt) updateIntervals.push(now - client.lastStateAt);
-  client.lastStateAt = now;
-  client.latestState = state;
-  stateUpdates += 1;
-  stateBytes += Buffer.byteLength(JSON.stringify(state));
+function recordLiveUpdate(client, now) {
+  if (client.lastLiveAt) updateIntervals.push(now - client.lastLiveAt);
+  client.lastLiveAt = now;
 
   if (client.pendingActionAt) {
     actionLatencies.push(now - client.pendingActionAt);
     client.pendingActionAt = 0;
   }
+}
+
+function recordState(client, state) {
+  const now = Date.now();
+  recordLiveUpdate(client, now);
+  client.lastStateAt = now;
+  client.latestState = state;
+  stateUpdates += 1;
+  stateBytes += Buffer.byteLength(JSON.stringify(state));
 
   roomTicks.set(state.id, Math.max(roomTicks.get(state.id) ?? 0, state.tick));
   roomStatuses.set(state.id, state.status);
@@ -91,6 +99,14 @@ function recordState(client, state) {
   const positionSet = roomPositions.get(state.id) ?? new Set();
   for (const player of state.players) positionSet.add(roomPositionKey(player));
   roomPositions.set(state.id, positionSet);
+}
+
+function recordDelta(client, delta) {
+  const now = Date.now();
+  recordLiveUpdate(client, now);
+  client.lastEventSeq = Math.max(client.lastEventSeq ?? 0, delta.lastSeq ?? 0);
+  deltaUpdates += 1;
+  deltaBytes += Buffer.byteLength(JSON.stringify(delta));
 }
 
 function chooseAction(client) {
@@ -137,9 +153,12 @@ async function connectClient(roomIndex, playerIndex) {
   socket.playerToken = playerToken;
   socket.latestState = null;
   socket.lastStateAt = 0;
+  socket.lastLiveAt = 0;
+  socket.lastEventSeq = 0;
   socket.pendingActionAt = 0;
 
   socket.on('state', (state) => recordState(socket, state));
+  socket.on('room:delta', (delta) => recordDelta(socket, delta));
   socket.on('notice', (notice) => notices.push({ roomId, playerToken, notice }));
 
   await new Promise((resolve, reject) => {
@@ -219,16 +238,26 @@ async function main() {
 
     if (notices.length > 0) failures.push(`${notices.length} server notices were emitted`);
     if (percentile(actionLatencies, 0.95) > 700) failures.push(`p95 action-to-state latency exceeded 700ms`);
-    if (percentile(updateIntervals, 0.99) > 1_200) failures.push(`p99 state update interval exceeded 1200ms`);
+    if (percentile(updateIntervals, 0.99) > maxLiveIntervalMs) {
+      failures.push(`p99 live update interval exceeded ${maxLiveIntervalMs}ms`);
+    }
 
     const elapsedSeconds = (Date.now() - startedAt) / 1000;
+    const liveUpdates = stateUpdates + deltaUpdates;
+    const broadcastBytes = stateBytes + deltaBytes;
     const report = {
       rooms,
       clients: clients.length,
       durationMs,
+      maxLiveIntervalMs,
       stateUpdates,
+      deltaUpdates,
+      liveUpdates,
       stateUpdatesPerSecond: Number((stateUpdates / elapsedSeconds).toFixed(1)),
-      broadcastMegabytes: Number((stateBytes / 1024 / 1024).toFixed(2)),
+      liveUpdatesPerSecond: Number((liveUpdates / elapsedSeconds).toFixed(1)),
+      broadcastMegabytes: Number((broadcastBytes / 1024 / 1024).toFixed(2)),
+      stateMegabytes: Number((stateBytes / 1024 / 1024).toFixed(2)),
+      deltaMegabytes: Number((deltaBytes / 1024 / 1024).toFixed(2)),
       connectMs: {
         avg: Math.round(average(connectLatencies)),
         p95: percentile(connectLatencies, 0.95),
@@ -239,7 +268,7 @@ async function main() {
         p95: percentile(sessionLatencies, 0.95),
         max: Math.max(...sessionLatencies)
       },
-      stateIntervalMs: {
+      liveIntervalMs: {
         avg: Math.round(average(updateIntervals)),
         p95: percentile(updateIntervals, 0.95),
         p99: percentile(updateIntervals, 0.99),

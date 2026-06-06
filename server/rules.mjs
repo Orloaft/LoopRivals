@@ -17,6 +17,29 @@ export const defaultRoomSettings = {
 // 3.2 gives movement enough room to read without making the automatic loop feel
 // like it is racing past the outcome.
 const timeScale = 3.2;
+const ruleEventsKey = Symbol('loopduelRuleEvents');
+
+function ruleEventQueue(room) {
+  if (!room) return [];
+  if (!room[ruleEventsKey]) {
+    Object.defineProperty(room, ruleEventsKey, {
+      value: [],
+      enumerable: false,
+      writable: true
+    });
+  }
+  return room[ruleEventsKey];
+}
+
+function emitRuleEvent(room, type, payload = {}) {
+  ruleEventQueue(room).push({ type, payload: cloneJson(payload) });
+}
+
+export function drainRoomEvents(room) {
+  const queue = ruleEventQueue(room);
+  return queue.splice(0, queue.length);
+}
+
 export const matchTiers = [
   { id: 1, name: 'Tier I: Opening Loop', minScore: 0, minLoops: 0, text: 'Complete four loops to reach the first gate.' },
   { id: 2, name: 'Tier II: Hungry Loop', minScore: 1800, minLoops: 4, text: 'Complete five more loops to wake the crown gate.' },
@@ -699,10 +722,12 @@ export function resetRoom(room) {
   const settings = room.settings;
   Object.assign(room, createRoom(id, { seed: room.rngState, simulated: room.simulated, now: now(room), settings }));
   room.hostId = hostId;
+  emitRuleEvent(room, 'roomReset', { hostId });
 }
 
 export function updateRoomSettings(room, nextSettings = {}) {
   if (room.status !== 'lobby') return false;
+  const previous = room.settings;
   const normalized = normalizeRoomSettings({ ...room.settings, ...nextSettings }, room.settings);
   const activeCount = activePlayerCount(room);
   if (normalized.maxPlayers < activeCount) normalized.maxPlayers = activeCount;
@@ -711,6 +736,7 @@ export function updateRoomSettings(room, nextSettings = {}) {
   if (!changed) return false;
   room.lastActivityAt = now(room);
   addLog(room, `Room settings updated: ${normalized.maxPlayers} seats, ${normalized.goalScore} boss score, ${normalized.pace} pace.`);
+  emitRuleEvent(room, 'roomSettingsChanged', { from: previous, to: normalized });
   return true;
 }
 
@@ -732,6 +758,14 @@ export function startRoom(room) {
     addLog(room, 'The guided duel began with a visible Crypt and a waiting rival.');
   } else {
     addLog(room, 'The host started the loop.');
+  }
+  emitRuleEvent(room, 'roomStatusChanged', { from: 'lobby', to: 'running' });
+  for (const player of Object.values(room.players)) {
+    emitRuleEvent(room, 'movementSegment', {
+      playerId: player.id,
+      nextMovement: player.nextMovement,
+      arrivalMovement: player.arrivalMovement
+    });
   }
   return true;
 }
@@ -793,15 +827,24 @@ export function refreshRoomAuthority(room) {
         startedAt: now(room)
       };
       addLog(room, 'Movement paused while waiting for a human host.');
+      emitRuleEvent(room, 'roomAuthorityPaused', {
+        reason,
+        startedAt: room.authorityPause.startedAt
+      });
     }
     return room.authorityPause;
   }
 
   if (room.authorityPause) {
+    const previous = room.authorityPause;
     const pausedForMs = Math.max(0, now(room) - room.authorityPause.startedAt);
     shiftRoomTimers(room, pausedForMs);
     addLog(room, 'Host returned. Movement resumed from the paused timeline.');
     room.authorityPause = null;
+    emitRuleEvent(room, 'roomAuthorityResumed', {
+      reason: previous.reason,
+      pausedForMs
+    });
   }
   return null;
 }
@@ -813,6 +856,7 @@ export function absorbRoomClockDrift(room, elapsedMs, expectedMs = 260) {
   shiftRoomTimers(room, driftMs);
   room.lastActivityAt = now(room);
   addLog(room, 'Server timing hiccup absorbed; movement timeline held steady.');
+  emitRuleEvent(room, 'roomClockDriftAbsorbed', { driftMs });
   return true;
 }
 
@@ -1055,6 +1099,7 @@ export function joinRoom(room, { playerId, name, heroId, guidedRun = false }) {
     if (!room.hostId && !existing.isBot) room.hostId = existing.id;
     room.lastActivityAt = now(room);
     addLog(room, `${existing.name} reconnected.`);
+    emitRuleEvent(room, 'playerReconnected', { playerId: existing.id, name: existing.name });
     return { player: existing, created: false };
   }
 
@@ -1068,6 +1113,13 @@ export function joinRoom(room, { playerId, name, heroId, guidedRun = false }) {
   if (!room.hostId) room.hostId = player.id;
   room.lastActivityAt = now(room);
   addLog(room, `${player.name} joined as ${heroes.find((hero) => hero.id === player.heroId)?.name}.`);
+  emitRuleEvent(room, 'playerJoined', {
+    playerId: player.id,
+    name: player.name,
+    heroId: player.heroId,
+    seatIndex: player.seatIndex,
+    isBot: player.isBot
+  });
   return { player, created: true };
 }
 
@@ -1082,6 +1134,8 @@ export function disconnectPlayer(room, playerId) {
     if (room.hostId) addLog(room, `${room.players[room.hostId].name} is now room host.`);
   }
   addLog(room, `${player.name} disconnected.`);
+  emitRuleEvent(room, 'playerDisconnected', { playerId: player.id, hostId: room.hostId });
+  return true;
 }
 
 export function kickPlayer(room, targetId) {
@@ -1096,6 +1150,7 @@ export function kickPlayer(room, targetId) {
   }
   if (activePlayerCount(room) === 0) room.status = 'lobby';
   addLog(room, `${target.name} left the room.`);
+  emitRuleEvent(room, 'playerRemoved', { playerId: target.id, hostId: room.hostId });
   return true;
 }
 
@@ -1108,6 +1163,13 @@ export function addBot(room) {
   room.players[botId] = bot;
   room.lastActivityAt = now(room);
   addLog(room, `${bot.name} entered as ${hero.name}.`);
+  emitRuleEvent(room, 'playerJoined', {
+    playerId: bot.id,
+    name: bot.name,
+    heroId: bot.heroId,
+    seatIndex: bot.seatIndex,
+    isBot: true
+  });
   return bot;
 }
 
@@ -1123,12 +1185,12 @@ export function fillCpuOpponents(room, targetCount = roomMaxPlayers(room)) {
 }
 
 export function playTerrain(room, player, cardInstanceId, tileIndex) {
-  if (room.status !== 'running') return;
-  if (isStunned(room, player)) return;
+  if (room.status !== 'running') return false;
+  if (isStunned(room, player)) return false;
   const card = player.hand.find((item) => item.instanceId === cardInstanceId);
-  if (!card || card.kind !== 'terrain') return;
+  if (!card || card.kind !== 'terrain') return false;
   const tile = player.board[tileIndex];
-  if (!tile || tile.type === 'camp') return;
+  if (!tile || tile.type === 'camp') return false;
   tile.type = card.tile;
   tile.charges = card.tile === 'mire' ? 5 : 0;
   tile.expiresOnLap = player.laps + tileLoopLife(player);
@@ -1153,6 +1215,27 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
   room.lastActivityAt = now(room);
   addXp(room, player, 3 + player.terrainScore);
   addLog(room, overgrown ? `${player.name} placed ${card.name}; nearby road overgrew into Grove.` : `${player.name} placed ${card.name}.`);
+  emitRuleEvent(room, 'cardPlayed', {
+    playerId: player.id,
+    cardId: card.id,
+    cardInstanceId,
+    kind: card.kind,
+    targetPlayerId: player.id
+  });
+  emitRuleEvent(room, 'tileChanged', {
+    playerId: player.id,
+    tileIndex: tile.index,
+    tile: cloneJson(tile),
+    cause: 'terrainCard'
+  });
+  if (overgrown) {
+    emitRuleEvent(room, 'tileChanged', {
+      playerId: player.id,
+      tileIndex: overgrown.index,
+      tile: cloneJson(overgrown),
+      cause: 'mossWardenOvergrowth'
+    });
+  }
   if (isGuidedHuman(room, player)) {
     pushGuidedRecap(room, overgrown
       ? `${card.name} changed two future stops: the placed tile and a free Grove from Moss Warden.`
@@ -1160,17 +1243,18 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
     updateGuidedRun(room);
   }
   checkWinner(room);
+  return true;
 }
 
 export function playRival(room, player, cardInstanceId, targetId, tileIndex = null) {
-  if (room.status !== 'running') return;
-  if (isStunned(room, player)) return;
+  if (room.status !== 'running') return false;
+  if (isStunned(room, player)) return false;
   const card = player.hand.find((item) => item.instanceId === cardInstanceId);
   const target = room.players[targetId];
-  if (!card || card.kind !== 'rival' || !target || target.id === player.id) return;
+  if (!card || card.kind !== 'rival' || !target || target.id === player.id) return false;
   const hasTileTarget = Number.isInteger(tileIndex);
   const targetedTile = hasTileTarget ? target.board[tileIndex] : null;
-  if (hasTileTarget && (!targetedTile || targetedTile.type !== 'road' || targetedTile.index === target.position)) return;
+  if (hasTileTarget && (!targetedTile || targetedTile.type !== 'road' || targetedTile.index === target.position)) return false;
   player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
   const markedBonus = target.marked ? 3 : 0;
   const runeBonus = player.heroId === 'rune-archer' ? 2 : 0;
@@ -1253,11 +1337,37 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
   addLog(room, targetedTile
     ? `${player.name} armed ${card.name} on ${target.name}'s road.`
     : `${player.name} played ${card.name} on ${target.name}.`);
+  emitRuleEvent(room, 'cardPlayed', {
+    playerId: player.id,
+    cardId: card.id,
+    cardInstanceId,
+    kind: card.kind,
+    targetPlayerId: target.id,
+    tileIndex: targetedTile?.index ?? null
+  });
+  if (targetedTile) {
+    emitRuleEvent(room, 'tileChanged', {
+      playerId: target.id,
+      tileIndex: targetedTile.index,
+      tile: cloneJson(targetedTile),
+      cause: 'rivalCard',
+      actorId: player.id
+    });
+  }
+  emitRuleEvent(room, 'playerProjectionChanged', {
+    playerId: target.id,
+    hp: target.hp,
+    score: score(target),
+    level: target.level,
+    cause: 'rivalCard',
+    actorId: player.id
+  });
   if (isGuidedHuman(room, player)) {
     pushGuidedRecap(room, `${card.name} mattered because ${target.name}'s engine was visible before it paid out.`);
     updateGuidedRun(room);
   }
   checkWinner(room);
+  return true;
 }
 
 function highestScoreRival(room, player) {
@@ -1282,7 +1392,8 @@ export function playBonk(room, player, cardInstanceId, targetId = null) {
   if (!target || target.id === player.id) return false;
 
   const durationMs = Math.round((card.stunSeconds ?? 4) * 1000);
-  if (isCombatLocked(room, target)) {
+  const queuedForCombat = isCombatLocked(room, target);
+  if (queuedForCombat) {
     target.pendingBonks = [...(target.pendingBonks ?? []), {
       by: player.id,
       byName: player.name,
@@ -1307,6 +1418,14 @@ export function playBonk(room, player, cardInstanceId, targetId = null) {
   room.lastActivityAt = now(room);
   addXp(room, player, card.targetMode === 'chosen' ? 8 : 6);
   addLog(room, `${player.name} bonked ${target.name} with ${card.name}${isCombatLocked(room, target) ? '; it lands after combat.' : '.'}`);
+  emitRuleEvent(room, 'cardPlayed', {
+    playerId: player.id,
+    cardId: card.id,
+    cardInstanceId,
+    kind: card.kind,
+    targetPlayerId: target.id
+  });
+  if (queuedForCombat) emitRuleEvent(room, 'stunQueued', { playerId: target.id, actorId: player.id, durationMs });
   if (isGuidedHuman(room, player)) {
     pushGuidedRecap(room, `${card.name} froze ${target.name}; rival cards are timing tools, not just damage buttons.`);
     updateGuidedRun(room);
@@ -1315,9 +1434,9 @@ export function playBonk(room, player, cardInstanceId, targetId = null) {
   return true;
 }
 
-export function chooseTrait(player, traitId) {
+export function chooseTrait(player, traitId, room = null) {
   refreshPendingTraits(player);
-  if (!player.pendingTraits.includes(traitId)) return;
+  if (!player.pendingTraits.includes(traitId)) return false;
   player.traits.push(traitId);
   player.talentPoints = Math.max(0, player.talentPoints - 1);
   player.pendingTraits = [];
@@ -1325,14 +1444,18 @@ export function chooseTrait(player, traitId) {
   const trait = traits.find((item) => item.id === traitId);
   player.event = `learned ${trait?.name ?? 'a trait'}`;
   refreshPendingTraits(player);
+  if (room) emitRuleEvent(room, 'traitChosen', { playerId: player.id, traitId, traitName: trait?.name ?? null });
+  return true;
 }
 
-export function equip(player, itemId) {
+export function equip(player, itemId, room = null) {
   const item = player.loot.find((entry) => entry.id === itemId);
-  if (!item) return;
+  if (!item) return false;
   normalizeLoadout(player)[item.slot] = item;
   recalcStats(player);
   player.event = `equipped ${item.name}`;
+  if (room) emitRuleEvent(room, 'lootEquipped', { playerId: player.id, itemId, slot: item.slot, item: cloneJson(item) });
+  return true;
 }
 
 export function sellCard(room, player, cardInstanceId) {
@@ -1345,6 +1468,7 @@ export function sellCard(room, player, cardInstanceId) {
   player.event = `sold ${card.name} for ${value} gold`;
   room.lastActivityAt = now(room);
   addLog(room, `${player.name} sold ${card.name} for ${value} gold.`);
+  emitRuleEvent(room, 'cardSold', { playerId: player.id, cardId: card.id, cardInstanceId, value, gold: player.gold });
   checkWinner(room);
   return true;
 }
@@ -1360,6 +1484,7 @@ export function sellLoot(room, player, itemId) {
   player.event = `sold ${item.name} for ${value} gold`;
   room.lastActivityAt = now(room);
   addLog(room, `${player.name} sold ${item.name} for ${value} gold.`);
+  emitRuleEvent(room, 'lootSold', { playerId: player.id, itemId, value, gold: player.gold });
   checkWinner(room);
   return true;
 }
@@ -1386,6 +1511,13 @@ export function buyShopOffer(room, player, offerId) {
   }
   shop.offers = shop.offers.filter((item) => item.id !== offer.id);
   room.lastActivityAt = now(room);
+  emitRuleEvent(room, 'shopOfferBought', {
+    playerId: player.id,
+    offerId,
+    kind: offer.kind,
+    price: offer.price,
+    gold: player.gold
+  });
   checkWinner(room);
   return true;
 }
@@ -1446,8 +1578,10 @@ function updateTier(room) {
   const top = leader(room);
   const nextTier = matchTiers[(top?.loopTier ?? 1) - 1] ?? matchTiers[(loopTierForLaps(top?.laps ?? 0)) - 1] ?? matchTiers[0];
   if ((room.tier?.id ?? 1) === nextTier.id) return;
+  const previousTier = room.tier?.id ?? null;
   room.tier = nextTier;
   addLog(room, `${nextTier.name}: ${nextTier.text}`);
+  emitRuleEvent(room, 'tierChanged', { from: previousTier, to: nextTier.id, leaderId: top?.id ?? null });
 }
 
 function updateMarks(room) {
@@ -1464,6 +1598,7 @@ function finishClaim(room, player) {
   player.marked = false;
   player.event = 'defeated the Loop Tyrant';
   addLog(room, `${player.name} defeated the Loop Tyrant and won with ${score(player)} points.`);
+  emitRuleEvent(room, 'matchFinished', { winnerId: player.id, score: score(player) });
   if (isGuidedHuman(room, player)) {
     pushGuidedRecap(room, `Final lesson: your earlier road, Heat, gear, and recovery all compounded into the Tyrant fight.`);
     updateGuidedRun(room);
@@ -1527,6 +1662,7 @@ function promotePlayerIfReady(room, player) {
   }
   player.event = player.loopTier >= 3 ? `entered tier ${player.loopTier}; Tyrant wakes in ${bossLoopRequirement} loops` : `entered tier ${player.loopTier}`;
   addLog(room, `${player.name} entered tier ${player.loopTier}; their loop collapsed into fresh road.`);
+  emitRuleEvent(room, 'playerTierChanged', { playerId: player.id, from: currentTier, to: player.loopTier });
   if (player.loopTier >= 3) addLog(room, `The Loop Tyrant is stirring. ${player.name} must survive ${bossLoopRequirement} tier III loops.`);
   if (loopTierForLaps(player.laps ?? 0) > player.loopTier) return promotePlayerIfReady(room, player);
   return true;
@@ -1596,6 +1732,7 @@ function expireLoopTiles(room, player) {
   if (expired > 0) {
     player.event = `${expired} tile${expired === 1 ? '' : 's'} expired`;
     addLog(room, `${player.name}'s loop shed ${expired} expired tile${expired === 1 ? '' : 's'}.`);
+    emitRuleEvent(room, 'tilesExpired', { playerId: player.id, count: expired, lap: player.laps });
   }
   updateMarks(room);
   return null;
@@ -1642,7 +1779,9 @@ function randomId(room, prefix = 'id') {
 
 function clearExpiredCombat(room, player) {
   if (!player.combat || now(room) < player.combat.expiresAt) return;
+  const combat = player.combat;
   player.combat = null;
+  emitRuleEvent(room, 'combatEnded', { playerId: player.id, combat: cloneJson(combat) });
   applyPendingBonks(room, player);
 }
 
@@ -1652,9 +1791,11 @@ function isCombatLocked(room, player) {
 
 function clearExpiredStun(room, player) {
   if (!player.stunnedUntil || now(room) < player.stunnedUntil) return;
+  const stunnedUntil = player.stunnedUntil;
   player.stunnedUntil = null;
   player.stunnedBy = null;
   if (player.event.includes('stunned')) player.event = 'shook off the bonk';
+  emitRuleEvent(room, 'stunEnded', { playerId: player.id, stunnedUntil });
 }
 
 function isStunned(room, player) {
@@ -1671,6 +1812,12 @@ function applyBonkStun(room, player, bonk) {
   player.nextDrawAt = Math.max(player.nextDrawAt ?? now(room), player.stunnedUntil);
   player.event = `${bonk.byName ?? 'Rival'} bonked you with ${bonk.cardName}`;
   player.lastEventAt = now(room);
+  emitRuleEvent(room, 'playerStunned', {
+    playerId: player.id,
+    actorId: bonk.by,
+    durationMs: bonk.durationMs,
+    stunnedUntil: player.stunnedUntil
+  });
 }
 
 function applyPendingBonks(room, player) {
@@ -1831,6 +1978,7 @@ function drawLoot(room, player) {
   player.loot = player.loot.slice(0, 10);
   player.event = `found ${item.name}`;
   addLog(room, `${player.name} found ${item.name}.`);
+  emitRuleEvent(room, 'lootGranted', { playerId: player.id, itemId: item.id, item: cloneJson(item) });
 }
 
 function recalcStats(player) {
@@ -1914,6 +2062,12 @@ function addXp(room, player, amount) {
     }
     player.event = `hit level ${player.level}`;
     addLog(room, `${player.name} reached level ${player.level}.`);
+    emitRuleEvent(room, 'levelReached', {
+      playerId: player.id,
+      level: player.level,
+      talentPoints: player.talentPoints,
+      pendingTraits: player.pendingTraits
+    });
   }
 }
 
@@ -2030,6 +2184,14 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     expiresAt: timestamp + durationMs,
     durationMs
   };
+  emitRuleEvent(room, 'combatStarted', {
+    playerId: player.id,
+    label,
+    enemyCount,
+    damage,
+    reward: xpReward,
+    combat: cloneJson(player.combat)
+  });
   const vagrantLuck = player.heroId === 'night-vagrant' ? 0.1 : 0;
   if (random(room) < 0.17 + player.lootLuck + vagrantLuck + xpReward / 220) drawLoot(room, player);
   if (player.curse > 0) player.curse -= 1;
@@ -2123,6 +2285,12 @@ function revivePlayer(room, player) {
   player.event = `fell, then restarted tier ${player.loopTier ?? 1}`;
   player.lastEventAt = now(room);
   addLog(room, `${player.name} got knocked back to the start of tier ${player.loopTier ?? 1}.`);
+  emitRuleEvent(room, 'playerDefeated', {
+    playerId: player.id,
+    deaths: player.deaths,
+    loopTier: player.loopTier ?? 1,
+    hp: player.hp
+  });
   if (isGuidedHuman(room, player)) {
     pushGuidedRecap(room, `You fell because the danger chain beat your recovery. Next time, place safety before the stack, not after it.`);
     updateGuidedRun(room);
@@ -2285,6 +2453,7 @@ function advancePlayer(room, player) {
     addXp(room, player, 4);
     if (player.hand.length < 7 && random(room) < 0.38) player.hand.push(drawCard(room));
     addLog(room, `${player.name} completed lap ${player.laps}.`);
+    emitRuleEvent(room, 'lapCompleted', { playerId: player.id, laps: player.laps });
     if ((player.loopTier ?? 1) >= 3) {
       const loopsToTyrant = Math.max(0, (player.tierStartLap ?? 0) + bossLoopRequirement - player.laps);
       if (loopsToTyrant === 1) {
@@ -2294,6 +2463,13 @@ function advancePlayer(room, player) {
     }
   }
   triggerTile(room, player, player.board[player.position]);
+  emitRuleEvent(room, 'tileResolved', {
+    playerId: player.id,
+    tileIndex: player.position,
+    tileType: player.board[player.position]?.type ?? null,
+    event: player.event,
+    message: player.message
+  });
   const nextDepartAt = player.combat ? player.combat.expiresAt + Math.round(320 * roomTimeScale(room)) : arrivedAt;
   const delay = movementDelay(room, player);
   player.moveStartedAt = nextDepartAt;
@@ -2305,13 +2481,25 @@ function advancePlayer(room, player) {
     departAt: player.moveStartedAt,
     arriveAt: player.nextMoveAt
   };
+  emitRuleEvent(room, 'movementSegment', {
+    playerId: player.id,
+    nextMovement: player.nextMovement,
+    arrivalMovement: player.arrivalMovement
+  });
 }
 
 function maybeDraw(room, player) {
   if (now(room) < player.nextDrawAt) return;
   if (player.hand.length < 7) {
-    player.hand.push(drawCard(room, null, player));
+    const card = drawCard(room, null, player);
+    player.hand.push(card);
     player.event = 'drew a card';
+    emitRuleEvent(room, 'cardDrawn', {
+      playerId: player.id,
+      cardId: card.id,
+      cardInstanceId: card.instanceId,
+      kind: card.kind
+    });
     if (isGuidedHuman(room, player)) updateGuidedRun(room);
   }
   player.nextDrawAt = now(room) + Math.round((6500 + rand(room, 1400)) * player.drawRate * roomTimeScale(room));
