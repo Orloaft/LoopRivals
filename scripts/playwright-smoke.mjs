@@ -1,4 +1,4 @@
-/* global document, window */
+/* global DataTransfer, document, DragEvent, window */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -62,6 +62,18 @@ function assertCustomCursor(cursor, label) {
   assert.match(cursor, /cursor-hand-v1\.png/, `${label} should keep the bespoke cursor`);
 }
 
+async function travelState(page) {
+  return page.evaluate(() => {
+    const runner = document.querySelector('.player-panel.active.focused .runner');
+    const backdrop = document.querySelector('.gothic-parallax');
+    const styles = runner ? window.getComputedStyle(runner) : null;
+    return {
+      runnerTransform: styles?.transform ?? null,
+      loopProgress: backdrop ? window.getComputedStyle(backdrop).getPropertyValue('--loop-progress').trim() : null
+    };
+  });
+}
+
 const serverInfo = startServer();
 let browser;
 
@@ -82,11 +94,13 @@ try {
   await page.fill('#room-code', roomCode);
   await page.click('.primary-action');
 
-  await page.waitForSelector('.game-shell .mobile-status-bar');
+  await page.waitForSelector('.game-shell');
+  assert.equal(await page.locator('.game-shell .mobile-status-bar').count(), 0, 'game top status bar should be removed');
   await page.waitForSelector('.player-panel.active.focused .board');
   await page.waitForSelector('.hand-card');
   await page.getByRole('button', { name: /^start$/i }).click();
-  await page.getByRole('button', { name: /start match/i }).click();
+  await page.locator('.mobile-drawer-tab').filter({ hasText: /^Menu$/ }).click();
+  await page.getByRole('button', { name: /^start$/i }).click();
 
   assert.equal(await page.locator('.hand-card.rival').count(), 0, 'solo opening hand should not contain rival cards');
   assertCustomCursor(
@@ -95,7 +109,44 @@ try {
   );
 
   const beforeCardCount = await page.locator('.hand-card').count();
-  await page.locator('.hand-card').first().click();
+  const dragStability = await page.evaluate(() => {
+    const board = document.querySelector('.player-panel.active.focused .board')?.getBoundingClientRect();
+    const card = document.querySelector('.hand-card')?.getBoundingClientRect();
+    return {
+      boardTop: board?.top ?? null,
+      card: card ? { x: card.left + card.width / 2, y: card.top + card.height / 2 } : null
+    };
+  });
+  assert.ok(dragStability.boardTop !== null, 'focused board should render before drag');
+  assert.ok(dragStability.card, 'hand card should render before drag');
+  await page.evaluate(({ x, y }) => {
+    const card = document.querySelector('.hand-card');
+    const dataTransfer = new DataTransfer();
+    card?.dispatchEvent(new DragEvent('dragstart', {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y,
+      dataTransfer
+    }));
+    window.dispatchEvent(new DragEvent('dragover', {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y - 120,
+      dataTransfer
+    }));
+  }, dragStability.card);
+  await page.waitForTimeout(100);
+  const boardTopDuringDrag = await page.locator('.player-panel.active.focused .board').evaluate((element) => element.getBoundingClientRect().top);
+  await page.evaluate(() => {
+    document.querySelector('.hand-card')?.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true }));
+  });
+  assert.ok(Math.abs(boardTopDuringDrag - dragStability.boardTop) <= 1.5, 'focused board should not shift vertically while dragging a hand card');
+
+  if (await page.locator('.hand-card.selected').count() === 0) {
+    await page.locator('.hand-card.terrain').first().click();
+  }
   const armedTileStyles = await page.locator('.player-panel.active.focused .tile.road:not(.occupied)').first().evaluate((element) => {
     const styles = window.getComputedStyle(element);
     return { cursor: styles.cursor, outlineStyle: styles.outlineStyle };
@@ -127,10 +178,29 @@ try {
   assert.ok(metrics.board.bottom <= metrics.tray.top + 1, 'focused board should stay above hand tray');
   assert.ok(metrics.drawerTabs.bottom <= metrics.tray.top + 96, 'drawer tabs should stay attached to tray');
 
-  await page.getByRole('button', { name: /menu/i }).click();
+  if (await page.locator('.mobile-menu-grid').count() === 0) {
+    await page.locator('.mobile-drawer-tab').filter({ hasText: /^Menu$/ }).click();
+  }
   await page.getByRole('button', { name: /fill cpu/i }).click();
   await page.waitForSelector('.mobile-rival-chip');
   assert.ok(await page.locator('.mobile-rival-chip').count() > 0, 'mobile rival strip should appear after filling CPU opponents');
+
+  const movingSample = await travelState(page);
+  await page.waitForFunction((sample) => {
+    const runner = document.querySelector('.player-panel.active.focused .runner');
+    const backdrop = document.querySelector('.gothic-parallax');
+    if (!runner || !backdrop) return false;
+    const styles = window.getComputedStyle(runner);
+    return styles.transform !== sample.runnerTransform ||
+      window.getComputedStyle(backdrop).getPropertyValue('--loop-progress').trim() !== sample.loopProgress;
+  }, movingSample, { timeout: 6000 });
+  await stopServer(serverInfo.server);
+  await page.waitForSelector('.authority-pause', { timeout: 6000 });
+  assert.match(await page.locator('.authority-pause').textContent(), /Reconnecting to server/);
+  const pausedA = await travelState(page);
+  await page.waitForTimeout(650);
+  const pausedB = await travelState(page);
+  assert.deepEqual(pausedB, pausedA, 'runner and parallax should freeze while waiting for authority');
 } finally {
   if (browser) await browser.close();
   await stopServer(serverInfo.server);

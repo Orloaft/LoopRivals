@@ -96,12 +96,15 @@ export type Tile = {
   type: string;
   charges: number;
   expiresOnLap?: number | null;
+  movementStopKind?: 'none' | 'combat';
+  movementStopReason?: string | null;
 };
 
 export type MatchTier = {
   id: number;
   name: string;
   minScore: number;
+  minLoops: number;
   text: string;
 };
 
@@ -141,6 +144,8 @@ export type OnboardingState = {
 export type Combat = {
   enemyId: string;
   enemyName: string;
+  enemyIds?: string[];
+  enemyNames?: string[];
   backgroundId: string;
   effect: 'sword' | 'claw' | 'spectral' | 'ember';
   label: string;
@@ -164,14 +169,24 @@ export type CombatBeat = {
   attacker: 'hero' | 'enemy';
   atMs: number;
   damage: number;
+  enemyIndex?: number;
   heroHp: number;
   enemyHp: number;
+  text?: string;
 };
 
 export type PendingBonk = {
   by: string;
+  byName?: string;
   cardName: string;
   durationMs: number;
+};
+
+export type MovementSegment = {
+  fromCursor: number;
+  toCursor: number;
+  departAt: number;
+  arriveAt: number;
 };
 
 export type Player = {
@@ -233,7 +248,11 @@ export type Player = {
   message: string;
   combat: Combat | null;
   lastEventAt?: number;
+  lastMoveAt?: number | null;
+  moveStartedAt?: number | null;
   nextMoveAt?: number;
+  arrivalMovement?: MovementSegment | null;
+  nextMovement?: MovementSegment | null;
   stunnedUntil: number | null;
   stunnedBy: string | null;
   pendingBonks?: PendingBonk[];
@@ -264,6 +283,13 @@ export type GameState = {
   id: string;
   status: 'lobby' | 'running' | 'finished';
   tick: number;
+  now: number;
+  authority?: {
+    paused: boolean;
+    reason: 'waiting-for-host' | null;
+    startedAt: number | null;
+  };
+  receivedAt?: number;
   log: string[];
   maxPlayers: number;
   goalScore: number;

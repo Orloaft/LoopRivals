@@ -65,7 +65,7 @@ const lootSpriteSlugs = [
 
 function itemSpriteUrl(itemName: string) {
   const match = lootSpriteSlugs.find(([baseName]) => itemName.includes(baseName));
-  return match ? `/assets/items/${match[1]}.svg` : null;
+  return match ? `/assets/items/${match[1]}.png` : null;
 }
 
 function statLine(hero: Hero) {

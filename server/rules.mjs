@@ -14,13 +14,15 @@ export const defaultRoomSettings = {
   pace: 'steady'
 };
 // Global pacing multiplier. >1 slows the game down (all timed delays get longer).
-// 2.4 keeps the board readable while restoring the "always moving" pressure.
-const timeScale = 2.4;
+// 3.2 gives movement enough room to read without making the automatic loop feel
+// like it is racing past the outcome.
+const timeScale = 3.2;
 export const matchTiers = [
-  { id: 1, name: 'Tier I: Opening Loop', minScore: 0, text: 'Build a temporary road and get strong enough to ascend.' },
-  { id: 2, name: 'Tier II: Hungry Loop', minScore: 1800, text: 'The board resets, enemies hit harder, and rewards climb.' },
-  { id: 3, name: 'Tier III: Dying Loop', minScore: 4500, text: 'The board resets again. Survive long enough to challenge the loop boss.' }
+  { id: 1, name: 'Tier I: Opening Loop', minScore: 0, minLoops: 0, text: 'Complete four loops to reach the first gate.' },
+  { id: 2, name: 'Tier II: Hungry Loop', minScore: 1800, minLoops: 4, text: 'Complete five more loops to wake the crown gate.' },
+  { id: 3, name: 'Tier III: Dying Loop', minScore: 4500, minLoops: 9, text: 'Complete four loops in tier III to challenge the Loop Tyrant.' }
 ];
+const bossLoopRequirement = 4;
 const tileLoopLifeByTier = { 1: 3, 2: 2, 3: 2 };
 function roomGoalScore(room) {
   return room?.settings?.goalScore ?? goalScore;
@@ -31,6 +33,7 @@ function roomMaxPlayers(room) {
 }
 
 function roomTimeScale(room) {
+  if (room?.simulated) return 2.4;
   const pace = room?.settings?.pace ?? defaultRoomSettings.pace;
   if (pace === 'quick') return timeScale * 0.82;
   if (pace === 'marathon') return timeScale * 1.18;
@@ -45,78 +48,96 @@ const combatEncounters = {
   'wolf grove': {
     enemyId: 'thorn-wolf',
     enemyName: 'Thorn Wolf',
+    enemyIds: ['thorn-wolf'],
+    enemyNames: ['Thorn Wolf'],
     backgroundId: 'grove',
     effect: 'claw'
   },
   'crypt duel': {
     enemyId: 'crypt-wraith',
     enemyName: 'Crypt Wraith',
+    enemyIds: ['crypt-wraith'],
+    enemyNames: ['Crypt Wraith'],
     backgroundId: 'crypt',
     effect: 'spectral'
   },
   'bone pit': {
-    enemyId: 'crypt-wraith',
+    enemyId: 'bone-host',
     enemyName: 'Bone Host',
+    enemyIds: ['bone-host', 'crypt-wraith', 'grave-knight'],
+    enemyNames: ['Bone Host', 'Crypt Wraith', 'Grave Knight'],
     backgroundId: 'crypt',
     effect: 'spectral'
   },
   'wolf den': {
-    enemyId: 'thorn-wolf',
+    enemyId: 'dire-thorn',
     enemyName: 'Wolf Pack',
+    enemyIds: ['dire-thorn', 'thorn-wolf', 'thorn-wolf'],
+    enemyNames: ['Dire Thorn', 'Thorn Wolf', 'Thorn Wolf'],
     backgroundId: 'grove',
     effect: 'claw'
   },
   'ruined keep': {
-    enemyId: 'brigand',
+    enemyId: 'keep-reaver',
     enemyName: 'Keep Reavers',
+    enemyIds: ['keep-reaver', 'brigand', 'grave-knight'],
+    enemyNames: ['Keep Reaver', 'Road Brigand', 'Grave Knight'],
     backgroundId: 'road',
     effect: 'sword'
   },
   'blood moon': {
-    enemyId: 'ash-imp',
+    enemyId: 'moon-fiend',
     enemyName: 'Moonbound Fiend',
+    enemyIds: ['moon-fiend', 'ash-imp'],
+    enemyNames: ['Moonbound Fiend', 'Ash Imp'],
     backgroundId: 'forge',
     effect: 'ember'
   },
   'wyrm gate': {
-    enemyId: 'ash-imp',
+    enemyId: 'gate-wyrm',
     enemyName: 'Gate Wyrm',
+    enemyIds: ['gate-wyrm', 'crown-gate', 'ash-imp'],
+    enemyNames: ['Gate Wyrm', 'Crown Gate', 'Ash Imp'],
     backgroundId: 'forge',
     effect: 'ember'
   },
   'bandit ambush': {
     enemyId: 'brigand',
     enemyName: 'Road Brigand',
+    enemyIds: ['brigand', 'keep-reaver'],
+    enemyNames: ['Road Brigand', 'Keep Reaver'],
     backgroundId: 'road',
     effect: 'sword'
   },
   'road skirmish': {
     enemyId: 'brigand',
     enemyName: 'Road Brigand',
+    enemyIds: ['brigand'],
+    enemyNames: ['Road Brigand'],
     backgroundId: 'road',
     effect: 'sword'
   },
-  'obelisk shade': {
-    enemyId: 'ash-imp',
-    enemyName: 'Obelisk Shade',
-    backgroundId: 'forge',
-    effect: 'ember'
-  },
   'gate warden': {
-    enemyId: 'crypt-wraith',
+    enemyId: 'loop-warden',
     enemyName: 'Loop Warden',
+    enemyIds: ['loop-warden', 'grave-knight'],
+    enemyNames: ['Loop Warden', 'Grave Knight'],
     backgroundId: 'crypt',
     effect: 'spectral'
   },
   'crown gate': {
-    enemyId: 'ash-imp',
+    enemyId: 'crown-gate',
     enemyName: 'Crown Gate',
+    enemyIds: ['crown-gate', 'gate-wyrm', 'moon-fiend'],
+    enemyNames: ['Crown Gate', 'Gate Wyrm', 'Moonbound Fiend'],
     backgroundId: 'forge',
     effect: 'ember'
   },
   'loop tyrant': {
-    enemyId: 'crypt-wraith',
+    enemyId: 'loop-tyrant',
     enemyName: 'The Loop Tyrant',
+    enemyIds: ['loop-tyrant', 'loop-warden', 'crown-gate'],
+    enemyNames: ['The Loop Tyrant', 'Loop Warden', 'Crown Gate'],
     backgroundId: 'crypt',
     effect: 'spectral'
   }
@@ -169,9 +190,9 @@ export const heroes = [
     title: 'rival control',
     icon: '🏹',
     color: '#4ab9ef',
-    maxHp: 48,
-    power: 8,
-    guard: 6,
+    maxHp: 56,
+    power: 10,
+    guard: 9,
     speed: 5,
     sabotage: 2,
     text: 'A control specialist whose rival cards pin marks and punish the leader with precise disruption.'
@@ -205,7 +226,7 @@ export const terrainCards = [
   { id: 'shrine', name: 'Shrine', kind: 'terrain', tile: 'shrine', icon: '✚', text: 'XP burst and trait tempo. Great before a planned gate push.' },
   { id: 'mire', name: 'Mire', kind: 'terrain', tile: 'mire', icon: '≈', text: 'Slows movement but draws cards. Use before a dangerous future tile.' },
   { id: 'village', name: 'Village', kind: 'terrain', tile: 'village', icon: '⌂', text: 'Safe heal, XP, and supply chance. Stabilizes greed-heavy loops.' },
-  { id: 'obelisk', name: 'Obelisk', kind: 'terrain', tile: 'obelisk', icon: '◆', text: 'Power and XP spike, sometimes a fight. Grave Singer likes the risk.' },
+  { id: 'obelisk', name: 'Obelisk', kind: 'terrain', tile: 'obelisk', icon: '◆', text: 'Armor, HP, XP, and loot without stopping movement.' },
   { id: 'watchtower', name: 'Watchtower', kind: 'terrain', tile: 'watchtower', icon: '◈', text: 'Draws rival cards. Use when another runner is about to spike.' }
 ];
 
@@ -217,6 +238,37 @@ export const rivalCards = [
   { id: 'landslide', name: 'Landslide', kind: 'rival', icon: '⬖', text: 'Turns an upcoming rival tile into mire.' },
   { id: 'cutpurse', name: 'Cutpurse', kind: 'rival', icon: '✂', text: 'Steals a loose loot tempo or wounds instead.' }
 ];
+
+const combatBlockingTileTypes = new Set([
+  'grove',
+  'crypt',
+  'wolfden',
+  'bonepit',
+  'ruinedkeep',
+  'bloodmoon',
+  'wyrmgate',
+  'ambush'
+]);
+
+function tileMovementStop(tile) {
+  if (combatBlockingTileTypes.has(tile.type)) {
+    return {
+      movementStopKind: 'combat',
+      movementStopReason: 'combat'
+    };
+  }
+  return {
+    movementStopKind: 'none',
+    movementStopReason: null
+  };
+}
+
+function visibleBoard(player) {
+  return player.board.map((tile) => ({
+    ...tile,
+    ...tileMovementStop(tile)
+  }));
+}
 
 export const bonkCards = [
   { id: 'tin-bonk', name: 'Tin Bonk', kind: 'bonk', rarity: 'common', targetMode: 'leader', stunSeconds: 4, icon: '!', text: 'Bonks the highest-score rival, stunning them for 4 seconds.' },
@@ -281,9 +333,30 @@ export const traits = Object.values(talentTrees).flat();
 export const equipmentSlots = ['weapon', 'shield', 'helm', 'armor', 'gloves', 'boots', 'ring', 'charm'];
 export const shopSize = 5;
 export const shopRotationMs = 60 * 1000;
-const combatWindupMs = 180;
-const combatBeatMs = 203;
-const combatTailMs = 360;
+const combatWindupMs = 400;
+const combatBeatMs = 440;
+const combatTailMs = 650;
+const combatEntryLeadMs = 500;
+const simulatedCombatWindupMs = 180;
+const simulatedCombatBeatMs = 203;
+const simulatedCombatTailMs = 360;
+
+function combatTiming(room) {
+  if (room?.simulated) {
+    return {
+      windupMs: simulatedCombatWindupMs,
+      beatMs: simulatedCombatBeatMs,
+      tailMs: simulatedCombatTailMs,
+      entryLeadMs: 0
+    };
+  }
+  return {
+    windupMs: combatWindupMs,
+    beatMs: combatBeatMs,
+    tailMs: combatTailMs,
+    entryLeadMs: combatEntryLeadMs
+  };
+}
 
 const lootNames = {
   weapon: ['Glass Pike', 'Moonblade', 'Ash Bow', 'Thorn Mace', 'Cinder Wand'],
@@ -416,7 +489,10 @@ function ensureGuidedRival(room) {
   if (player) player.guidedDrawIndex = drawIndex;
   rival.guidedDormant = true;
   rival.event = 'watching your loop';
+  rival.lastMoveAt = now(room);
+  rival.moveStartedAt = now(room);
   rival.nextMoveAt = now(room) + 45_000 * roomTimeScale(room);
+  rival.nextMovement = movementSegmentForPlayer(rival);
   rival.hand = ['hex', 'bandits', 'tin-bonk'].map((cardId) => guidedCard(room, cardId));
   room.players[rival.id] = rival;
   guide.rivalId = rival.id;
@@ -439,7 +515,10 @@ function setupGuidedOpening(room) {
   }
   player.hp = player.maxHp;
   player.armor = Math.max(player.armor, 1);
+  player.lastMoveAt = now(room);
+  player.moveStartedAt = now(room);
   player.nextMoveAt = now(room) + 2800 * roomTimeScale(room);
+  player.nextMovement = movementSegmentForPlayer(player);
   player.nextDrawAt = now(room) + 5200 * roomTimeScale(room);
   ensureGuidedRival(room);
   updateGuidedRun(room);
@@ -487,7 +566,10 @@ function updateGuidedRun(room) {
     const rival = ensureGuidedRival(room);
     if (rival?.guidedDormant && player.cardsPlayed >= 3) {
       rival.guidedDormant = false;
+      rival.lastMoveAt = now(room);
+      rival.moveStartedAt = now(room);
       rival.nextMoveAt = now(room) + 1600 * roomTimeScale(room);
+      rival.nextMovement = movementSegmentForPlayer(rival);
       rival.event = 'building a curse chain';
       addLog(room, 'Vesper starts moving; watch their next five tiles before striking.');
     }
@@ -536,6 +618,7 @@ export function createRoom(id, options = {}) {
     winnerId: null,
     tier: matchTiers[0],
     claim: null,
+    authorityPause: null,
     guidedRun: options.guidedRun ? createGuidedRun(startTime) : null
   };
 }
@@ -581,6 +664,7 @@ export function restoreRoom(snapshot, options = {}) {
     winnerId: typeof raw.winnerId === 'string' ? raw.winnerId : null,
     tier: matchTiers.find((tier) => tier.id === raw.tier?.id) ?? room.tier,
     claim: raw.claim && typeof raw.claim === 'object' ? cloneJson(raw.claim) : null,
+    authorityPause: null,
     guidedRun: raw.guidedRun && typeof raw.guidedRun === 'object' ? cloneJson(raw.guidedRun) : null,
     players: {}
   });
@@ -635,12 +719,100 @@ export function startRoom(room) {
   if (activePlayerCount(room) === 0) return false;
   room.status = 'running';
   room.lastActivityAt = now(room);
+  room.authorityPause = null;
+  for (const player of Object.values(room.players)) {
+    if (player.guidedDormant) continue;
+    player.lastMoveAt = now(room);
+    player.moveStartedAt = now(room);
+    player.nextMoveAt = now(room) + movementDelay(room, player);
+    player.nextMovement = movementSegmentForPlayer(player);
+  }
   if (room.guidedRun?.enabled) {
     setupGuidedOpening(room);
     addLog(room, 'The guided duel began with a visible Crypt and a waiting rival.');
   } else {
     addLog(room, 'The host started the loop.');
   }
+  return true;
+}
+
+function timestampPlus(value, deltaMs) {
+  return Number.isFinite(value) ? value + deltaMs : value;
+}
+
+function shiftRoomTimers(room, deltaMs) {
+  if (!Number.isFinite(deltaMs) || deltaMs <= 0) return;
+  room.lastActivityAt = timestampPlus(room.lastActivityAt, deltaMs);
+  if (room.claim) {
+    room.claim.startedAt = timestampPlus(room.claim.startedAt, deltaMs);
+    room.claim.expiresAt = timestampPlus(room.claim.expiresAt, deltaMs);
+  }
+  if (room.guidedRun) {
+    room.guidedRun.startedAt = timestampPlus(room.guidedRun.startedAt, deltaMs);
+    room.guidedRun.completedAt = timestampPlus(room.guidedRun.completedAt, deltaMs);
+  }
+  for (const player of Object.values(room.players)) {
+    player.lastEventAt = timestampPlus(player.lastEventAt, deltaMs);
+    player.lastMoveAt = timestampPlus(player.lastMoveAt, deltaMs);
+    player.moveStartedAt = timestampPlus(player.moveStartedAt, deltaMs);
+    player.nextMoveAt = timestampPlus(player.nextMoveAt, deltaMs);
+    player.nextDrawAt = timestampPlus(player.nextDrawAt, deltaMs);
+    player.stunnedUntil = timestampPlus(player.stunnedUntil, deltaMs);
+    if (player.shop) player.shop.rotatesAt = timestampPlus(player.shop.rotatesAt, deltaMs);
+    if (player.combat) {
+      player.combat.startedAt = timestampPlus(player.combat.startedAt, deltaMs);
+      player.combat.expiresAt = timestampPlus(player.combat.expiresAt, deltaMs);
+    }
+    if (player.arrivalMovement) {
+      player.arrivalMovement.departAt = timestampPlus(player.arrivalMovement.departAt, deltaMs);
+      player.arrivalMovement.arriveAt = timestampPlus(player.arrivalMovement.arriveAt, deltaMs);
+    }
+    if (player.nextMovement) {
+      player.nextMovement.departAt = timestampPlus(player.nextMovement.departAt, deltaMs);
+      player.nextMovement.arriveAt = timestampPlus(player.nextMovement.arriveAt, deltaMs);
+    }
+  }
+}
+
+function connectedHumanPlayers(room) {
+  return Object.values(room.players).filter((player) => !player.isBot && player.connected);
+}
+
+export function refreshRoomAuthority(room) {
+  if (!room || room.status !== 'running' || room.simulated) {
+    if (room) room.authorityPause = null;
+    return room?.authorityPause ?? null;
+  }
+
+  const liveHumans = connectedHumanPlayers(room);
+  const reason = liveHumans.length === 0 ? 'waiting-for-host' : null;
+  if (reason) {
+    if (!room.authorityPause || room.authorityPause.reason !== reason) {
+      room.authorityPause = {
+        reason,
+        startedAt: now(room)
+      };
+      addLog(room, 'Movement paused while waiting for a human host.');
+    }
+    return room.authorityPause;
+  }
+
+  if (room.authorityPause) {
+    const pausedForMs = Math.max(0, now(room) - room.authorityPause.startedAt);
+    shiftRoomTimers(room, pausedForMs);
+    addLog(room, 'Host returned. Movement resumed from the paused timeline.');
+    room.authorityPause = null;
+  }
+  return null;
+}
+
+export function absorbRoomClockDrift(room, elapsedMs, expectedMs = 260) {
+  if (!room || room.status !== 'running' || room.simulated) return false;
+  const driftMs = elapsedMs - expectedMs;
+  if (driftMs < 520) return false;
+  shiftRoomTimers(room, driftMs);
+  room.lastActivityAt = now(room);
+  addLog(room, 'Server timing hiccup absorbed; movement timeline held steady.');
   return true;
 }
 
@@ -714,9 +886,11 @@ function heroSignature(player) {
 }
 
 export function roomSnapshot(room) {
+  refreshRoomAuthority(room);
   for (const player of Object.values(room.players)) refreshShop(room, player);
   const scoredPlayers = Object.values(room.players).map((player) => ({
     ...player,
+    board: visibleBoard(player),
     signature: heroSignature(player),
     shop: player.shop ? {
       ...player.shop,
@@ -742,6 +916,16 @@ export function roomSnapshot(room) {
     id: room.id,
     status: room.status,
     tick: room.tick,
+    now: now(room),
+    authority: room.authorityPause ? {
+      paused: true,
+      reason: room.authorityPause.reason,
+      startedAt: room.authorityPause.startedAt
+    } : {
+      paused: false,
+      reason: null,
+      startedAt: null
+    },
     log: room.log,
     maxPlayers: roomMaxPlayers(room),
     goalScore: roomGoalScore(room),
@@ -840,10 +1024,15 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     message: 'entered the loop',
     lastEventAt: now(room),
     combat: null,
+    lastMoveAt: now(room),
+    moveStartedAt: now(room),
+    arrivalMovement: null,
+    nextMovement: null,
     stunnedUntil: null,
     stunnedBy: null,
     pendingBonks: []
   };
+  player.nextMovement = movementSegmentForPlayer(player);
   player.shop = createShop(room, player);
   return player;
 }
@@ -998,18 +1187,18 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
       targetedTile.type = 'ambush';
       targetedTile.charges = card.id === 'bandits' ? 2 : 1;
     }
-    target.event = `${card.name} armed on the road`;
+    target.event = `${player.name} armed ${card.name} ahead`;
   } else if (card.id === 'bandits') {
     const tile = target.board[(target.position + 3 + rand(room, 5)) % target.board.length];
     if (tile.type !== 'camp') {
       tile.type = 'ambush';
       tile.charges = 2;
     }
-    target.event = 'rival bandits ahead';
+    target.event = `${player.name} sent bandits ahead`;
   } else if (card.id === 'hex') {
     target.curse += 3;
     target.hp -= bonus;
-    target.event = 'cursed by rival';
+    target.event = `${player.name} cursed you`;
   } else if (card.id === 'meteor') {
     target.hp -= 8 + bonus;
     const tile = target.board[(target.position + 2) % target.board.length];
@@ -1017,18 +1206,18 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
       tile.type = 'scorch';
       tile.charges = 2;
     }
-    target.event = 'meteor strike';
+    target.event = `${player.name} called a meteor`;
   } else if (card.id === 'tax') {
     if (target.hand.length > 0) target.hand.splice(rand(room, target.hand.length), 1);
     else target.hp -= 5 + bonus;
-    target.event = 'tempo stolen';
+    target.event = `${player.name} stole tempo`;
   } else if (card.id === 'landslide') {
     const tile = target.board[(target.position + 1 + rand(room, 6)) % target.board.length];
     if (tile.type !== 'camp') {
       tile.type = 'mire';
       tile.charges = 4;
     }
-    target.event = 'landslide on the path';
+    target.event = `${player.name} dropped a landslide`;
   } else if (card.id === 'cutpurse') {
     const unequipped = target.loot.filter((item) => !Object.values(normalizeLoadout(target)).some((equipped) => equipped?.id === item.id));
     if (unequipped.length > 0) {
@@ -1036,21 +1225,24 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
       target.loot = target.loot.filter((item) => item.id !== stolen.id);
       player.loot.unshift(stolen);
       player.loot = player.loot.slice(0, 10);
-      target.event = 'loot stolen';
+      target.event = `${player.name} stole loot`;
     } else {
       target.hp -= 6 + bonus;
-      target.event = 'cutpurse wound';
+      target.event = `${player.name} cutpurse wound`;
     }
   }
+  target.lastEventAt = now(room);
   player.cardsPlayed += 1;
   player.rivalHits += 1;
   if (player.heroId === 'rune-archer') {
     target.curse += 1;
     target.nextMoveAt += 180 * roomTimeScale(room);
+    target.nextMovement = movementSegmentForPlayer(target);
     player.runeMarkCount = (player.runeMarkCount ?? 0) + 1;
   }
   if (target.marked) {
     target.nextMoveAt += 420 * roomTimeScale(room);
+    target.nextMovement = movementSegmentForPlayer(target);
     if (room.claim?.playerId === target.id) room.claim.expiresAt -= 2600;
   }
   room.lastActivityAt = now(room);
@@ -1093,14 +1285,16 @@ export function playBonk(room, player, cardInstanceId, targetId = null) {
   if (isCombatLocked(room, target)) {
     target.pendingBonks = [...(target.pendingBonks ?? []), {
       by: player.id,
+      byName: player.name,
       cardName: card.name,
       durationMs
     }];
-    target.event = `${card.name}: bonk incoming`;
+    target.event = `${player.name} queued ${card.name}`;
     target.lastEventAt = now(room);
   } else {
     applyBonkStun(room, target, {
       by: player.id,
+      byName: player.name,
       cardName: card.name,
       durationMs
     });
@@ -1198,6 +1392,7 @@ export function buyShopOffer(room, player, offerId) {
 
 export function runRoomStep(room, options = {}) {
   if (room.status !== 'running') return;
+  if (refreshRoomAuthority(room)) return;
   if (room.simulated || options.advanceMs) room.now += options.advanceMs ?? 260;
   room.tick += 1;
   for (const player of Object.values(room.players)) {
@@ -1213,7 +1408,16 @@ export function runRoomStep(room, options = {}) {
     }
     if (player.guidedDormant) continue;
     maybeDraw(room, player);
-    if (now(room) >= player.nextMoveAt) advancePlayer(room, player);
+    let transitions = 0;
+    while (
+      now(room) >= player.nextMoveAt &&
+      !isCombatLocked(room, player) &&
+      !isStunned(room, player) &&
+      transitions < boardPath.length
+    ) {
+      advancePlayer(room, player);
+      transitions += 1;
+    }
     botThink(room, player);
   }
   updateEndgame(room);
@@ -1232,13 +1436,15 @@ function leader(room) {
     })[0] ?? null;
 }
 
-function tierForScore(value) {
-  return [...matchTiers].reverse().find((tier) => value >= tier.minScore) ?? matchTiers[0];
+function loopTierForLaps(laps) {
+  if (laps >= matchTiers[2].minLoops) return 3;
+  if (laps >= matchTiers[1].minLoops) return 2;
+  return 1;
 }
 
 function updateTier(room) {
   const top = leader(room);
-  const nextTier = matchTiers[(top?.loopTier ?? 1) - 1] ?? tierForScore(top ? score(top) : 0);
+  const nextTier = matchTiers[(top?.loopTier ?? 1) - 1] ?? matchTiers[(loopTierForLaps(top?.laps ?? 0)) - 1] ?? matchTiers[0];
   if ((room.tier?.id ?? 1) === nextTier.id) return;
   room.tier = nextTier;
   addLog(room, `${nextTier.name}: ${nextTier.text}`);
@@ -1272,7 +1478,7 @@ function updateEndgame(room) {
   updateMarks(room);
 
   const contender = Object.values(room.players)
-    .filter((player) => (player.loopTier ?? 1) >= 3 && player.laps > (player.tierStartLap ?? 0) && score(player) >= roomGoalScore(room) && !isCombatLocked(room, player))
+    .filter((player) => (player.loopTier ?? 1) >= 3 && player.laps >= (player.tierStartLap ?? 0) + bossLoopRequirement && !isCombatLocked(room, player))
     .sort((a, b) => score(b) - score(a))[0];
   if (!contender) return null;
   return challengeLoopBoss(room, contender);
@@ -1280,12 +1486,6 @@ function updateEndgame(room) {
 
 function isSoloPlayer(room, player) {
   return Boolean(player && activePlayerCount(room) === 1);
-}
-
-function loopTierForScore(value) {
-  if (value >= matchTiers[2].minScore) return 3;
-  if (value >= matchTiers[1].minScore) return 2;
-  return 1;
 }
 
 function tileLoopLife(player) {
@@ -1301,11 +1501,15 @@ function resetTile(tile) {
 function resetPlayerBoard(player) {
   for (const tile of player.board) resetTile(tile);
   player.position = 0;
+  player.lastMoveAt = null;
+  player.moveStartedAt = null;
+  player.arrivalMovement = null;
+  player.nextMovement = movementSegmentForPlayer(player);
 }
 
 function promotePlayerIfReady(room, player) {
   const currentTier = player.loopTier ?? 1;
-  const nextTier = loopTierForScore(score(player));
+  const nextTier = loopTierForLaps(player.laps ?? 0);
   if (nextTier <= currentTier) return false;
   if (isSoloPlayer(room, player) && !player.soloGatesCleared.includes(currentTier)) {
     return challengeSoloGate(room, player, currentTier);
@@ -1321,9 +1525,10 @@ function promotePlayerIfReady(room, player) {
   if (isSoloPlayer(room, player)) {
     player.soloCorruption = (player.soloCorruption ?? 0) + 4;
   }
-  player.event = `entered tier ${player.loopTier}`;
+  player.event = player.loopTier >= 3 ? `entered tier ${player.loopTier}; Tyrant wakes in ${bossLoopRequirement} loops` : `entered tier ${player.loopTier}`;
   addLog(room, `${player.name} entered tier ${player.loopTier}; their loop collapsed into fresh road.`);
-  if (loopTierForScore(score(player)) > player.loopTier) return promotePlayerIfReady(room, player);
+  if (player.loopTier >= 3) addLog(room, `The Loop Tyrant is stirring. ${player.name} must survive ${bossLoopRequirement} tier III loops.`);
+  if (loopTierForLaps(player.laps ?? 0) > player.loopTier) return promotePlayerIfReady(room, player);
   return true;
 }
 
@@ -1331,6 +1536,12 @@ function challengeSoloGate(room, player, tier) {
   if (isCombatLocked(room, player)) return false;
   const gate = soloGateByTier[tier];
   if (!gate) return false;
+  if (isSoloPlayer(room, player) && (player.tilesPlaced ?? 0) <= 0) {
+    player.hp = 0;
+    resolveDefeat(room, player);
+    addLog(room, `${player.name} reached the ${gate.label} with an unchanged road and was forced back to camp.`);
+    return false;
+  }
   player.soloGateAttempts = (player.soloGateAttempts ?? 0) + 1;
   player.hp = player.maxHp;
   player.armor = Math.max(player.armor, tier + 1);
@@ -1355,6 +1566,12 @@ function challengeSoloGate(room, player, tier) {
 }
 
 function challengeLoopBoss(room, player) {
+  if (isSoloPlayer(room, player) && (player.tilesPlaced ?? 0) <= 0) {
+    player.hp = 0;
+    resolveDefeat(room, player);
+    addLog(room, `${player.name} reached the Loop Tyrant with an unchanged road and was forced back to camp.`);
+    return null;
+  }
   player.bossAttempts = (player.bossAttempts ?? 0) + 1;
   player.hp = player.maxHp;
   player.armor = Math.max(player.armor, 3);
@@ -1448,9 +1665,11 @@ function applyBonkStun(room, player, bonk) {
   const stunnedUntil = now(room) + bonk.durationMs;
   player.stunnedUntil = Math.max(player.stunnedUntil ?? 0, stunnedUntil);
   player.stunnedBy = bonk.by;
+  player.moveStartedAt = player.stunnedUntil;
   player.nextMoveAt = Math.max(player.nextMoveAt ?? now(room), player.stunnedUntil);
+  player.nextMovement = movementSegmentForPlayer(player);
   player.nextDrawAt = Math.max(player.nextDrawAt ?? now(room), player.stunnedUntil);
-  player.event = `${bonk.cardName}: stunned ${Math.ceil(bonk.durationMs / 1000)}s`;
+  player.event = `${bonk.byName ?? 'Rival'} bonked you with ${bonk.cardName}`;
   player.lastEventAt = now(room);
 }
 
@@ -1718,6 +1937,16 @@ function encounterStack(room, player, tile, baseCount = 1) {
   return clamp(baseCount + nearbyDanger + auraPressure + bloodMoonHere, 1, 5);
 }
 
+function encounterLineup(encounter, enemyCount) {
+  const ids = encounter.enemyIds?.length ? encounter.enemyIds : [encounter.enemyId];
+  const names = encounter.enemyNames?.length ? encounter.enemyNames : [encounter.enemyName];
+  const lineupSize = clamp(enemyCount, 1, 5);
+  return Array.from({ length: lineupSize }, (_, index) => ({
+    id: ids[index % ids.length],
+    name: names[index % names.length] ?? encounter.enemyName
+  }));
+}
+
 function fight(room, player, label, threat, reward, enemyCount = 1) {
   const hpBefore = player.hp;
   const tier = player.loopTier ?? room.tier?.id ?? 1;
@@ -1761,21 +1990,30 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   const encounter = combatEncounters[label] ?? {
     enemyId: 'ash-imp',
     enemyName: 'Ash Imp',
+    enemyIds: ['ash-imp'],
+    enemyNames: ['Ash Imp'],
     backgroundId: 'forge',
     effect: 'ember'
   };
+  const lineup = encounterLineup(encounter, enemyCount);
   const timestamp = now(room);
+  const timing = combatTiming(room);
   const beats = combatBeats({
     rounds,
     enemyMaxHp,
+    enemyCount,
     heroHpBefore: hpBefore,
     heroHpAfter: player.hp,
     heroDamage: damage,
-    power
+    power,
+    enemyName: encounter.enemyName,
+    timing
   });
-  const durationMs = combatTailMs + beats.length * combatBeatMs;
+  const durationMs = timing.entryLeadMs + timing.tailMs + beats.length * timing.beatMs;
   player.combat = {
     ...encounter,
+    enemyIds: lineup.map((enemy) => enemy.id),
+    enemyNames: lineup.map((enemy) => enemy.name),
     label,
     damage,
     reward: xpReward,
@@ -1809,7 +2047,15 @@ function splitDamage(total, parts) {
   }).filter((damage) => damage > 0);
 }
 
-function combatBeats({ rounds, enemyMaxHp, heroHpBefore, heroHpAfter, heroDamage, power }) {
+function activeEnemySlot(totalHp, enemyMaxHp, enemyCount) {
+  const count = Math.max(1, enemyCount);
+  const perEnemyMax = Math.max(1, Math.ceil(enemyMaxHp / count));
+  const remaining = Math.max(0, totalHp);
+  if (remaining <= 0) return count - 1;
+  return Math.max(0, Math.min(count - 1, count - Math.ceil(remaining / perEnemyMax)));
+}
+
+function combatBeats({ rounds, enemyMaxHp, enemyCount, heroHpBefore, heroHpAfter, heroDamage, power, enemyName, timing }) {
   const counterDamages = splitDamage(heroDamage, Math.min(rounds, Math.max(1, heroDamage)));
   let enemyHp = enemyMaxHp;
   let heroHp = heroHpBefore;
@@ -1822,10 +2068,12 @@ function combatBeats({ rounds, enemyMaxHp, heroHpBefore, heroHpAfter, heroDamage
     enemyHp = Math.max(0, enemyHp - strikeDamage);
     beats.push({
       attacker: 'hero',
-      atMs: combatWindupMs + beats.length * combatBeatMs,
+      atMs: timing.windupMs + beats.length * timing.beatMs,
       damage: strikeDamage,
+      enemyIndex: activeEnemySlot(enemyHp + strikeDamage, enemyMaxHp, enemyCount),
       heroHp,
-      enemyHp
+      enemyHp,
+      text: `You hit ${enemyName} for ${strikeDamage}`
     });
 
     if (enemyHp <= 0 || counterIndex >= counterDamages.length) continue;
@@ -1834,10 +2082,12 @@ function combatBeats({ rounds, enemyMaxHp, heroHpBefore, heroHpAfter, heroDamage
     heroHp = Math.max(heroHpAfter, heroHp - counterDamage);
     beats.push({
       attacker: 'enemy',
-      atMs: combatWindupMs + beats.length * combatBeatMs,
+      atMs: timing.windupMs + beats.length * timing.beatMs,
       damage: counterDamage,
+      enemyIndex: activeEnemySlot(enemyHp, enemyMaxHp, enemyCount),
       heroHp,
-      enemyHp
+      enemyHp,
+      text: `${enemyName} hits you for ${counterDamage}`
     });
   }
 
@@ -1845,10 +2095,12 @@ function combatBeats({ rounds, enemyMaxHp, heroHpBefore, heroHpAfter, heroDamage
   if (!lastBeat || lastBeat.enemyHp !== 0) {
     beats.push({
       attacker: 'hero',
-      atMs: combatWindupMs + beats.length * combatBeatMs,
+      atMs: timing.windupMs + beats.length * timing.beatMs,
       damage: enemyHp,
+      enemyIndex: activeEnemySlot(enemyHp, enemyMaxHp, enemyCount),
       heroHp,
-      enemyHp: 0
+      enemyHp: 0,
+      text: `You finish ${enemyName}`
     });
   }
 
@@ -1946,6 +2198,7 @@ function triggerTile(room, player, tile) {
     player.event = 'shrine surge: +14 xp';
   } else if (tile.type === 'mire') {
     player.nextMoveAt += 450 * roomTimeScale(room);
+    player.nextMovement = movementSegmentForPlayer(player);
     if (player.hand.length < 7) player.hand.push(drawCard(room));
     player.event = 'mire drag: slowed, drew a card';
   } else if (tile.type === 'village') {
@@ -1959,9 +2212,11 @@ function triggerTile(room, player, tile) {
     player.event = 'village rest: healed and supplied';
   } else if (tile.type === 'obelisk') {
     player.armor += 1;
+    player.hp = clamp(player.hp + 4, 0, player.maxHp);
     addXp(room, player, player.heroId === 'grave-singer' ? 18 : 12);
-    if (random(room) < 0.62) fight(room, player, 'obelisk shade', 12, 13, encounterStack(room, player, tile));
-    else player.event = 'obelisk surge: power in the stones';
+    if (isSoloPlayer(room, player)) player.soloCorruption = Math.max(0, (player.soloCorruption ?? 0) - 2);
+    drawLoot(room, player);
+    player.event = 'obelisk surge: power in the stones';
   } else if (tile.type === 'watchtower') {
     if (player.hand.length < 7) player.hand.push(drawCard(room, 'rival'));
     addXp(room, player, 7);
@@ -1977,8 +2232,10 @@ function triggerTile(room, player, tile) {
     if (tile.charges <= 0) tile.type = 'road';
   } else {
     const roll = random(room);
-    if (roll < 0.3) fight(room, player, 'road skirmish', 6, 7);
-    else if (roll < 0.52) {
+    if (roll < 0.3) {
+      player.hp -= 6;
+      player.event = 'road fatigue: -6 hp';
+    } else if (roll < 0.52) {
       player.hp = clamp(player.hp + 3, 0, player.maxHp);
       player.event = 'quiet road: +3 hp';
     } else player.event = 'sprinting';
@@ -1994,8 +2251,30 @@ function movementDelay(room, player) {
   return clamp(base, 390, 1300) * roomTimeScale(room);
 }
 
+function movementSegmentForPlayer(player) {
+  const boardLength = boardPath.length;
+  const fromCursor = (player.laps ?? 0) * boardLength + (player.position ?? 0);
+  return {
+    fromCursor,
+    toCursor: fromCursor + 1,
+    departAt: player.moveStartedAt ?? player.lastMoveAt ?? 0,
+    arriveAt: player.nextMoveAt ?? player.moveStartedAt ?? player.lastMoveAt ?? 0
+  };
+}
+
 function advancePlayer(room, player) {
+  const boardLength = boardPath.length;
+  const fromCursor = player.laps * boardLength + player.position;
+  const departAt = player.moveStartedAt ?? player.lastMoveAt ?? now(room);
   player.position = (player.position + 1) % boardPath.length;
+  const arrivedAt = now(room);
+  player.lastMoveAt = arrivedAt;
+  player.arrivalMovement = {
+    fromCursor,
+    toCursor: fromCursor + 1,
+    departAt,
+    arriveAt: arrivedAt
+  };
   if (player.position === 0) {
     player.laps += 1;
     if (isSoloPlayer(room, player)) {
@@ -2006,10 +2285,26 @@ function advancePlayer(room, player) {
     addXp(room, player, 4);
     if (player.hand.length < 7 && random(room) < 0.38) player.hand.push(drawCard(room));
     addLog(room, `${player.name} completed lap ${player.laps}.`);
+    if ((player.loopTier ?? 1) >= 3) {
+      const loopsToTyrant = Math.max(0, (player.tierStartLap ?? 0) + bossLoopRequirement - player.laps);
+      if (loopsToTyrant === 1) {
+        player.event = 'Loop Tyrant wakes next loop';
+        addLog(room, `The Loop Tyrant is close. ${player.name} has one loop before the final fight.`);
+      }
+    }
   }
   triggerTile(room, player, player.board[player.position]);
-  const combatHold = player.combat ? player.combat.expiresAt + Math.round(320 * roomTimeScale(room)) : now(room);
-  player.nextMoveAt = Math.max(now(room) + movementDelay(room, player), combatHold);
+  const nextDepartAt = player.combat ? player.combat.expiresAt + Math.round(320 * roomTimeScale(room)) : arrivedAt;
+  const delay = movementDelay(room, player);
+  player.moveStartedAt = nextDepartAt;
+  player.nextMoveAt = room.simulated ? Math.max(arrivedAt + delay, nextDepartAt) : nextDepartAt + delay;
+  const nextFromCursor = player.laps * boardLength + player.position;
+  player.nextMovement = {
+    fromCursor: nextFromCursor,
+    toCursor: nextFromCursor + 1,
+    departAt: player.moveStartedAt,
+    arriveAt: player.nextMoveAt
+  };
 }
 
 function maybeDraw(room, player) {
@@ -2104,6 +2399,7 @@ function botThink(room, player) {
 }
 
 export const testApi = {
+  absorbRoomClockDrift,
   activePlayerCount,
   addBot,
   availableTraits,
@@ -2121,6 +2417,7 @@ export const testApi = {
   kickPlayer,
   matchTiers,
   maxPlayers,
+  movementDelay,
   goalScore,
   fight,
   playRival,
@@ -2128,6 +2425,7 @@ export const testApi = {
   playTerrain,
   resetRoom,
   refreshPendingTraits,
+  refreshRoomAuthority,
   restoreRoom,
   roomSnapshot,
   runRoomStep,

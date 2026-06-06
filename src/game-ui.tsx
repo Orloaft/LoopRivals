@@ -1,6 +1,6 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, Bot, Coins, Crown, Footprints, Gem, GitBranch, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, Sparkles, Swords, UserX, Users, Volume2, VolumeX, Zap } from 'lucide-react';
+import { ArrowLeft, Bot, Coins, Crown, Footprints, Gem, GitBranch, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, Sparkles, Swords, UserX, Users, Volume2, VolumeX } from 'lucide-react';
 import {
   combatBackgroundUrl,
   combatEnemyUrl,
@@ -9,6 +9,7 @@ import {
   itemSpriteUrl,
   talentIconUrl
 } from './game-assets';
+import { authoritativeCursor, clampCursorAtMovementStop, pointAlongBoard, reconcileVisualCursor, tileCenter, visualCursorForPlayer, type RunnerPoint } from './movement';
 import type { Card, Combat, CombatBeat, EquipmentSlot, GameConfig, GameState, Loot, Player, RoomSettings, ShopOffer, Tile, Trait } from './types';
 
 type LocalProfile = {
@@ -29,6 +30,7 @@ const equipmentLabels: Record<EquipmentSlot, string> = {
   ring: 'Ring',
   charm: 'Charm'
 };
+const bossLoopRequirement = 4;
 
 const tileNames: Record<string, string> = {
   road: 'Road',
@@ -149,6 +151,21 @@ function tacticalLabel(player: Player) {
   return 'roads ahead';
 }
 
+function eventImpact(event: string) {
+  const lower = event.toLowerCase();
+  if (/(bonk|stun|meteor|curse|bandit|landslide|tempo|loot stolen|stole loot|cutpurse|wound|armed|ambush|scorch)/.test(lower)) {
+    if (lower.includes('bonk') || lower.includes('stun')) return { tone: 'bonk', title: 'BONKED', detail: event };
+    if (lower.includes('meteor') || lower.includes('scorch')) return { tone: 'meteor', title: 'METEOR', detail: event };
+    if (lower.includes('curse')) return { tone: 'curse', title: 'CURSED', detail: event };
+    if (lower.includes('landslide')) return { tone: 'landslide', title: 'ROAD HIT', detail: event };
+    if (lower.includes('tempo') || lower.includes('loot') || lower.includes('cutpurse')) return { tone: 'steal', title: 'STOLEN', detail: event };
+    return { tone: 'rival', title: 'RIVAL HIT', detail: event };
+  }
+  if (lower.includes('loop tyrant')) return { tone: 'danger', title: 'TYRANT', detail: event };
+  if (/(failed|broken|defeated|died|knock)/.test(lower)) return { tone: 'danger', title: 'DOWN', detail: event };
+  return null;
+}
+
 function comboHint(card: Card) {
   if (card.kind === 'rival') return 'Best when a rival is near a danger tile or marked as leader.';
   if (card.kind === 'bonk') return card.targetMode === 'chosen' ? 'Save for a gate push or a rival about to cash out.' : 'Tempo answer when the leader is about to spike.';
@@ -202,22 +219,120 @@ function InfoPopover({
   );
 }
 
-function PhaseStrip({ game }: { game: GameState }) {
+function tierLoopTarget(config: GameConfig, player: Player) {
+  const nextTier = config.matchTiers.find((tier) => tier.id > player.loopTier);
+  if (nextTier) return { label: `Tier ${nextTier.id}`, target: nextTier.minLoops, remaining: Math.max(0, nextTier.minLoops - player.laps) };
+  return { label: 'Tyrant', target: (player.tierStartLap ?? 0) + bossLoopRequirement, remaining: Math.max(0, (player.tierStartLap ?? 0) + bossLoopRequirement - player.laps) };
+}
+
+function tierLoopProgress(config: GameConfig, player: Player) {
+  const target = tierLoopTarget(config, player);
+  const start = player.loopTier >= 3 ? (player.tierStartLap ?? 0) : (config.matchTiers.find((tier) => tier.id === player.loopTier)?.minLoops ?? 0);
+  const span = Math.max(1, target.target - start);
+  return Math.max(0, Math.min(100, ((player.laps - start) / span) * 100));
+}
+
+function setRunnerMotionTransform(runner: HTMLElement | null, highlight: HTMLElement | null, point: RunnerPoint) {
+  const transform = `translate3d(${point.left}%, ${point.top}%, 0)`;
+  if (runner) runner.style.transform = transform;
+  if (highlight) highlight.style.transform = transform;
+}
+
+function useRunnerMotion(
+  runnerRef: RefObject<HTMLElement | null>,
+  highlightRef: RefObject<HTMLElement | null>,
+  player: Player,
+  gameStatus: GameState['status'],
+  serverNow: number,
+  receivedAt?: number,
+  authorityPaused = false
+) {
+  const cursorRef = useRef<number | null>(null);
+  const lastFrameAtRef = useRef<number | null>(null);
+  const clockRef = useRef({ serverNow, receivedAt });
+  const playerRef = useRef(player);
+  const guidedDormant = Boolean((player as Player & { guidedDormant?: boolean }).guidedDormant);
+  const moving = gameStatus === 'running' && !player.combat && !player.stunRemainingMs && !guidedDormant;
+  const boardGeometryKey = useMemo(
+    () => player.board.map((tile) => `${tile.index}:${tile.coord[0]},${tile.coord[1]}`).join('|'),
+    [player.board]
+  );
+
+  useEffect(() => {
+    clockRef.current = { serverNow, receivedAt };
+  }, [receivedAt, serverNow]);
+
+  useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
+
+  useEffect(() => {
+    if (!moving || authorityPaused) {
+      cursorRef.current = authoritativeCursor(player);
+      lastFrameAtRef.current = null;
+      setRunnerMotionTransform(runnerRef.current, highlightRef.current, tileCenter(player.board[player.position] ?? player.board[0]));
+    }
+  }, [authorityPaused, highlightRef, moving, player, runnerRef]);
+
+  useEffect(() => {
+    const currentPlayer = playerRef.current;
+    const currentTile = currentPlayer.board[currentPlayer.position] ?? currentPlayer.board[0];
+    if (authorityPaused) return undefined;
+    if (!moving || !currentPlayer.board.length || !currentTile) {
+      cursorRef.current = authoritativeCursor(currentPlayer);
+      lastFrameAtRef.current = null;
+      setRunnerMotionTransform(runnerRef.current, highlightRef.current, tileCenter(currentTile ?? currentPlayer.board[0]));
+      return undefined;
+    }
+
+    let frame = 0;
+    const tick = () => {
+      const frameAt = Date.now();
+      const clock = clockRef.current;
+      const currentPlayer = playerRef.current;
+      const targetCursor = visualCursorForPlayer(currentPlayer, clock.serverNow, clock.receivedAt, authorityPaused);
+      const previousCursor = cursorRef.current;
+      const elapsedMs = lastFrameAtRef.current === null ? 0 : frameAt - lastFrameAtRef.current;
+      const segment = currentPlayer.nextMovement ?? currentPlayer.arrivalMovement;
+      const segmentDurationMs = Math.max(1, (segment?.arriveAt ?? 0) - (segment?.departAt ?? 0)) || 800;
+      const localStepCursor = previousCursor === null
+        ? targetCursor
+        : clampCursorAtMovementStop(currentPlayer.board, previousCursor, previousCursor + elapsedMs / segmentDurationMs);
+      const nextCursor = reconcileVisualCursor(currentPlayer.board, previousCursor, targetCursor, localStepCursor);
+      lastFrameAtRef.current = frameAt;
+      cursorRef.current = nextCursor;
+      setRunnerMotionTransform(runnerRef.current, highlightRef.current, pointAlongBoard(currentPlayer.board, nextCursor));
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [authorityPaused, boardGeometryKey, gameStatus, highlightRef, moving, runnerRef]);
+}
+
+function PhaseStrip({ game, player, config }: { game: GameState; player?: Player; config?: GameConfig }) {
   const claim = game.claim;
-  const progress = Math.max(0, Math.min(100, ((game.tier?.minScore ?? 0) / game.goalScore) * 100));
+  const progress = player && config ? tierLoopProgress(config, player) : Math.max(0, Math.min(100, ((game.tier?.minScore ?? 0) / game.goalScore) * 100));
+  const tierTarget = player && config ? tierLoopTarget(config, player) : null;
   const claimRemaining = claim ? Math.ceil(claim.remainingMs / 1000) : null;
   const isLobby = game.status === 'lobby';
 
   return (
     <section
-      className={`phase-strip ${claim ? 'claiming' : ''}`}
-      style={{ '--hero-color': claim?.claimantColor ?? '#d2b15c', '--phase-progress': `${progress}%` } as CSSProperties}
+      className={`phase-strip ${claim ? 'claiming' : ''} ${player ? 'player-phase' : ''}`}
+      style={{ '--hero-color': claim?.claimantColor ?? player?.color ?? '#d2b15c', '--phase-progress': `${progress}%` } as CSSProperties}
     >
       <div className="phase-copy">
         <strong>{isLobby ? 'Lobby' : claim ? 'Claim the Loop' : game.tier.name}</strong>
-        <span>{isLobby ? 'Invite runners, add CPU opponents, then the host starts the loop.' : claim ? `${claim.claimantName} must complete one marked lap` : game.tier.text}</span>
+        <span>{isLobby ? 'Invite runners, add CPU opponents, then the host starts the loop.' : claim ? `${claim.claimantName} must complete one marked lap` : tierTarget ? `${tierTarget.remaining} loop${tierTarget.remaining === 1 ? '' : 's'} to ${tierTarget.label}` : game.tier.text}</span>
       </div>
       <div className="phase-meter" aria-hidden="true"><i /></div>
+      {player && (
+        <div className="phase-player-score">
+          <Sparkles size={18} />
+          <strong>{player.score}</strong>
+          <span>score</span>
+        </div>
+      )}
       <div className="phase-meta">
         {claim ? (
           <>
@@ -226,35 +341,10 @@ function PhaseStrip({ game }: { game: GameState }) {
           </>
         ) : (
           <>
-            <Sparkles size={16} />
-            <span>{game.leaderboard[0]?.score ?? 0}/{game.goalScore}</span>
+            <Footprints size={16} />
+            <span>{player ? `Lap ${player.laps}` : `${game.leaderboard[0]?.score ?? 0}/${game.goalScore}`}</span>
           </>
         )}
-      </div>
-    </section>
-  );
-}
-
-function MobileStatusBar({ player, game }: { player: Player; game: GameState }) {
-  const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
-  const claimRemaining = game.claim ? Math.ceil(game.claim.remainingMs / 1000) : null;
-
-  return (
-    <section className="mobile-status-bar" style={{ '--hero-color': player.color, '--hp-ratio': `${hpRatio}%` } as CSSProperties}>
-      <div className="mobile-status-hero">
-        <img src={heroPortraitUrl(player.heroId)} alt="" />
-        <span>
-          <strong>{player.name}</strong>
-          <small>{game.claim?.playerId === player.id ? `claim ${claimRemaining}s` : game.tier.name}</small>
-        </span>
-      </div>
-      <div className="mobile-status-chips">
-        <b>HP {Math.ceil(player.hp)}/{player.maxHp}</b>
-        <b>{player.score} pts</b>
-        <b>Lap {player.laps}</b>
-        <b>Corr {player.soloCorruption ?? 0}</b>
-        <b>{player.soloGatesCleared.length}/3 gates</b>
-        <b><Coins size={12} /> {player.gold ?? 0}</b>
       </div>
     </section>
   );
@@ -356,7 +446,7 @@ function GameMenu({
               </select>
             </label>
             <label>
-              Boss Score
+              Score Scale
               <select
                 value={game.settings.goalScore}
                 disabled={settingsLocked}
@@ -491,13 +581,6 @@ function itemPopoverLines(item: Loot, equipped: Loot | null | undefined) {
   ];
 }
 
-function shortTierName(name: string) {
-  return name
-    .replace(/\s+loop$/i, '')
-    .replace(/^tier\s+/i, 'T')
-    .slice(0, 12);
-}
-
 function statValue(item: Loot | null | undefined, stat: keyof Pick<Loot, 'power' | 'guard' | 'speed' | 'maxHp' | 'sabotage' | 'lapHeal' | 'terrainScore' | 'revivePower'>) {
   return item?.[stat] ?? 0;
 }
@@ -530,36 +613,37 @@ function HandBar({
   onDragEnd: () => void;
 }) {
   return (
-    <div className="hand-bar">
-      {hand.map((card, index) => (
-        <button
-          key={card.instanceId}
-          draggable
-          aria-label={`${card.name}: ${card.text}`}
-          className={`hand-card ${cardFaceClass(card)} ${selectedId === card.instanceId ? 'selected' : ''} ${draggingId === card.instanceId ? 'dragging' : ''}`}
-          style={{
-            '--card-index': index,
-            '--hand-count': Math.max(hand.length, 1),
-            '--card-tilt': `${(index - (hand.length - 1) / 2) * 4.5}deg`,
-            '--card-lift': `${Math.abs(index - (hand.length - 1) / 2) * 2}px`
-          } as CSSProperties}
-          onClick={() => onSelect(card.instanceId)}
-          onDragStart={(event) => {
-            const transparentDragImage = document.createElement('canvas');
-            transparentDragImage.width = 1;
-            transparentDragImage.height = 1;
-            event.dataTransfer.setDragImage(transparentDragImage, 0, 0);
-            event.dataTransfer.effectAllowed = card.kind === 'terrain' ? 'move' : 'link';
-            event.dataTransfer.setData('application/x-loopduel-kind', 'card');
-            event.dataTransfer.setData('application/x-loopduel-card-id', card.instanceId);
-            event.dataTransfer.setData('text/plain', card.instanceId);
-            onDragStart(card.instanceId, { x: event.clientX, y: event.clientY });
-          }}
-          onDragEnd={onDragEnd}
-        >
-          <CardFace card={card} />
-        </button>
-      ))}
+    <div className="hand-bar" style={{ '--hand-count': Math.max(hand.length, 1) } as CSSProperties}>
+      <div className="hand-card-stack">
+        {hand.map((card, index) => (
+          <button
+            key={card.instanceId}
+            draggable
+            aria-label={`${card.name}: ${card.text}`}
+            className={`hand-card ${cardFaceClass(card)} ${selectedId === card.instanceId ? 'selected' : ''} ${draggingId === card.instanceId ? 'dragging' : ''}`}
+            style={{
+              '--card-index': index,
+              '--card-tilt': `${(index - (hand.length - 1) / 2) * 4.5}deg`,
+              '--card-lift': `${Math.abs(index - (hand.length - 1) / 2) * 2}px`
+            } as CSSProperties}
+            onClick={() => onSelect(card.instanceId)}
+            onDragStart={(event) => {
+              const transparentDragImage = document.createElement('canvas');
+              transparentDragImage.width = 1;
+              transparentDragImage.height = 1;
+              event.dataTransfer.setDragImage(transparentDragImage, 0, 0);
+              event.dataTransfer.effectAllowed = card.kind === 'terrain' ? 'move' : 'link';
+              event.dataTransfer.setData('application/x-loopduel-kind', 'card');
+              event.dataTransfer.setData('application/x-loopduel-card-id', card.instanceId);
+              event.dataTransfer.setData('text/plain', card.instanceId);
+              onDragStart(card.instanceId, { x: event.clientX, y: event.clientY });
+            }}
+            onDragEnd={onDragEnd}
+          >
+            <CardFace card={card} />
+          </button>
+        ))}
+      </div>
       {hand.length === 0 && <span className="hand-empty">drawing…</span>}
     </div>
   );
@@ -668,64 +752,14 @@ function PlayerSideDock({
   const tree = config.talentTrees[player.heroId] ?? [];
   const pending = tree.filter((trait) => player.pendingTraits.includes(trait.id));
   const learned = tree.filter((trait) => player.traits.includes(trait.id));
-  const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
   const equippedIds = new Set(Object.values(player.loadout).filter(Boolean).map((item) => item?.id));
   const looseLoot = player.loot.filter((item) => !equippedIds.has(item.id));
   const draggingLoot = draggingLootId ? player.loot.find((item) => item.id === draggingLootId) ?? null : null;
-  const nextTier = config.matchTiers.find((tier) => tier.id > player.loopTier);
-  const tierProgress = nextTier
-    ? Math.max(0, Math.min(100, ((player.score - player.tierStartScore) / Math.max(1, nextTier.minScore - player.tierStartScore)) * 100))
-    : Math.max(0, Math.min(100, (player.score / game.goalScore) * 100));
+  const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+  const loopProgress = tierLoopProgress(config, player);
 
   return (
     <aside className="player-side-dock" style={{ '--hero-color': player.color } as CSSProperties}>
-      <div className="side-dock-head">
-        <img src={heroPortraitUrl(player.heroId)} alt="" />
-        <div>
-          <strong>{player.name}</strong>
-          <span>{hero?.name ?? 'Runner'}</span>
-        </div>
-        {player.rank === 1 && <Crown size={18} />}
-      </div>
-
-      <section className="rail-vitals" aria-label="Runner vitals">
-        <div className="rail-hp-orb" style={{ '--hp-ratio': `${hpRatio}%` } as CSSProperties}>
-          <strong>{Math.ceil(player.hp)}</strong>
-          <span>{player.maxHp}</span>
-          <InfoPopover title="Health" body={`${Math.ceil(player.hp)}/${player.maxHp} HP`} />
-        </div>
-        <div className="rail-stat-grid" aria-label="Runner stats">
-          <span className="rail-stat-tile"><Swords size={15} /><b>{player.power}</b><InfoPopover title="Power" body="Damage output before combat effects." /></span>
-          <span className="rail-stat-tile"><Shield size={15} /><b>{player.guard}</b><InfoPopover title="Guard" body="Damage reduction and survival pressure." /></span>
-          <span className="rail-stat-tile"><Footprints size={15} /><b>{player.speed}</b><InfoPopover title="Speed" body="Movement tempo around the loop." /></span>
-          <span className="rail-stat-tile"><Sparkles size={15} /><b>{player.score}</b><InfoPopover title="Score" body={`${player.score}/${game.goalScore} toward the boss race.`} /></span>
-          <span className="rail-stat-tile"><Coins size={15} /><b>{player.gold ?? 0}</b><InfoPopover title="Gold" body="Spendable run currency." /></span>
-          <span className="rail-stat-tile"><Zap size={15} /><b>{player.level}</b><InfoPopover title="Level" body={`${player.xp} XP. Talent choices unlock as you level.`} /></span>
-          <span className="rail-stat-tile"><GitBranch size={15} /><b>{player.soloCorruption ?? 0}</b><InfoPopover title="Corruption" body="Solo pressure. Rises on laps, deaths, and tier clears; higher values make fights harsher and camp weaker." /></span>
-        </div>
-      </section>
-
-      <section className={`loop-tier-card ${game.claim?.playerId === player.id ? 'claimant' : ''}`} style={{ '--tier-progress': `${tierProgress}%` } as CSSProperties}>
-        <div className="loop-tier-pips" aria-label="Loop tier">
-          {config.matchTiers.slice(0, 3).map((tier) => (
-            <span key={tier.id} className={tier.id < player.loopTier ? 'done' : tier.id === player.loopTier ? 'active' : ''}>
-              {tier.id}
-            </span>
-          ))}
-          <Crown size={16} />
-        </div>
-        <div className="loop-tier-meter"><i /></div>
-        <div className="loop-tier-meta">
-          <strong>{game.claim?.playerId === player.id ? `${Math.ceil((game.claim?.remainingMs ?? 0) / 1000)}s` : shortTierName(game.tier.name)}</strong>
-          <span>{player.soloGatesCleared.length}/3 gates</span>
-        </div>
-        <InfoPopover
-          title={game.claim?.playerId === player.id ? 'Boss mark active' : game.tier.name}
-          body={game.claim ? `${game.claim.claimantName} is closing a marked lap.` : game.tier.text}
-          hint={`${player.soloGatesCleared.length}/3 gates cleared · ${player.deathsThisTier ?? 0} deaths this tier`}
-        />
-      </section>
-
       {dockMode === 'talents' ? (
         <TalentTreeDock
           player={player}
@@ -737,6 +771,49 @@ function PlayerSideDock({
         />
       ) : (
         <>
+          <div className="side-dock-head">
+            <img src={heroPortraitUrl(player.heroId)} alt="" />
+            <div>
+              <strong>{player.name}</strong>
+              <span>{hero?.name ?? 'Runner'} · {game.tier.name}</span>
+            </div>
+            <Crown size={18} />
+          </div>
+
+          <section className="rail-vitals">
+            <div className="rail-hp-orb" style={{ '--hp-ratio': `${hpRatio}%` } as CSSProperties}>
+              <strong>{Math.ceil(player.hp)}</strong>
+              <span>/{player.maxHp}</span>
+              <InfoPopover title="Health" body={`${Math.ceil(player.hp)}/${player.maxHp} HP`} />
+            </div>
+            <div className="rail-stat-grid">
+              <span className="rail-stat-tile"><Swords size={14} /><b>{player.power}</b></span>
+              <span className="rail-stat-tile"><Shield size={14} /><b>{player.guard}</b></span>
+              <span className="rail-stat-tile"><Footprints size={14} /><b>{player.speed}</b></span>
+              <span className="rail-stat-tile"><Sparkles size={14} /><b>{player.score}</b></span>
+              <span className="rail-stat-tile"><Coins size={14} /><b>{player.gold ?? 0}</b></span>
+              <span className="rail-stat-tile"><Crown size={14} /><b>{player.rank}</b></span>
+            </div>
+          </section>
+
+          <section
+            className={`loop-tier-card ${game.claim?.playerId === player.id ? 'claimant' : ''}`}
+            style={{ '--tier-progress': `${loopProgress}%` } as CSSProperties}
+          >
+            <div className="loop-tier-pips" aria-hidden="true">
+              {[0, 1, 2, 3].map((index) => (
+                <span key={index} className={index < Math.min(4, player.laps - (player.tierStartLap ?? 0)) ? 'done' : index === 0 ? 'active' : ''}>
+                  {index + 1}
+                </span>
+              ))}
+            </div>
+            <div className="loop-tier-meta">
+              <strong>Tier {player.loopTier}</strong>
+              <span>Lap {player.laps}</span>
+            </div>
+            <span className="loop-tier-meter"><i /></span>
+          </section>
+
           <div className={`paperdoll ${draggingLoot ? 'loot-dragging' : ''}`}>
             <div className="paperdoll-body">
               <img src={heroSpriteUrl(player.heroId)} alt="" />
@@ -867,7 +944,7 @@ function PlayerSideDock({
               aria-label="Toggle pace"
             >
               <Settings size={15} />
-              <InfoPopover title="Room pace" eyebrow={game.settings.pace} body={`${game.settings.maxPlayers} seats · ${game.settings.goalScore} boss score · profile best ${profile.bestScore}`} />
+              <InfoPopover title="Room pace" eyebrow={game.settings.pace} body={`${game.settings.maxPlayers} seats · ${game.settings.goalScore} score scale · profile best ${profile.bestScore}`} />
             </button>
             <button className="side-control-button" onClick={onToggleBgm} aria-label="Toggle music">
               {bgmOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
@@ -1313,10 +1390,107 @@ function RivalIntel({
   );
 }
 
+type BoardTileButtonProps = {
+  tile: Tile;
+  board: Tile[];
+  canPlaceTerrain: boolean;
+  canPlaceRivalTile: boolean;
+  recommended: boolean;
+  selectedCard: Card | null;
+  draggingCard: Card | null;
+  rivalTargetCard: Card | null;
+  onTile?: (tile: Tile, cardId?: string) => void;
+  onRivalTile?: (tileIndex: number, cardId?: string) => void;
+};
+
+const BoardTileButton = memo(function BoardTileButton({
+  tile,
+  board,
+  canPlaceTerrain,
+  canPlaceRivalTile,
+  recommended,
+  selectedCard,
+  draggingCard,
+  rivalTargetCard,
+  onTile,
+  onRivalTile
+}: BoardTileButtonProps) {
+  return (
+    <button
+      className={`tile ${tile.type} ${canPlaceRivalTile ? 'rival-tile-target' : ''} ${recommended ? 'coach-recommended' : ''}`}
+      style={{
+        gridColumn: tile.coord[0] + 1,
+        gridRow: tile.coord[1] + 1
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (canPlaceTerrain) onTile?.(tile);
+        else if (canPlaceRivalTile) onRivalTile?.(tile.index, rivalTargetCard?.instanceId);
+      }}
+      onDragOver={(event) => {
+        if (draggingCard?.kind === 'terrain' && canPlaceTerrain) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+        }
+        if (rivalTargetCard && canPlaceRivalTile) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'link';
+        }
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const cardId = event.dataTransfer.getData('application/x-loopduel-card-id') || event.dataTransfer.getData('text/plain');
+        if (draggingCard?.kind === 'terrain' && canPlaceTerrain) onTile?.(tile, cardId || draggingCard.instanceId);
+        if (rivalTargetCard && canPlaceRivalTile) onRivalTile?.(tile.index, cardId || rivalTargetCard.instanceId);
+      }}
+      disabled={!canPlaceTerrain && !canPlaceRivalTile}
+    >
+      {tile.type === 'road' && <span className={`road-shape ${roadShapeClass(board, tile)}`} aria-hidden="true" />}
+      <span className="tile-glyph">{tileGlyphs[tile.type] ?? '?'}</span>
+      <InfoPopover
+        title={tileNames[tile.type] ?? tile.type}
+        eyebrow={`Tile ${tile.index}`}
+        body={tileDescription(tile)}
+        lines={[
+          tile.movementStopKind === 'combat' ? 'Runner stops here for combat' : 'Runner passes through',
+          tile.charges > 0 ? `${tile.charges} charge${tile.charges === 1 ? '' : 's'} left` : tile.expiresOnLap ? `Expires on lap ${tile.expiresOnLap}` : 'Permanent tile',
+          'Loop path'
+        ]}
+        hint={canPlaceTerrain ? `Drop ${selectedCard?.name} here` : canPlaceRivalTile ? `Arm ${rivalTargetCard?.name} here` : undefined}
+        className="tile-pop"
+      />
+    </button>
+  );
+}, (previous, next) => {
+  const sameTile =
+    previous.tile.index === next.tile.index &&
+    previous.tile.type === next.tile.type &&
+    previous.tile.coord[0] === next.tile.coord[0] &&
+    previous.tile.coord[1] === next.tile.coord[1] &&
+    previous.tile.charges === next.tile.charges &&
+    previous.tile.expiresOnLap === next.tile.expiresOnLap &&
+    previous.tile.movementStopKind === next.tile.movementStopKind &&
+    previous.tile.movementStopReason === next.tile.movementStopReason;
+
+  return sameTile &&
+    previous.canPlaceTerrain === next.canPlaceTerrain &&
+    previous.canPlaceRivalTile === next.canPlaceRivalTile &&
+    previous.recommended === next.recommended &&
+    previous.selectedCard?.instanceId === next.selectedCard?.instanceId &&
+    previous.draggingCard?.instanceId === next.draggingCard?.instanceId &&
+    previous.rivalTargetCard?.instanceId === next.rivalTargetCard?.instanceId;
+});
+
 function PlayerPanel({
   player,
+  gameStatus,
+  serverNow,
+  receivedAt,
+  authorityPaused = false,
   rank,
   active,
+  isHost,
   focused,
   selectedCard,
   draggingCard,
@@ -1325,11 +1499,17 @@ function PlayerPanel({
   onTile,
   onRivalTarget,
   onRivalTile,
+  onStartRoom,
   onFocus
 }: {
   player: Player;
+  gameStatus: GameState['status'];
+  serverNow: number;
+  receivedAt?: number;
+  authorityPaused?: boolean;
   rank: number;
   active: boolean;
+  isHost: boolean;
   focused: boolean;
   selectedCard: Card | null;
   draggingCard: Card | null;
@@ -1338,22 +1518,27 @@ function PlayerPanel({
   onTile?: (tile: Tile, cardId?: string) => void;
   onRivalTarget?: (cardId?: string) => void;
   onRivalTile?: (tileIndex: number, cardId?: string) => void;
+  onStartRoom?: () => void;
   onFocus: () => void;
 }) {
-  const hpRatio = Math.max(0, player.hp / player.maxHp);
   const canRivalTarget = Boolean(rivalTargetCard && onRivalTarget);
-  // Runner position as a percentage of the board, centered on the occupied tile.
-  // Rendered at board level (not inside a tile) so CSS can smoothly slide it tile-to-tile.
-  const runnerTile = player.board[player.position] ?? player.board[0];
-  const runnerLeft = ((runnerTile.coord[0] + 0.5) / 5) * 100;
-  const runnerTop = ((runnerTile.coord[1] + 0.5) / 5) * 100;
+  // Runner position is driven by the server movement clock, so ordinary tiles
+  // chain together visually and only stop when combat/stun state appears.
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const runnerRef = useRef<HTMLSpanElement | null>(null);
+  const runnerHighlightRef = useRef<HTMLSpanElement | null>(null);
+  const runnerPoint = tileCenter(player.board[player.position] ?? player.board[0]);
+  const runnerTransform = `translate3d(${runnerPoint.left}%, ${runnerPoint.top}%, 0)`;
+  useRunnerMotion(runnerRef, runnerHighlightRef, player, gameStatus, serverNow, receivedAt, authorityPaused);
   const stunSeconds = Math.ceil((player.stunRemainingMs ?? 0) / 1000);
-  const nextTiles = upcomingTiles(player, 5);
-  const hotEvent = player.event.includes('entered tier') || player.event.includes('vanished') || player.event.includes('overgrew') || player.event.includes('foes') || player.event.includes('Tyrant');
+  const compactRival = !active && !focused;
+  const impact = eventImpact(player.event);
+  const lobbyStart = active && gameStatus === 'lobby';
+  const combatCuePoint = player.combat ? tileCenter(player.board[player.position] ?? player.board[0]) : runnerPoint;
 
   return (
     <article
-      className={`player-panel ${active ? 'active' : ''} ${focused ? 'focused' : 'dimmed'} ${canRivalTarget ? 'rival-drop-target' : ''} ${player.combat ? 'combat-locked' : ''} ${stunSeconds > 0 ? 'stunned' : ''}`}
+      className={`player-panel ${active ? 'active' : ''} ${focused ? 'focused' : 'dimmed'} ${compactRival ? 'compact-rival' : ''} ${canRivalTarget ? 'rival-drop-target' : ''} ${player.combat ? 'combat-locked' : ''} ${stunSeconds > 0 ? 'stunned' : ''} ${impact ? `event-${impact.tone}` : ''}`}
       style={{ '--hero-color': player.color } as CSSProperties}
       onClick={() => {
         if (canRivalTarget) {
@@ -1373,101 +1558,77 @@ function PlayerPanel({
         onRivalTarget?.(event.dataTransfer.getData('text/plain') || rivalTargetCard?.instanceId);
       }}
     >
-      <div className="board">
+      <div
+        ref={boardRef}
+        className="board"
+      >
         {player.board.map((tile) => {
           const canPlaceTerrain = Boolean(onTile && selectedCard?.kind === 'terrain' && tile.type !== 'camp');
           const canPlaceRivalTile = Boolean(onRivalTile && rivalTargetCard && tile.type === 'road' && player.position !== tile.index);
           const recommended = recommendedTileIndexes.includes(tile.index);
           return (
-            <button
+            <BoardTileButton
               key={tile.index}
-              className={`tile ${tile.type} ${player.position === tile.index ? 'occupied' : ''} ${canPlaceRivalTile ? 'rival-tile-target' : ''} ${recommended ? 'coach-recommended' : ''}`}
-              style={{
-                gridColumn: tile.coord[0] + 1,
-                gridRow: tile.coord[1] + 1
-              }}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (canPlaceTerrain) onTile?.(tile);
-                else if (canPlaceRivalTile) onRivalTile?.(tile.index, rivalTargetCard?.instanceId);
-              }}
-              onDragOver={(event) => {
-                if (draggingCard?.kind === 'terrain' && canPlaceTerrain) {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = 'move';
-                }
-                if (rivalTargetCard && canPlaceRivalTile) {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = 'link';
-                }
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                const cardId = event.dataTransfer.getData('application/x-loopduel-card-id') || event.dataTransfer.getData('text/plain');
-                if (draggingCard?.kind === 'terrain' && canPlaceTerrain) onTile?.(tile, cardId || draggingCard.instanceId);
-                if (rivalTargetCard && canPlaceRivalTile) onRivalTile?.(tile.index, cardId || rivalTargetCard.instanceId);
-              }}
-              disabled={!canPlaceTerrain && !canPlaceRivalTile}
-            >
-              {tile.type === 'road' && <span className={`road-shape ${roadShapeClass(player.board, tile)}`} aria-hidden="true" />}
-              <span className="tile-glyph">{tileGlyphs[tile.type] ?? '?'}</span>
-              <InfoPopover
-                title={tileNames[tile.type] ?? tile.type}
-                eyebrow={`Tile ${tile.index}`}
-                body={tileDescription(tile)}
-                lines={[
-                  tile.charges > 0 ? `${tile.charges} charge${tile.charges === 1 ? '' : 's'} left` : tile.expiresOnLap ? `Expires in ${Math.max(0, tile.expiresOnLap - player.laps)} loop${tile.expiresOnLap - player.laps === 1 ? '' : 's'}` : 'Permanent tile',
-                  player.position === tile.index ? `${player.name} is here` : 'Loop path'
-                ]}
-                hint={canPlaceTerrain ? `Drop ${selectedCard?.name} here` : canPlaceRivalTile ? `Arm ${rivalTargetCard?.name} here` : undefined}
-                className="tile-pop"
-              />
-            </button>
+              tile={tile}
+              board={player.board}
+              canPlaceTerrain={canPlaceTerrain}
+              canPlaceRivalTile={canPlaceRivalTile}
+              recommended={recommended}
+              selectedCard={selectedCard}
+              draggingCard={draggingCard}
+              rivalTargetCard={rivalTargetCard}
+              onTile={onTile}
+              onRivalTile={onRivalTile}
+            />
           );
         })}
-        <span
-          className="runner"
-          style={{
-            '--runner-left': `${runnerLeft}%`,
-            '--runner-top': `${runnerTop}%`
-          } as CSSProperties}
-        >
+        <span ref={runnerHighlightRef} className="runner-tile-highlight" style={{ transform: runnerTransform }} aria-hidden="true" />
+        <span ref={runnerRef} className="runner" style={{ transform: runnerTransform }}>
           <span className="runner-sprite">
             <img src={heroSpriteUrl(player.heroId)} alt="" />
           </span>
         </span>
         <div className="board-core">
-          <div className="bc-name">
-            <span className="bc-portrait">
-              <img src={heroPortraitUrl(player.heroId)} alt="" />
-              {rank === 1 && <Crown size={12} />}
-            </span>
-            <strong>{player.name}</strong>
-            {!player.connected && <em>offline</em>}
-          </div>
-          <div className="bc-hp">
-            <span className="bc-hp-bar"><i style={{ width: `${hpRatio * 100}%` }} /></span>
-            <small>{Math.ceil(player.hp)}/{player.maxHp}</small>
-          </div>
-          <div className="bc-meta">Lv {player.level} · Lap {player.laps} · {player.score} pts · Corr {player.soloCorruption ?? 0}</div>
-          <div className="bc-stats">
-            <span><Zap size={12} /> {player.power}</span>
-            <span><Shield size={12} /> {player.guard}</span>
-            <span>SPD {player.speed}</span>
-          </div>
-          {player.signature && (
-            <div className="bc-signature" style={{ '--sig-ratio': `${Math.max(0, Math.min(100, (player.signature.value / Math.max(1, player.signature.max)) * 100))}%` } as CSSProperties}>
-              <span>{player.signature.label}</span>
-              <b>{player.signature.value}/{player.signature.max}</b>
-              <i />
-              <InfoPopover title={player.signature.label} body={player.signature.text} />
+          {lobbyStart ? (
+            <button
+              className="board-start-button"
+              aria-label={isHost ? 'Start match' : 'Waiting for host'}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (isHost) onStartRoom?.();
+              }}
+              disabled={!isHost}
+            >
+              <span>{isHost ? 'Start Match' : 'Waiting for Host'}</span>
+            </button>
+          ) : compactRival ? (
+            <div className="rival-score-badge">
+              <span className="bc-portrait">
+                <img src={heroPortraitUrl(player.heroId)} alt="" />
+                {rank === 1 && <Crown size={12} />}
+              </span>
+              <strong>{player.score}</strong>
+              <small>{rank === 1 ? 'leader' : player.name}</small>
             </div>
+          ) : (
+            <>
+              <div className="bc-event-stage">
+                <small>{rank === 1 ? 'Leader' : active ? 'You' : player.name}</small>
+                <strong>{player.event}</strong>
+                <span>Lap {player.laps} · Lv {player.level} · Corr {player.soloCorruption ?? 0}</span>
+              </div>
+              {player.signature && (
+                <div className="bc-signature" style={{ '--sig-ratio': `${Math.max(0, Math.min(100, (player.signature.value / Math.max(1, player.signature.max)) * 100))}%` } as CSSProperties}>
+                  <span>{player.signature.label}</span>
+                  <b>{player.signature.value}/{player.signature.max}</b>
+                  <i />
+                  <InfoPopover title={player.signature.label} body={player.signature.text} />
+                </div>
+              )}
+              {stunSeconds > 0 && <div className="bc-stun">stunned {stunSeconds}s</div>}
+              {player.marked && <div className="bc-claim">marked</div>}
+            </>
           )}
-          <div className={`bc-event ${hotEvent ? 'hot' : ''}`}>{player.event}</div>
-          {stunSeconds > 0 && <div className="bc-stun">stunned {stunSeconds}s</div>}
-          {player.marked && <div className="bc-claim">marked</div>}
-          <div className="bc-cards">{player.hand.length} cards · {player.loot.length} loot · {player.gold ?? 0} gold</div>
           <InfoPopover
             title={player.name}
             eyebrow={active ? 'Your runner' : 'Runner'}
@@ -1481,18 +1642,24 @@ function PlayerPanel({
             className="player-pop"
           />
         </div>
-        <div className="tactical-preview" aria-label={`${player.name} next five tiles`}>
-          <strong>{tacticalLabel(player)}</strong>
-          <div>
-            {nextTiles.map(({ step, tile }) => (
-              <span key={`${tile.index}-${step}`} className={`${dangerousTileTypes.has(tile.type) ? 'danger' : ''} ${stabilizerTileTypes.has(tile.type) ? 'safe' : ''}`}>
-                <b>{step}</b>
-                <i>{tileGlyphs[tile.type] ?? '?'}</i>
-              </span>
-            ))}
+        {impact && (
+          <div key={`${player.lastEventAt ?? 0}-${player.event}`} className={`event-burst ${impact.tone}`}>
+            <strong>{impact.title}</strong>
+            <span>{impact.detail}</span>
           </div>
-        </div>
+        )}
         {player.event.includes('entered tier') && <div className="tier-surge"><strong>Tier {player.loopTier}</strong><span>loop collapsed</span></div>}
+        {player.combat && (
+          <div
+            key={`combat-cue-${player.combat.startedAt}`}
+            className="combat-entry-cue"
+            style={{
+              '--cue-left': `${combatCuePoint.left}%`,
+              '--cue-top': `${combatCuePoint.top}%`
+            } as CSSProperties}
+            aria-hidden="true"
+          />
+        )}
         {player.combat && <CombatOverlay key={player.combat.startedAt} player={player} />}
       </div>
     </article>
@@ -1502,6 +1669,19 @@ function PlayerPanel({
 function CombatOverlay({ player }: { player: Player }) {
   const combat = player.combat;
   if (!combat) return null;
+  return <CombatOverlayGate player={player} combat={combat} />;
+}
+
+function CombatOverlayGate({ player, combat }: { player: Player; combat: Combat }) {
+  const presentationDelayMs = 500;
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setReady(true), presentationDelayMs);
+    return () => window.clearTimeout(timer);
+  }, [combat.startedAt]);
+
+  if (!ready) return null;
   return <CombatOverlayBody player={player} combat={combat} />;
 }
 
@@ -1519,6 +1699,25 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
     enemy: combat.enemyHpBefore
   });
   const activeBeat = activeBeatIndex >= 0 ? beats[activeBeatIndex] : null;
+  const visibleDurationMs = Math.max(600, (combat.durationMs ?? 1734) - 500);
+  const logFocusIndex = Math.max(0, activeBeatIndex);
+  const logStart = Math.max(0, Math.min(logFocusIndex - 1, Math.max(0, beats.length - 2)));
+  const combatLog = beats.slice(logStart, logStart + 2).map((beat, offset) => {
+    const index = logStart + offset;
+    return {
+      ...beat,
+      index,
+      state: index === activeBeatIndex ? 'active' : index < activeBeatIndex ? 'done' : 'upcoming'
+    };
+  });
+  const enemyLineup = Array.from({ length: Math.max(1, Math.min(combat.enemyCount, 5)) }, (_, index) => ({
+    id: combat.enemyIds?.[index] ?? combat.enemyIds?.[0] ?? combat.enemyId,
+    name: combat.enemyNames?.[index] ?? combat.enemyNames?.[0] ?? combat.enemyName
+  }));
+  const enemyHpRows = enemyHealthRows(displayHp.enemy, combat.enemyMaxHp, enemyLineup);
+  const activeEnemyIndex = activeBeat?.enemyIndex !== undefined
+    ? Math.max(0, Math.min(activeBeat.enemyIndex, enemyLineup.length - 1))
+    : Math.max(0, Math.min(enemyHpRows.findIndex((enemy) => enemy.current > 0), enemyLineup.length - 1));
 
   useEffect(() => {
     const timers = beats.map((beat, index) => window.setTimeout(() => {
@@ -1527,17 +1726,24 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
     }, beat.atMs));
     timers.push(window.setTimeout(() => {
       setDisplayHp({ hero: presentation.heroHpAfter, enemy: presentation.enemyHpAfter });
-    }, Math.max(0, presentation.durationMs - 140)));
+    }, Math.max(0, visibleDurationMs - 140)));
 
     return () => timers.forEach(window.clearTimeout);
-  }, [presentation, beats]);
+  }, [presentation, beats, visibleDurationMs]);
 
   return (
     <div className="combat-overlay" style={{
       '--combat-bg': `url(${combatBackgroundUrl(combat.backgroundId)})`,
-      '--combat-duration': `${combat.durationMs ?? 5200}ms`
+      '--combat-duration': `${visibleDurationMs}ms`,
+      '--combat-delay': '0ms'
     } as CSSProperties}>
       <div className="combat-vignette" />
+      <div className="combat-announcement" aria-hidden="true">
+        <span>
+          Fight!
+          <small>{combat.label} vs {combat.enemyName}</small>
+        </span>
+      </div>
       <div className={`combatant hero-combat ${activeBeat?.attacker === 'hero' ? 'combat-attacking' : ''} ${activeBeat?.attacker === 'enemy' ? 'combat-taking-hit' : ''}`}>
         <img key={`hero-${activeBeatIndex}-${activeBeat?.attacker ?? 'idle'}`} src={heroSpriteUrl(player.heroId)} alt="" />
         <div className="combat-name">{player.name}</div>
@@ -1558,17 +1764,46 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
         <strong>{combat.label}</strong>
         {combat.enemyCount > 1 && <em>{combat.enemyCount} foes · {combat.rounds} clashes</em>}
         <span>{activeBeat ? `-${activeBeat.damage} HP` : 'Fight'}</span>
-        <small>+{combat.reward} XP</small>
+        <small>{activeBeat?.text ?? `+${combat.reward} XP when cleared`}</small>
         {activeBeat && (
           <b key={`${activeBeatIndex}-${activeBeat.attacker}`} className={`combat-damage-float ${activeBeat.attacker}`}>
             -{activeBeat.damage}
           </b>
         )}
       </div>
+      <ol className="combat-log" aria-label="Combat play by play">
+        {combatLog.map((beat) => (
+          <li key={`${beat.attacker}-${beat.index}-${beat.atMs}`} className={`combat-log-${beat.state}`}>
+            <i aria-hidden="true" />
+            <span>{beat.text ?? (beat.attacker === 'hero' ? `You hit ${combat.enemyName}` : `${combat.enemyName} hits you`)}</span>
+          </li>
+        ))}
+      </ol>
       <div className={`combatant enemy-combat ${activeBeat?.attacker === 'enemy' ? 'combat-attacking' : ''} ${activeBeat?.attacker === 'hero' ? 'combat-taking-hit' : ''}`}>
-        <img key={`enemy-${activeBeatIndex}-${activeBeat?.attacker ?? 'idle'}`} src={combatEnemyUrl(combat.enemyId)} alt="" />
+        <div className={`enemy-party enemy-party-${enemyLineup.length}`} aria-hidden="true">
+          {enemyLineup.map((enemy, index) => (
+            <img
+              key={`enemy-${index}-${enemy.id}`}
+              data-enemy-slot={index}
+              className={index === activeEnemyIndex ? 'active-enemy' : ''}
+              src={combatEnemyUrl(enemy.id)}
+              alt=""
+            />
+          ))}
+        </div>
         <div className="combat-name">{combat.enemyName}</div>
-        <CombatBar current={Math.ceil(Math.max(0, displayHp.enemy))} max={combat.enemyMaxHp} value={displayHp.enemy} />
+        <div className={`enemy-hp-stack enemy-hp-stack-${enemyHpRows.length}`}>
+          {enemyHpRows.map((enemy, index) => (
+            <CombatBar
+              key={`${enemy.name}-${index}`}
+              className={index === activeEnemyIndex ? 'active-enemy-hp' : ''}
+              label={enemy.name}
+              current={Math.ceil(enemy.current)}
+              max={enemy.max}
+              value={enemy.current}
+            />
+          ))}
+        </div>
         <InfoPopover
           title={combat.enemyName}
           eyebrow="Enemy"
@@ -1578,6 +1813,21 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
       </div>
     </div>
   );
+}
+
+function enemyHealthRows(totalHp: number, maxHp: number, lineup: { name: string }[]) {
+  const count = Math.max(1, lineup.length);
+  const perEnemyMax = Math.max(1, Math.ceil(maxHp / count));
+  const remainingTotal = Math.max(0, totalHp);
+  return lineup.map((enemy, index) => {
+    const laterEnemyHp = perEnemyMax * (count - index - 1);
+    const current = Math.max(0, Math.min(perEnemyMax, remainingTotal - laterEnemyHp));
+    return {
+      name: enemy.name,
+      current,
+      max: perEnemyMax
+    };
+  });
 }
 
 function fallbackCombatBeats(combat: Combat): CombatBeat[] {
@@ -1600,12 +1850,24 @@ function fallbackCombatBeats(combat: Combat): CombatBeat[] {
   return beats.filter((beat) => beat.damage > 0);
 }
 
-function CombatBar({ current, max, value }: { current: number; max: number; value: number }) {
+function CombatBar({
+  current,
+  max,
+  value,
+  label,
+  className = ''
+}: {
+  current: number;
+  max: number;
+  value: number;
+  label?: string;
+  className?: string;
+}) {
   const hpRatio = Math.max(0, Math.min(100, (value / max) * 100));
   return (
-    <div className="combat-hp">
+    <div className={`combat-hp ${className}`}>
       <span style={{ width: `${hpRatio}%` }} />
-      <small>{current}/{max}</small>
+      <small>{label ? `${label} ${current}/${max}` : `${current}/${max}`}</small>
     </div>
   );
 }
@@ -1639,11 +1901,11 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
           </section>
           <section>
             <h2>Scoring</h2>
-            <p>Level, laps, fights, loot, and banked XP unlock gates. In solo, score opens the gate, but your build must beat the Warden and Crown Gate before the next tier unlocks.</p>
+            <p>Score shows run strength and leaderboard pressure. Tiers advance from completed loops, with solo gate fights checking whether your build can survive the jump.</p>
           </section>
           <section>
             <h2>Finale</h2>
-            <p>At {config.goalScore} points in tier III, the Loop Tyrant appears. Corruption rises from laps, tier clears, and deaths; dying restarts the current tier board and costs gold, tempo, and sometimes loose loot.</p>
+            <p>After four completed loops in tier III, the Loop Tyrant appears. Corruption rises from laps, tier clears, and deaths; dying restarts the current tier board and costs gold, tempo, and sometimes loose loot.</p>
           </section>
         </div>
         <div className="help-lists">
@@ -1670,7 +1932,6 @@ export {
   InfoPopover,
   MobileDrawer,
   MobileRivalStrip,
-  MobileStatusBar,
   PhaseStrip,
   PlayerPanel,
   RivalIntel,

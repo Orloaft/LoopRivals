@@ -4,7 +4,8 @@ import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield } from 'lucide-react';
 import { heroPortraitUrl, statLine } from './game-assets';
-import type { GameConfig, GameState, Loot, OnboardingState, Player, RoomSettings, ShopOffer, Tile } from './types';
+import { authoritativeCursor, clampCursorAtMovementStop, reconcileVisualCursor, visualCursorForPlayer } from './movement';
+import type { GameConfig, GameState, Loot, RoomSettings, ShopOffer, Tile } from './types';
 import {
   DragCardGhost,
   DragLootGhost,
@@ -14,7 +15,6 @@ import {
   InfoPopover,
   MobileDrawer,
   MobileRivalStrip,
-  MobileStatusBar,
   PhaseStrip,
   PlayerPanel,
   RivalIntel,
@@ -39,6 +39,85 @@ export type LocalProfile = {
 };
 
 const emptyProfile: LocalProfile = { matches: 0, wins: 0, bestScore: 0, bestLevel: 1 };
+const authorityStaleMs = 1800;
+
+function GothicParallaxBackdrop({
+  player,
+  gameStatus,
+  serverNow,
+  receivedAt,
+  authorityPaused
+}: {
+  player?: GameState['players'][number] | null;
+  gameStatus?: GameState['status'];
+  serverNow?: number;
+  receivedAt?: number;
+  authorityPaused?: boolean;
+}) {
+  const backdropRef = useRef<HTMLDivElement | null>(null);
+  const cursorRef = useRef<number | null>(null);
+  const lastFrameAtRef = useRef<number | null>(null);
+  const motionRef = useRef({ player, serverNow, receivedAt, authorityPaused });
+
+  useEffect(() => {
+    motionRef.current = { player, serverNow, receivedAt, authorityPaused };
+  }, [authorityPaused, player, receivedAt, serverNow]);
+  const hasMotionPlayer = Boolean(player);
+
+  useEffect(() => {
+    const backdrop = backdropRef.current;
+    if (!backdrop) return undefined;
+    const current = motionRef.current;
+
+    if (!current.player) {
+      cursorRef.current = null;
+      lastFrameAtRef.current = null;
+      backdrop.style.setProperty('--loop-progress', '0.000');
+      return undefined;
+    }
+
+    const boardLength = Math.max(1, current.player.board.length);
+    if (gameStatus !== 'running' || authorityPaused) {
+      const cursor = authoritativeCursor(current.player);
+      cursorRef.current = cursor;
+      lastFrameAtRef.current = null;
+      backdrop.style.setProperty('--loop-progress', (cursor / boardLength).toFixed(3));
+      return undefined;
+    }
+
+    let frame = 0;
+    const tick = () => {
+      const frameAt = Date.now();
+      const current = motionRef.current;
+      if (!current.player) return;
+      const targetCursor = visualCursorForPlayer(current.player, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused);
+      const previousCursor = cursorRef.current;
+      const elapsedMs = lastFrameAtRef.current === null ? 0 : frameAt - lastFrameAtRef.current;
+      const segment = current.player.nextMovement ?? current.player.arrivalMovement;
+      const segmentDurationMs = Math.max(1, (segment?.arriveAt ?? 0) - (segment?.departAt ?? 0)) || 800;
+      const localStepCursor = previousCursor === null
+        ? targetCursor
+        : clampCursorAtMovementStop(current.player.board, previousCursor, previousCursor + elapsedMs / segmentDurationMs);
+      const nextCursor = reconcileVisualCursor(current.player.board, previousCursor, targetCursor, localStepCursor);
+      lastFrameAtRef.current = frameAt;
+      cursorRef.current = nextCursor;
+      backdrop.style.setProperty('--loop-progress', (nextCursor / Math.max(1, current.player.board.length)).toFixed(3));
+      frame = window.requestAnimationFrame(tick);
+    };
+    tick();
+    return () => window.cancelAnimationFrame(frame);
+  }, [authorityPaused, gameStatus, hasMotionPlayer]);
+
+  return (
+    <div ref={backdropRef} className="gothic-parallax" style={{ '--loop-progress': '0.000' } as CSSProperties} aria-hidden="true">
+      <span className="parallax-sky" />
+      <span className="parallax-spires" />
+      <span className="parallax-graves" />
+      <span className="parallax-brambles" />
+      <span className="parallax-vignette" />
+    </div>
+  );
+}
 
 function guidedRoomId() {
   return `guide-${Math.floor(Math.random() * 1e7).toString(36)}`;
@@ -52,39 +131,6 @@ function loadProfile(): LocalProfile {
   }
 }
 
-function OnboardingCoach({ onboarding, player, onClose }: { onboarding: OnboardingState; player: Player; onClose: () => void }) {
-  const isDebrief = onboarding.step === 'debrief';
-  const signature = player.signature ? `${player.signature.label} ${player.signature.value}/${player.signature.max}` : 'signature ready';
-  return (
-    <section className={`onboarding-coach ${isDebrief ? 'debrief' : ''}`} aria-label="Guided duel coach">
-      <div className="coach-copy">
-        <span>{isDebrief ? 'Run story' : 'Guided duel'}</span>
-        <strong>{onboarding.title}</strong>
-        <p>{onboarding.prompt}</p>
-        <small>{onboarding.detail}</small>
-      </div>
-      <div className="coach-facts">
-        <span>Lv {player.level}</span>
-        <span>{signature}</span>
-        <span>{player.hand.length} in hand</span>
-      </div>
-      {onboarding.recaps.length > 0 && (
-        <div className="coach-recaps">
-          {onboarding.recaps.slice(0, 3).map((line) => <span key={line}>{line}</span>)}
-        </div>
-      )}
-      {isDebrief && (
-        <div className="coach-actions">
-          <button className="primary-action" onClick={onClose}>
-            <Play size={16} />
-            Normal Run
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
 function App() {
   const socket = useMemo<Socket>(() => io(), []);
   const bgmRef = useRef<HTMLAudioElement | null>(null);
@@ -92,6 +138,8 @@ function App() {
   const [playerToken, setPlayerToken] = useState(() => shouldAutoReconnect ? savedPlayerToken() : '');
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
+  const [socketConnected, setSocketConnected] = useState(() => socket.connected);
+  const [networkNow, setNetworkNow] = useState(() => Date.now());
   const [name, setName] = useState(() => `Player ${Math.floor(Math.random() * 900 + 100)}`);
   const [roomId, setRoomId] = useState(initialRoomId);
   const [heroId, setHeroId] = useState('ember-knight');
@@ -105,6 +153,7 @@ function App() {
   const [dragCardId, setDragCardId] = useState<string | null>(null);
   const [dragLootId, setDragLootId] = useState<string | null>(null);
   const [dragPoint, setDragPoint] = useState({ x: 0, y: 0 });
+  const dragFrameRef = useRef<number | null>(null);
   const [bgmOn, setBgmOn] = useState(() => localStorage.getItem('loopduel.bgm') !== 'off');
   const [profile, setProfile] = useState(loadProfile);
   const [recordedFinishId, setRecordedFinishId] = useState<string | null>(null);
@@ -112,6 +161,7 @@ function App() {
 
   useEffect(() => {
     socket.on('connect', () => {
+      setSocketConnected(true);
       if (!shouldAutoReconnect) return;
       const savedToken = savedPlayerToken();
       const savedRoom = localStorage.getItem('loopduel.roomId') ?? 'main';
@@ -121,7 +171,7 @@ function App() {
       setConfig(payload);
       setHeroId(payload.heroes[0]?.id ?? 'ember-knight');
     });
-    socket.on('state', (payload: GameState) => setGame(payload));
+    socket.on('state', (payload: GameState) => setGame({ ...payload, receivedAt: Date.now() }));
     socket.on('session', ({ playerToken: nextToken, roomId: nextRoomId }: { playerToken: string; roomId: string }) => {
       localStorage.setItem('loopduel.playerToken', nextToken);
       localStorage.setItem('loopduel.roomId', nextRoomId);
@@ -130,14 +180,23 @@ function App() {
       setSpectatorRoomId(null);
     });
     socket.on('notice', (message: string) => setNotice(message));
+    socket.on('disconnect', () => setSocketConnected(false));
+    socket.on('connect_error', () => setSocketConnected(false));
     return () => {
       socket.off('connect');
       socket.off('config');
       socket.off('state');
       socket.off('session');
       socket.off('notice');
+      socket.off('disconnect');
+      socket.off('connect_error');
     };
   }, [heroId, name, shouldAutoReconnect, socket]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNetworkNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Esc toggles the game menu (and closes the rules overlay first if it's open).
   useEffect(() => {
@@ -160,6 +219,28 @@ function App() {
   const draggedLoot = me?.loot.find((item) => item.id === dragLootId) ?? null;
   const activeCard = draggedCard ?? selectedCard;
   const isHost = Boolean(me && game?.hostId === me.id);
+  const stateAgeMs = game?.receivedAt ? networkNow - game.receivedAt : Number.POSITIVE_INFINITY;
+  const hostPlayer = game?.players.find((player) => player.id === game.hostId) ?? null;
+  const hostMissing = Boolean(hostPlayer && !hostPlayer.connected);
+  const serverAuthorityPaused = Boolean(game?.authority?.paused);
+  const authorityPaused = Boolean(game && game.status === 'running' && (!socketConnected || serverAuthorityPaused || hostMissing || stateAgeMs > authorityStaleMs));
+  const authorityPauseTitle = !socketConnected
+    ? 'Reconnecting to server'
+    : serverAuthorityPaused || hostMissing
+      ? 'Waiting for host'
+      : 'Waiting for server';
+  const authorityPauseDetail = !socketConnected
+    ? 'Movement is paused until the authoritative room connection returns.'
+    : 'Movement is paused until a fresh authoritative snapshot arrives.';
+
+  function emitAuthoritative(eventName: string, payload?: unknown) {
+    if (authorityPaused) {
+      setNotice(`${authorityPauseTitle}. Actions are paused for sync.`);
+      return false;
+    }
+    socket.emit(eventName, payload);
+    return true;
+  }
 
   function closeTutorial() {
     localStorage.setItem('loopduel.tutorialSeen', 'yes');
@@ -212,7 +293,12 @@ function App() {
 
     function trackDrag(event: DragEvent) {
       if (event.clientX === 0 && event.clientY === 0) return;
-      setDragPoint({ x: event.clientX, y: event.clientY });
+      const point = { x: event.clientX, y: event.clientY };
+      if (dragFrameRef.current !== null) window.cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = window.requestAnimationFrame(() => {
+        dragFrameRef.current = null;
+        setDragPoint(point);
+      });
     }
 
     window.addEventListener('drag', trackDrag, true);
@@ -220,6 +306,8 @@ function App() {
     return () => {
       document.body.classList.remove('card-drag-active');
       document.body.classList.remove('loot-drag-active');
+      if (dragFrameRef.current !== null) window.cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
       window.removeEventListener('drag', trackDrag, true);
       window.removeEventListener('dragover', trackDrag, true);
     };
@@ -265,29 +353,29 @@ function App() {
   }
 
   function addBot() {
-    socket.emit('addBot');
+    emitAuthoritative('addBot');
   }
 
   function fillCpu() {
-    socket.emit('fillCpu');
+    emitAuthoritative('fillCpu');
   }
 
   function startRoom() {
-    socket.emit('startRoom');
+    emitAuthoritative('startRoom');
   }
 
   function updateRoomSettings(settings: Partial<RoomSettings>) {
-    socket.emit('updateRoomSettings', settings);
+    emitAuthoritative('updateRoomSettings', settings);
   }
 
   function kickPlayer(targetId: string) {
-    socket.emit('kickPlayer', { targetId });
+    emitAuthoritative('kickPlayer', { targetId });
   }
 
   function placeCard(tile: Tile, cardId = activeCard?.instanceId) {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'terrain') return;
-    socket.emit('placeCard', { cardId: card.instanceId, tileIndex: tile.index });
+    if (!emitAuthoritative('placeCard', { cardId: card.instanceId, tileIndex: tile.index })) return;
     setSelectedCardId(null);
     setDragCardId(null);
   }
@@ -295,7 +383,7 @@ function App() {
   function playRival(targetId: string, cardId = activeCard?.instanceId) {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'rival') return;
-    socket.emit('playRivalCard', { cardId: card.instanceId, targetId });
+    if (!emitAuthoritative('playRivalCard', { cardId: card.instanceId, targetId })) return;
     setSelectedCardId(null);
     setDragCardId(null);
   }
@@ -303,7 +391,7 @@ function App() {
   function playBonk(targetId?: string, cardId = activeCard?.instanceId) {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'bonk') return;
-    socket.emit('playBonkCard', { cardId: card.instanceId, targetId });
+    if (!emitAuthoritative('playBonkCard', { cardId: card.instanceId, targetId })) return;
     setSelectedCardId(null);
     setDragCardId(null);
   }
@@ -311,32 +399,32 @@ function App() {
   function playRivalOnTile(targetId: string, tileIndex: number, cardId = activeCard?.instanceId) {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'rival') return;
-    socket.emit('playRivalCard', { cardId: card.instanceId, targetId, tileIndex });
+    if (!emitAuthoritative('playRivalCard', { cardId: card.instanceId, targetId, tileIndex })) return;
     setSelectedCardId(null);
     setDragCardId(null);
   }
 
   function equip(item: Loot) {
-    socket.emit('equip', { itemId: item.id });
+    emitAuthoritative('equip', { itemId: item.id });
   }
 
   function sellCard(cardId: string) {
-    socket.emit('sellCard', { cardId });
+    if (!emitAuthoritative('sellCard', { cardId })) return;
     setSelectedCardId(null);
     setDragCardId(null);
   }
 
   function sellLoot(itemId: string) {
-    socket.emit('sellLoot', { itemId });
+    if (!emitAuthoritative('sellLoot', { itemId })) return;
     setDragLootId(null);
   }
 
   function buyShopOffer(offer: ShopOffer) {
-    socket.emit('buyShopOffer', { offerId: offer.id });
+    emitAuthoritative('buyShopOffer', { offerId: offer.id });
   }
 
   function chooseTrait(traitId: string) {
-    socket.emit('chooseTrait', { traitId });
+    emitAuthoritative('chooseTrait', { traitId });
   }
 
   function handleSellDrop(kind: 'card' | 'loot', id: string) {
@@ -345,7 +433,7 @@ function App() {
   }
 
   function resetRoom() {
-    socket.emit('resetRoom');
+    if (!emitAuthoritative('resetRoom')) return;
     setSelectedCardId(null);
     setDragCardId(null);
     setDragLootId(null);
@@ -358,6 +446,7 @@ function App() {
   if (!me && spectatorRoomId && game.id === spectatorRoomId) {
     return (
       <main className="game-shell spectator-shell">
+        <GothicParallaxBackdrop player={game.players[0]} />
         {notice && <div className="notice-toast">{notice}</div>}
         {game.status !== 'finished' && <PhaseStrip game={game} />}
         <section className="spectator-bar">
@@ -382,8 +471,12 @@ function App() {
               <PlayerPanel
                 key={player.id}
                 player={player}
+                gameStatus={game.status}
+                serverNow={game.now}
+                receivedAt={game.receivedAt}
                 rank={player.rank}
                 active={false}
+                isHost={false}
                 focused={index === 0}
                 selectedCard={null}
                 draggingCard={null}
@@ -408,6 +501,7 @@ function App() {
   if (!me) {
     return (
       <main className="lobby-shell">
+        <GothicParallaxBackdrop />
         <section className="brand-panel">
           <div className="brand-mark">LD</div>
           <div>
@@ -517,35 +611,22 @@ function App() {
     : highestScoreRival ? [highestScoreRival] : [];
 
   return (
-    <main className="game-shell">
+    <main className={`game-shell ${authorityPaused ? 'authority-paused' : ''}`}>
+      <GothicParallaxBackdrop
+        player={me}
+        gameStatus={game.status}
+        serverNow={game.now}
+        receivedAt={game.receivedAt}
+        authorityPaused={authorityPaused}
+      />
       <audio ref={bgmRef} src="/assets/audio/crypt-of-neon-glass.mp3" preload="auto" loop />
       {notice && <div className="notice-toast">{notice}</div>}
-
-      {game.status !== 'finished' && <PhaseStrip game={game} />}
-      <MobileStatusBar player={me} game={game} />
-      {game.onboarding?.playerId === me.id && (
-        <OnboardingCoach
-          onboarding={game.onboarding}
-          player={me}
-          onClose={() => {
-            localStorage.setItem('loopduel.tutorialSeen', 'yes');
-            resetRoom();
-          }}
-        />
+      {authorityPaused && (
+        <section className="authority-pause" role="status" aria-live="polite">
+          <strong>{authorityPauseTitle}</strong>
+          <span>{authorityPauseDetail}</span>
+        </section>
       )}
-      <section className="room-actions">
-        <span>Room {game.id}</span>
-        {game.status === 'lobby' && (
-          <button className="primary-action" onClick={startRoom} disabled={!isHost || game.players.length === 0}>
-            <Play size={16} />
-            Start Match
-          </button>
-        )}
-        <button className="icon-action" onClick={() => copyInvite(game.id)}>
-          <Share2 size={16} />
-          Invite
-        </button>
-      </section>
 
       {game.status === 'finished' && game.winner && (
         <section className="winner-strip" style={{ '--hero-color': game.winner.color } as CSSProperties}>
@@ -596,8 +677,13 @@ function App() {
             <PlayerPanel
               key={player.id}
               player={player}
+              gameStatus={game.status}
+              serverNow={game.now}
+              receivedAt={game.receivedAt}
+              authorityPaused={authorityPaused}
               rank={player.rank}
               active={player.id === me.id}
+              isHost={isHost}
               focused={player.id === focusedPlayerId}
               selectedCard={player.id === me.id ? activeCard : null}
               draggingCard={player.id === me.id ? activeCard : null}
@@ -610,6 +696,7 @@ function App() {
                 else playRival(player.id, cardId);
               } : undefined}
               onRivalTile={player.id !== me.id && rivalTargetCard ? (tileIndex, cardId) => playRivalOnTile(player.id, tileIndex, cardId) : undefined}
+              onStartRoom={startRoom}
               onFocus={() => focusBoard(player.id)}
             />
           ))}
@@ -661,12 +748,10 @@ function App() {
             }}
             onDragEnd={() => setDragCardId(null)}
           />
-          {activeCard && (
-            <div className={`action-hint ${activeCard.kind}`}>
-              <strong>{activeCard.icon} {activeCard.name}</strong>
-              <span>{activeCard.kind === 'terrain' ? 'choose a loop tile' : activeCard.kind === 'bonk' ? (activeCard.targetMode === 'chosen' ? 'choose who gets stunned' : 'bonks the leading rival') : 'choose a rival or road trap'}</span>
-            </div>
-          )}
+          <div className={`action-hint ${activeCard ? activeCard.kind : 'empty'}`} aria-hidden={!activeCard}>
+            <strong>{activeCard ? `${activeCard.icon} ${activeCard.name}` : 'No card'}</strong>
+            <span>{activeCard ? (activeCard.kind === 'terrain' ? 'choose a loop tile' : activeCard.kind === 'bonk' ? (activeCard.targetMode === 'chosen' ? 'choose who gets stunned' : 'bonks the leading rival') : 'choose a rival or road trap') : 'standing by'}</span>
+          </div>
           {(rivalTargetCard || bonkTargetCard) && (
             <div className="target-row">
               <span className="target-label">{bonkTargetCard ? 'bonk' : 'strike'}</span>
@@ -749,8 +834,10 @@ function App() {
           onToggleBgm={() => setBgmOn((on) => !on)}
         />
       </section>
-      {draggedCard && <DragCardGhost card={draggedCard} x={dragPoint.x} y={dragPoint.y} />}
-      {draggedLoot && <DragLootGhost item={draggedLoot} x={dragPoint.x} y={dragPoint.y} />}
+      <div className="drag-overlay-layer" aria-hidden="true">
+        {draggedCard && <DragCardGhost card={draggedCard} x={dragPoint.x} y={dragPoint.y} />}
+        {draggedLoot && <DragLootGhost item={draggedLoot} x={dragPoint.x} y={dragPoint.y} />}
+      </div>
       <SellZone
         active={Boolean(dragCardId || dragLootId)}
         player={me}
@@ -784,7 +871,7 @@ function App() {
               <article>
                 <span>4</span>
                 <strong>Claim the loop</strong>
-                <p>Score opens each gate. The final clear needs tier III, one more lap, and a clean boss fight.</p>
+                <p>Completed loops open each tier. The final clear needs tier III, four more loops, and a clean Tyrant fight.</p>
               </article>
             </div>
             <div className="tutorial-actions">

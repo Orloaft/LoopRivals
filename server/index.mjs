@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import {
+  absorbRoomClockDrift,
   addBot,
   buyShopOffer,
   chooseTrait,
@@ -446,13 +447,19 @@ async function startServer() {
     });
   });
 
+  const simulationIntervalMs = 260;
+  let lastSimulationAt = Date.now();
   setInterval(() => {
+    const currentSimulationAt = Date.now();
+    const elapsedMs = currentSimulationAt - lastSimulationAt;
+    lastSimulationAt = currentSimulationAt;
     for (const room of rooms.values()) {
+      absorbRoomClockDrift(room, elapsedMs, simulationIntervalMs);
       runRoomStep(room);
       emitRoom(io, room);
     }
     if (rooms.size > 0) markPersistenceDirty();
-  }, 260);
+  }, simulationIntervalMs);
 
   setInterval(() => cleanupRooms(io), cleanupIntervalMs);
   setInterval(() => savePersistedRooms(), persistenceFlushIntervalMs);
