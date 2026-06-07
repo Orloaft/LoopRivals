@@ -283,41 +283,48 @@ const combatEncounterStages = {
     { minPressure: 0, label: 'rat grove', threatDelta: -4, rewardDelta: -3 },
     { minPressure: 1, label: 'wolf grove', threatDelta: -2, rewardDelta: 0 },
     { minPressure: 3, label: 'thorn grove', threatDelta: 0, rewardDelta: 2 },
-    { minPressure: 6, label: 'dire grove', threatDelta: 3, rewardDelta: 5 }
+    { minPressure: 6, label: 'dire grove', threatDelta: 3, rewardDelta: 5 },
+    { minPressure: 7, label: 'dire grove', threatDelta: 4, rewardDelta: 5 }
   ],
   'crypt duel': [
     { minPressure: 0, label: 'skeleton crypt', threatDelta: -5, rewardDelta: -5 },
     { minPressure: 1, label: 'haunted crypt', threatDelta: -2, rewardDelta: -2 },
     { minPressure: 3, label: 'crypt duel', threatDelta: 0, rewardDelta: 0 },
-    { minPressure: 5, label: 'grave crypt', threatDelta: 3, rewardDelta: 4 }
+    { minPressure: 5, label: 'grave crypt', threatDelta: 3, rewardDelta: 4 },
+    { minPressure: 7, label: 'grave crypt', threatDelta: 4, rewardDelta: 4 }
   ],
   'wolf den': [
     { minPressure: 0, label: 'dusk wolf den', threatDelta: -3, rewardDelta: -2 },
     { minPressure: 3, label: 'wolf den', threatDelta: 0, rewardDelta: 1 },
-    { minPressure: 6, label: 'dire wolf den', threatDelta: 4, rewardDelta: 5 }
+    { minPressure: 6, label: 'dire wolf den', threatDelta: 4, rewardDelta: 5 },
+    { minPressure: 7, label: 'dire wolf den', threatDelta: 5, rewardDelta: 5 }
   ],
   'bone pit': [
     { minPressure: 0, label: 'skeleton pit', threatDelta: -4, rewardDelta: -3 },
     { minPressure: 3, label: 'bone pit', threatDelta: 0, rewardDelta: 1 },
-    { minPressure: 5, label: 'grave pit', threatDelta: 3, rewardDelta: 5 }
+    { minPressure: 5, label: 'grave pit', threatDelta: 3, rewardDelta: 5 },
+    { minPressure: 7, label: 'grave pit', threatDelta: 4, rewardDelta: 5 }
   ],
   'ruined keep': [
     { minPressure: 0, label: 'bandit camp', threatDelta: -4, rewardDelta: -3 },
     { minPressure: 1, label: 'goblin camp', threatDelta: -2, rewardDelta: -1 },
     { minPressure: 3, label: 'brigand keep', threatDelta: 0, rewardDelta: 1 },
-    { minPressure: 5, label: 'ruined keep', threatDelta: 3, rewardDelta: 5 }
+    { minPressure: 5, label: 'ruined keep', threatDelta: 3, rewardDelta: 5 },
+    { minPressure: 7, label: 'ruined keep', threatDelta: 4, rewardDelta: 5 }
   ],
   'bandit ambush': [
     { minPressure: 0, label: 'road ambush', threatDelta: -4, rewardDelta: -3 },
     { minPressure: 1, label: 'goblin camp', threatDelta: -2, rewardDelta: -1 },
     { minPressure: 3, label: 'bandit ambush', threatDelta: 0, rewardDelta: 1 },
-    { minPressure: 5, label: 'ruined keep', threatDelta: 2, rewardDelta: 4 }
+    { minPressure: 5, label: 'ruined keep', threatDelta: 2, rewardDelta: 4 },
+    { minPressure: 7, label: 'ruined keep', threatDelta: 3, rewardDelta: 4 }
   ],
   'road skirmish': [
     { minPressure: 0, label: 'road ambush', threatDelta: -3, rewardDelta: -2 },
     { minPressure: 1, label: 'goblin camp', threatDelta: -1, rewardDelta: 0 },
     { minPressure: 3, label: 'road skirmish', threatDelta: 1, rewardDelta: 2 },
-    { minPressure: 5, label: 'bandit ambush', threatDelta: 2, rewardDelta: 4 }
+    { minPressure: 5, label: 'bandit ambush', threatDelta: 2, rewardDelta: 4 },
+    { minPressure: 7, label: 'bandit ambush', threatDelta: 3, rewardDelta: 4 }
   ]
 };
 
@@ -380,8 +387,8 @@ export const heroes = [
     power: 7,
     guard: 2,
     speed: 5,
-    lootLuck: 0.06,
-    text: 'A fast looter who can vanish from one lethal hit each tier, then race the reset.'
+    lootLuck: 0.04,
+    text: 'A fast looter who can vanish from one lethal hit each tier, paying tempo and coin to race the reset.'
   },
   {
     id: 'rune-archer',
@@ -534,15 +541,15 @@ export const talentTrees = {
     talent('moss-warden', 'meadowbind', 'Meadowbind', '+4 lap heal, +2 max HP.', 3, 20, 58, { lapHeal: 4, maxHp: 2 }, ['greenwall']),
     talent('moss-warden', 'seed-cache', 'Seed Cache', 'Draw faster and find loot slightly more often.', 3, 80, 58, { drawRate: 0.94, lootLuck: 0.08 }, ['path-sower']),
     talent('moss-warden', 'old-bark', 'Old Bark', '+2 guard, +4 max HP.', 4, 35, 82, { guard: 2, maxHp: 4 }, ['meadowbind']),
-    talent('moss-warden', 'wild-cartographer', 'Wild Cartographer', '+1 speed, terrain scores more.', 4, 65, 82, { speed: 1, terrainScore: 3 }, ['seed-cache'])
+    talent('moss-warden', 'wild-cartographer', 'Wild Cartographer', '+2 power, +1 speed, terrain scores more.', 4, 65, 82, { power: 2, speed: 1, terrainScore: 3 }, ['seed-cache'])
   ],
   'night-vagrant': [
     talent('night-vagrant', 'moon-pocket', 'Moon Pocket', 'Find loot more often, draw slightly faster.', 1, 50, 12, { lootLuck: 0.06, drawRate: 0.97 }),
     talent('night-vagrant', 'softstep', 'Softstep', '+1 speed, +1 guard.', 2, 28, 34, { speed: 1, guard: 1 }, ['moon-pocket']),
-    talent('night-vagrant', 'black-market', 'Black Market', 'Find better loot more often.', 2, 72, 34, { lootLuck: 0.1 }, ['moon-pocket']),
+    talent('night-vagrant', 'black-market', 'Black Market', 'Find better loot more often.', 2, 72, 34, { lootLuck: 0.06 }, ['moon-pocket']),
     talent('night-vagrant', 'knife-rhythm', 'Knife Rhythm', '+1 power, draw faster.', 3, 20, 58, { power: 1, drawRate: 0.94 }, ['softstep']),
     talent('night-vagrant', 'smoke-veil', 'Smoke Veil', '+8 max HP, +2 guard.', 3, 80, 58, { maxHp: 8, guard: 2 }, ['black-market']),
-    talent('night-vagrant', 'night-haul', 'Night Haul', '+1 speed and stronger loot odds.', 4, 35, 82, { speed: 1, lootLuck: 0.08 }, ['knife-rhythm']),
+    talent('night-vagrant', 'night-haul', 'Night Haul', '+1 speed and stronger loot odds.', 4, 35, 82, { speed: 1, lootLuck: 0.04 }, ['knife-rhythm']),
     talent('night-vagrant', 'vanish-loop', 'Vanish Loop', '+1 speed, +1 power, +4 max HP.', 4, 65, 82, { speed: 1, power: 1, maxHp: 4 }, ['smoke-veil'])
   ],
   'rune-archer': [
@@ -1914,7 +1921,7 @@ export function activateHeroAbility(room, player) {
         }
       });
     }
-    const gold = 14 + strength * 7;
+    const gold = 10 + strength * 5;
     player.gold = (player.gold ?? 0) + gold;
     detail = `lifted ${gold} gold${drawn > 0 ? ` and ${drawn} card${drawn === 1 ? '' : 's'}` : ''}`;
   } else if (player.heroId === 'rune-archer') {
@@ -2654,9 +2661,12 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   const runePower = runeMarks > 0 && (staged.pressure >= 5 || ['gate warden', 'crown gate', 'loop tyrant'].includes(label))
     ? Math.min(2, Math.floor(runeMarks / 3))
     : 0;
+  const mossPower = player.heroId === 'moss-warden' && (staged.pressure >= 6 || ['gate warden', 'crown gate', 'loop tyrant'].includes(label))
+    ? Math.min(3, Math.floor(((player.wardenOvergrowth ?? 0) + 1) / 2))
+    : 0;
   const heroBonus = player.heroId === 'ember-knight' && player.hp < player.maxHp * 0.45 ? 2 + emberHeat : emberHeat;
   const graveBonus = player.heroId === 'grave-singer' && threat >= 10 ? 4 : 0;
-  const power = Math.max(4, player.power + emberHeat + runePower + Math.floor(graveDirge / 2) + (isSoloPlayer(room, player) ? 0 : Math.floor(player.level / 3)));
+  const power = Math.max(4, player.power + emberHeat + runePower + mossPower + Math.floor(graveDirge / 2) + (isSoloPlayer(room, player) ? 0 : Math.floor(player.level / 3)));
   const scaledThreat = threat + tierThreat + Math.floor(corruption * 0.18);
   const enemyMaxHp = clamp(scaledThreat * 2 + reward + player.level * 3 + enemyCount * 12 + Math.floor(corruption * 0.65), 24, label === 'loop tyrant' ? 320 : 210);
   const rounds = clamp(Math.ceil(enemyMaxHp / power), enemyCount, enemyCount + 5);
@@ -2669,6 +2679,9 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   if (player.hp <= 0 && canVanish && player.heroId === 'night-vagrant' && player.vagrantEscapeTier !== tier) {
     player.vagrantEscapeTier = tier;
     player.hp = 1;
+    player.gold = Math.max(0, (player.gold ?? 0) - (16 + tier * 6));
+    player.scorePenalty = (player.scorePenalty ?? 0) + 60 + tier * 20;
+    player.vagrantVanishDelayMs = (player.vagrantVanishDelayMs ?? 0) + Math.round((650 + tier * 180) * roomTimeScale(room));
     vanished = true;
   }
   player.armor = Math.max(0, player.armor - 1);
@@ -2680,6 +2693,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   player.event = `${label}: ${enemyCount} foe${enemyCount === 1 ? '' : 's'}, -${damage} hp, +${xpReward} xp`;
   if (emberHeat > 0) player.event += `, heat ${emberHeat}`;
   if (runeWard > 0) player.event += `, rune ward ${runeWard}`;
+  if (mossPower > 0) player.event += `, wild power ${mossPower}`;
   if (vanished) player.event += ', vanished at 1 hp';
   if (isGuidedHuman(room, player)) {
     const heatLine = emberHeat > 0 ? ` Heat added ${emberHeat} power to the exchange.` : '';
@@ -2715,6 +2729,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     heroHpBefore: hpBefore,
     heroHpAfter: player.hp,
     heroMaxHp: player.maxHp,
+    power,
     enemyHpBefore: enemyMaxHp,
     enemyHpAfter: 0,
     enemyMaxHp,
@@ -2737,7 +2752,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     reward: xpReward,
     combat: cloneJson(player.combat)
   });
-  const vagrantLuck = player.heroId === 'night-vagrant' ? 0.1 : 0;
+  const vagrantLuck = 0;
   if (random(room) < 0.17 + player.lootLuck + vagrantLuck + xpReward / 220) drawLoot(room, player);
   if (player.curse > 0) player.curse -= 1;
   return player.hp > 0;
@@ -3056,7 +3071,9 @@ function advancePlayer(room, player) {
   });
   const postCombatDelayMs = room.simulated ? simulatedPostCombatResumeMs : postCombatResumeMs;
   const nextDepartAt = player.combat ? player.combat.expiresAt + Math.round(postCombatDelayMs * roomTimeScale(room)) : arrivedAt;
-  const delay = movementDelay(room, player);
+  const vanishDelay = player.vagrantVanishDelayMs ?? 0;
+  player.vagrantVanishDelayMs = 0;
+  const delay = movementDelay(room, player) + vanishDelay;
   player.moveStartedAt = nextDepartAt;
   player.nextMoveAt = room.simulated ? Math.max(arrivedAt + delay, nextDepartAt) : nextDepartAt + delay;
   const nextFromCursor = player.laps * boardLength + player.position;
