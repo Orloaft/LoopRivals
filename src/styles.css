@@ -1841,8 +1841,8 @@ input:focus {
     drop-shadow(0 0 18px rgba(255, 78, 45, 0.56));
   will-change: opacity, transform, filter, background-image;
   animation:
-    combat-entry-cue 660ms cubic-bezier(0.18, 0.86, 0.2, 1) 80ms both,
-    combat-entry-frames 430ms steps(1, end) 80ms both;
+    combat-entry-cue 660ms cubic-bezier(0.18, 0.86, 0.2, 1) calc(var(--cue-delay, 0ms) + 80ms) both,
+    combat-entry-frames 430ms steps(1, end) calc(var(--cue-delay, 0ms) + 80ms) both;
 }
 
 .combat-entry-cue.active {
@@ -1856,9 +1856,9 @@ input:focus {
     drop-shadow(0 0 10px rgba(255, 224, 138, 0.42))
     saturate(0.86);
   animation:
-    combat-entry-cue 360ms cubic-bezier(0.18, 0.86, 0.2, 1) both,
-    combat-entry-frames 430ms steps(1, end) both,
-    combat-pending-pulse 760ms ease-in-out 360ms infinite;
+    combat-entry-cue 360ms cubic-bezier(0.18, 0.86, 0.2, 1) var(--cue-delay, 0ms) both,
+    combat-entry-frames 430ms steps(1, end) var(--cue-delay, 0ms) both,
+    combat-pending-pulse 760ms ease-in-out calc(var(--cue-delay, 0ms) + 360ms) infinite;
 }
 
 .combat-entry-cue.confirmed {

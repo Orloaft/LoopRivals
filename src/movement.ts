@@ -9,6 +9,7 @@ export const serverPresentationBufferMs = 420;
 export const maxVisualAuthorityLeadCursor = 1.18;
 export const hardVisualCorrectionCursor = 0.75;
 export const maxVisualFrameStepMs = 48;
+export const fallbackVisualSegmentDurationMs = 800;
 
 export function tileCenter(tile: Tile): RunnerPoint {
   return {
@@ -41,6 +42,12 @@ function segmentCursor(segment: NonNullable<Player['nextMovement']>, serverClock
   const durationMs = Math.max(1, segment.arriveAt - segment.departAt);
   const progress = Math.max(0, Math.min(1, (serverClock - segment.departAt) / durationMs));
   return segment.fromCursor + (segment.toCursor - segment.fromCursor) * progress;
+}
+
+export function visualSegmentDurationMs(segment: Player['nextMovement'] | Player['arrivalMovement']) {
+  if (!segment) return fallbackVisualSegmentDurationMs;
+  const durationMs = segment.arriveAt - segment.departAt;
+  return Number.isFinite(durationMs) && durationMs > 0 ? durationMs : fallbackVisualSegmentDurationMs;
 }
 
 function tileAtCursor(board: Tile[], cursor: number) {

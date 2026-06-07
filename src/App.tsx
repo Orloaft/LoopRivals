@@ -5,7 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield, ShoppingBag } from 'lucide-react';
 import { isAuthorityStateStale } from './authority-timeline';
 import { heroPortraitUrl, statLine } from './game-assets';
-import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, playerMotionIsLocked, visualCursorForPlayer, visualFrameCursorForPlayer } from './movement';
+import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, playerMotionIsLocked, visualCursorForPlayer, visualFrameCursorForPlayer, visualSegmentDurationMs } from './movement';
 import { applyRoomDelta } from './room-projection';
 import type { GameConfig, GameState, Loot, RoomDelta, RoomSettings, ShopOffer, Tile } from './types';
 import {
@@ -111,7 +111,7 @@ function GothicParallaxBackdrop({
       const previousCursor = cursorRef.current;
       const elapsedMs = lastFrameAtRef.current === null ? 0 : Math.min(maxVisualFrameStepMs, frameAt - lastFrameAtRef.current);
       const segment = current.player.nextMovement ?? current.player.arrivalMovement;
-      const segmentDurationMs = Math.max(1, (segment?.arriveAt ?? 0) - (segment?.departAt ?? 0)) || 800;
+      const segmentDurationMs = visualSegmentDurationMs(segment);
       const localStepCursor = previousCursor === null
         ? visualFrameCursorForPlayer(current.player, previousCursor, authoritativeCursor(current.player), current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused)
         : clampCursorAtMovementStop(current.player.board, previousCursor, previousCursor + elapsedMs / segmentDurationMs);

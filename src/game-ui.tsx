@@ -10,7 +10,7 @@ import {
   talentArtUrl,
   talentIconUrl
 } from './game-assets';
-import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, pendingCombatStopCursor, playerMotionIsLocked, pointAlongBoard, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, type RunnerPoint } from './movement';
+import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, pendingCombatStopCursor, playerMotionIsLocked, pointAlongBoard, serverPresentationClock, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, visualSegmentDurationMs, type RunnerPoint } from './movement';
 import type { Card, Combat, CombatBeat, EquipmentSlot, GameConfig, GameState, Loot, Player, RoomSettings, ShopOffer, Tile, Trait } from './types';
 
 type LocalProfile = {
@@ -361,7 +361,7 @@ function useRunnerMotion(
       const previousCursor = cursorRef.current;
       const elapsedMs = lastFrameAtRef.current === null ? 0 : Math.min(maxVisualFrameStepMs, frameAt - lastFrameAtRef.current);
       const segment = currentPlayer.nextMovement ?? currentPlayer.arrivalMovement;
-      const segmentDurationMs = Math.max(1, (segment?.arriveAt ?? 0) - (segment?.departAt ?? 0)) || 800;
+      const segmentDurationMs = visualSegmentDurationMs(segment);
       const localStepCursor = previousCursor === null
         ? visualFrameCursorForPlayer(currentPlayer, previousCursor, authoritativeCursor(currentPlayer), clock.serverNow, clock.receivedAt, authorityPaused)
         : clampCursorAtMovementStop(currentPlayer.board, previousCursor, previousCursor + elapsedMs / segmentDurationMs);
@@ -1860,8 +1860,16 @@ function PlayerPanel({
   const statusLabel = runnerStatusLabel(player);
   const runnerPoint = tileCenter(player.board[player.position] ?? player.board[0]);
   const pendingCombatCursor = pendingCombatStopCursor(player, serverNow, receivedAt, authorityPaused);
-  const pendingCombatArmed = pendingCombatCursor !== null
-    && Math.abs(visualCursorForPlayer(player, serverNow, receivedAt, authorityPaused) - pendingCombatCursor) < 0.12;
+  const pendingCombatSegment = pendingCombatCursor !== null && player.arrivalMovement?.toCursor === pendingCombatCursor
+    ? player.arrivalMovement
+    : pendingCombatCursor !== null && player.nextMovement?.toCursor === pendingCombatCursor
+      ? player.nextMovement
+      : null;
+  const presentationClock = serverPresentationClock(serverNow, receivedAt);
+  const pendingCombatCueDelayMs = Math.max(
+    0,
+    Math.ceil((pendingCombatSegment?.arriveAt ?? presentationClock) - presentationClock)
+  );
   const combatCuePoint = player.combat
     ? tileCenter(player.board[player.position] ?? player.board[0])
     : pendingCombatCursor !== null
@@ -1869,8 +1877,8 @@ function PlayerPanel({
       : runnerPoint;
   const combatCueKey = player.combat
     ? `combat-cue-${player.combat.startedAt}`
-    : pendingCombatArmed
-      ? `combat-cue-pending-${pendingCombatCursor}`
+    : pendingCombatCursor !== null
+      ? `combat-cue-pending-${pendingCombatCursor}-${pendingCombatSegment?.arriveAt ?? 'now'}`
       : null;
 
   return (
@@ -2003,7 +2011,8 @@ function PlayerPanel({
             className={`combat-entry-cue active ${player.combat ? 'confirmed' : 'pending'}`}
             style={{
               '--cue-left': `${combatCuePoint.left}%`,
-              '--cue-top': `${combatCuePoint.top}%`
+              '--cue-top': `${combatCuePoint.top}%`,
+              '--cue-delay': player.combat ? '0ms' : `${pendingCombatCueDelayMs}ms`
             } as CSSProperties}
             aria-hidden="true"
           />

@@ -10,7 +10,8 @@ import {
   playerMotionIsLocked,
   reconcileVisualCursor,
   visualCursorForPlayer,
-  visualFrameCursorForPlayer
+  visualFrameCursorForPlayer,
+  visualSegmentDurationMs
 } from '../src/movement.ts';
 
 function board(stopIndexes = []) {
@@ -51,6 +52,22 @@ test('visual reconciliation can bridge a whole ordinary tile between authority t
 test('visual motion uses a bounded frame step for delayed animation frames', () => {
   assert.ok(maxVisualFrameStepMs > 16);
   assert.ok(maxVisualFrameStepMs < 80);
+});
+
+test('visual motion uses the normal movement fallback when no segment is active', () => {
+  assert.equal(visualSegmentDurationMs(null), 800);
+});
+
+test('visual motion ignores invalid zero-length segment durations', () => {
+  assert.equal(
+    visualSegmentDurationMs({
+      fromCursor: 2,
+      toCursor: 3,
+      departAt: 1200,
+      arriveAt: 1200
+    }),
+    800
+  );
 });
 
 test('visual reconciliation does not run through deterministic combat stops', () => {
