@@ -975,7 +975,7 @@ function App() {
               <article>
                 <span>2</span>
                 <strong>Equip and choose traits</strong>
-                <p>Loot and talents turn early survival into enough power for the Warden, Crown Gate, and Tyrant.</p>
+                <p>Loot and talents turn early survival into enough power for the Briar Warden, Crown Sentinel, and Tyrant.</p>
               </article>
               <article>
                 <span>3</span>
@@ -985,7 +985,7 @@ function App() {
               <article>
                 <span>4</span>
                 <strong>Claim the loop</strong>
-                <p>Completed loops open each tier. The final clear needs tier III, four more loops, and a clean Tyrant fight.</p>
+                <p>Completed loops wake an act boss. The final clear needs act III, four more loops, and a clean Tyrant fight.</p>
               </article>
             </div>
             <div className="tutorial-actions">

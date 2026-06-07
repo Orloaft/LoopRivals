@@ -208,6 +208,8 @@ function eventImpact(event: string) {
     if (lower.includes('tempo') || lower.includes('loot') || lower.includes('cutpurse')) return { tone: 'steal', title: 'STOLEN', detail: event };
     return { tone: 'rival', title: 'RIVAL HIT', detail: event };
   }
+  if (lower.includes('briar warden')) return { tone: 'danger', title: 'ACT BOSS', detail: event };
+  if (lower.includes('crown sentinel')) return { tone: 'danger', title: 'ACT BOSS', detail: event };
   if (lower.includes('loop tyrant')) return { tone: 'danger', title: 'TYRANT', detail: event };
   if (/(failed|broken|defeated|died|knock)/.test(lower)) return { tone: 'danger', title: 'DOWN', detail: event };
   return null;
@@ -275,7 +277,7 @@ function InfoPopover({
 
 function tierLoopTarget(config: GameConfig, player: Player) {
   const nextTier = config.matchTiers.find((tier) => tier.id > player.loopTier);
-  if (nextTier) return { label: `Tier ${nextTier.id}`, target: nextTier.minLoops, remaining: Math.max(0, nextTier.minLoops - player.laps) };
+  if (nextTier) return { label: `Act ${nextTier.id} Boss`, target: nextTier.minLoops, remaining: Math.max(0, nextTier.minLoops - player.laps) };
   return { label: 'Tyrant', target: (player.tierStartLap ?? 0) + bossLoopRequirement, remaining: Math.max(0, (player.tierStartLap ?? 0) + bossLoopRequirement - player.laps) };
 }
 
@@ -866,6 +868,10 @@ function PlayerSideDock({
   const draggingLoot = draggingLootId ? player.loot.find((item) => item.id === draggingLootId) ?? null : null;
   const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
   const loopProgress = tierLoopProgress(config, player);
+  const loopTarget = tierLoopTarget(config, player);
+  const loopStart = player.loopTier >= 3 ? (player.tierStartLap ?? 0) : (config.matchTiers.find((tier) => tier.id === player.loopTier)?.minLoops ?? 0);
+  const loopPipCount = Math.max(1, Math.min(5, loopTarget.target - loopStart));
+  const loopsSinceActStart = Math.max(0, player.laps - loopStart);
   const abilityUnavailable = Boolean(
     player.ability &&
     (!player.ability.ready || game.status !== 'running' || player.combat || player.stunRemainingMs)
@@ -914,14 +920,14 @@ function PlayerSideDock({
             style={{ '--tier-progress': `${loopProgress}%` } as CSSProperties}
           >
             <div className="loop-tier-pips" aria-hidden="true">
-              {[0, 1, 2, 3].map((index) => (
-                <span key={index} className={index < Math.min(4, player.laps - (player.tierStartLap ?? 0)) ? 'done' : index === 0 ? 'active' : ''}>
+              {Array.from({ length: loopPipCount }, (_, index) => (
+                <span key={index} className={index < Math.min(loopPipCount, loopsSinceActStart) ? 'done' : index === Math.min(loopPipCount - 1, loopsSinceActStart) ? 'active' : ''}>
                   {index + 1}
                 </span>
               ))}
             </div>
             <div className="loop-tier-meta">
-              <strong>Tier {player.loopTier}</strong>
+              <strong>Act {player.loopTier}</strong>
               <span>Lap {player.laps}</span>
             </div>
             <span className="loop-tier-meter"><i /></span>
@@ -1978,7 +1984,7 @@ function PlayerPanel({
             lines={[
               `${Math.ceil(player.hp)}/${player.maxHp} HP`,
               `${player.power} power · ${player.guard} guard · ${player.speed} speed`,
-              `${player.soloCorruption ?? 0} corruption · ${player.soloGatesCleared.length}/3 gates`,
+              `${player.soloCorruption ?? 0} corruption · ${player.soloGatesCleared.length}/2 act bosses`,
               `${player.cardsPlayed} cards played · ${player.rivalHits} rival hits`
             ]}
             className="player-pop"
@@ -1990,7 +1996,7 @@ function PlayerPanel({
             <span>{impact.detail}</span>
           </div>
         )}
-        {player.event.includes('entered tier') && <div className="tier-surge"><strong>Tier {player.loopTier}</strong><span>loop collapsed</span></div>}
+        {(player.event.includes('entered tier') || player.event.includes('entered act')) && <div className="tier-surge"><strong>Act {player.loopTier}</strong><span>loop collapsed</span></div>}
         {combatCueKey && (
           <div
             key={combatCueKey}
@@ -2233,7 +2239,7 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
         <div className="help-head">
           <div>
             <strong>Rules</strong>
-            <span>Break the gates, then defeat the Loop Tyrant.</span>
+            <span>Defeat each act boss, then break the Loop Tyrant.</span>
           </div>
           <button className="icon-action" onClick={onClose}>Close</button>
         </div>
@@ -2252,11 +2258,11 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
           </section>
           <section>
             <h2>Scoring</h2>
-            <p>Score shows run strength and leaderboard pressure. Tiers advance from completed loops, with solo gate fights checking whether your build can survive the jump.</p>
+            <p>Score shows run strength and leaderboard pressure. Each act ends with a boss fight that checks whether your build can survive the jump.</p>
           </section>
           <section>
             <h2>Finale</h2>
-            <p>After four completed loops in tier III, the Loop Tyrant appears. Corruption rises from laps, tier clears, and deaths; dying restarts the current tier board and costs gold, tempo, and sometimes loose loot.</p>
+            <p>After four completed loops in act III, the Loop Tyrant appears. Corruption rises from laps, act clears, and deaths; dying restarts the current act board and costs gold, tempo, and sometimes loose loot.</p>
           </section>
         </div>
         <div className="help-lists">

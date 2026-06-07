@@ -1116,25 +1116,31 @@ test('placed terrain expires after its loop lifetime', () => {
   assert.equal(player.board[2].expiresOnLap, undefined);
 });
 
-test('loop progression resets the player board and increases loop tier', () => {
+test('act one progression requires a visible boss fight before tier advance', () => {
   const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
   const rival = testApi.createPlayer('rival', 'Rival', 'ember-knight');
   room.players.leader = player;
   room.players.rival = rival;
   room.status = 'running';
   player.level = 5;
+  player.maxHp = 90;
+  player.hp = 90;
+  player.power = 28;
+  player.guard = 30;
   player.laps = testApi.matchTiers[1].minLoops;
   player.board[4].type = 'crypt';
 
   testApi.checkWinner(room);
 
   assert.equal(player.loopTier, 2);
+  assert.equal(player.combat.enemyName, 'The Briar Warden');
+  assert.equal(player.combat.enemyId, 'briar-warden');
   assert.equal(player.position, 0);
   assert.equal(player.board.every((tile, index) => tile.type === (index === 0 ? 'camp' : 'road')), true);
   assert.equal(testApi.roomSnapshot(room).tier.id, 2);
 });
 
-test('solo loop gates require a gate boss before tier promotion', () => {
+test('solo act bosses still gate tier promotion', () => {
   const player = testApi.createPlayer('solo', 'Solo', 'ember-knight');
   room.players.solo = player;
   room.status = 'running';
@@ -1150,12 +1156,13 @@ test('solo loop gates require a gate boss before tier promotion', () => {
 
   assert.equal(player.soloGatesCleared.includes(1), true);
   assert.equal(player.loopTier, 2);
+  assert.equal(player.combat.enemyName, 'The Briar Warden');
   assert.equal(player.position, 0);
   assert.equal(player.board.every((tile, index) => tile.type === (index === 0 ? 'camp' : 'road')), true);
   assert.ok(player.soloCorruption >= 4);
 });
 
-test('solo gate failure adds corruption and score debt instead of brute-force promotion', () => {
+test('act boss failure adds corruption and score debt instead of brute-force promotion', () => {
   const player = testApi.createPlayer('solo', 'Solo', 'night-vagrant');
   room.players.solo = player;
   room.status = 'running';
@@ -1184,7 +1191,30 @@ test('solo gate failure adds corruption and score debt instead of brute-force pr
   assert.equal(player.loopTier, 1);
 });
 
-test('reaching the final tier loop target culminates in a boss fight', () => {
+test('act two progression wakes the crown sentinel before the final act', () => {
+  const player = testApi.createPlayer('leader', 'Leader', 'ember-knight');
+  const rival = testApi.createPlayer('rival', 'Rival', 'moss-warden');
+  room.players.leader = player;
+  room.players.rival = rival;
+  room.status = 'running';
+  player.loopTier = 2;
+  player.level = 7;
+  player.maxHp = 130;
+  player.hp = 130;
+  player.power = 38;
+  player.guard = 48;
+  player.tierStartLap = testApi.matchTiers[1].minLoops;
+  player.laps = testApi.matchTiers[2].minLoops;
+
+  testApi.checkWinner(room);
+
+  assert.equal(player.soloGatesCleared.includes(2), true);
+  assert.equal(player.loopTier, 3);
+  assert.equal(player.combat.enemyName, 'The Crown Sentinel');
+  assert.equal(player.combat.enemyId, 'crown-sentinel');
+});
+
+test('reaching the final act loop target culminates in a boss fight', () => {
   const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
   room.players.leader = player;
   room.status = 'running';
@@ -1193,7 +1223,10 @@ test('reaching the final tier loop target culminates in a boss fight', () => {
   player.hp = 220;
   player.power = 50;
   player.guard = 80;
+  player.loopTier = 3;
+  player.soloGatesCleared = [1, 2];
   player.laps = testApi.matchTiers[2].minLoops;
+  player.tierStartLap = testApi.matchTiers[2].minLoops;
   player.tilesPlaced = 1;
 
   assert.equal(testApi.checkWinner(room), null);
@@ -1274,7 +1307,12 @@ test('unstable loop marks the leader and rival cards hit marked runners harder',
   };
 
   leader.level = 12;
+  leader.power = 45;
+  leader.guard = 60;
+  leader.maxHp = 180;
+  leader.hp = 180;
   leader.laps = testApi.matchTiers[2].minLoops;
+  leader.soloGatesCleared = [1, 2];
   attacker.hand = [meteor];
   room.players.leader = leader;
   room.players.attacker = attacker;
@@ -1298,7 +1336,12 @@ test('tier three marks the leader before the boss race', () => {
   room.players.rival = rival;
   room.status = 'running';
   player.level = 12;
+  player.power = 45;
+  player.guard = 60;
+  player.maxHp = 180;
+  player.hp = 180;
   player.laps = testApi.matchTiers[2].minLoops;
+  player.soloGatesCleared = [1, 2];
 
   testApi.checkWinner(room);
 

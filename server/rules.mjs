@@ -41,9 +41,9 @@ export function drainRoomEvents(room) {
 }
 
 export const matchTiers = [
-  { id: 1, name: 'Tier I: Opening Loop', minScore: 0, minLoops: 0, text: 'Complete four loops to reach the first gate.' },
-  { id: 2, name: 'Tier II: Hungry Loop', minScore: 1800, minLoops: 4, text: 'Complete five more loops to wake the crown gate.' },
-  { id: 3, name: 'Tier III: Dying Loop', minScore: 4500, minLoops: 9, text: 'Complete four loops in tier III to challenge the Loop Tyrant.' }
+  { id: 1, name: 'Act I: Opening Loop', minScore: 0, minLoops: 0, text: 'Complete four loops, then break the Briar Warden.' },
+  { id: 2, name: 'Act II: Hungry Loop', minScore: 1800, minLoops: 4, text: 'Complete five more loops, then crack the Crown Sentinel.' },
+  { id: 3, name: 'Act III: Dying Loop', minScore: 4500, minLoops: 9, text: 'Complete four loops in act III to challenge the Loop Tyrant.' }
 ];
 const bossLoopRequirement = 4;
 const tileLoopLifeByTier = { 1: 3, 2: 2, 3: 2 };
@@ -62,9 +62,9 @@ function roomTimeScale(room) {
   if (pace === 'marathon') return timeScale * 1.18;
   return timeScale;
 }
-const soloGateByTier = {
-  1: { label: 'gate warden', threat: 26, reward: 70, enemyCount: 2, nextTier: 2 },
-  2: { label: 'crown gate', threat: 34, reward: 105, enemyCount: 3, nextTier: 3 }
+const actBossByTier = {
+  1: { label: 'briar warden', threat: 26, reward: 74, enemyCount: 1, nextTier: 2, armor: 2 },
+  2: { label: 'crown sentinel', threat: 35, reward: 112, enemyCount: 2, nextTier: 3, armor: 3 }
 };
 
 const combatEncounters = {
@@ -252,27 +252,27 @@ const combatEncounters = {
     backgroundId: 'road',
     effect: 'sword'
   },
-  'gate warden': {
-    enemyId: 'loop-warden',
-    enemyName: 'Loop Warden',
-    enemyIds: ['loop-warden', 'grave-knight'],
-    enemyNames: ['Loop Warden', 'Grave Knight'],
-    backgroundId: 'crypt',
-    effect: 'spectral'
+  'briar warden': {
+    enemyId: 'briar-warden',
+    enemyName: 'The Briar Warden',
+    enemyIds: ['briar-warden'],
+    enemyNames: ['The Briar Warden'],
+    backgroundId: 'grove',
+    effect: 'claw'
   },
-  'crown gate': {
-    enemyId: 'crown-gate',
-    enemyName: 'Crown Gate',
-    enemyIds: ['crown-gate', 'gate-wyrm', 'moon-fiend'],
-    enemyNames: ['Crown Gate', 'Gate Wyrm', 'Moonbound Fiend'],
+  'crown sentinel': {
+    enemyId: 'crown-sentinel',
+    enemyName: 'The Crown Sentinel',
+    enemyIds: ['crown-sentinel', 'gate-wyrm'],
+    enemyNames: ['The Crown Sentinel', 'Gate Wyrm'],
     backgroundId: 'forge',
     effect: 'ember'
   },
   'loop tyrant': {
     enemyId: 'loop-tyrant',
     enemyName: 'The Loop Tyrant',
-    enemyIds: ['loop-tyrant', 'loop-warden', 'crown-gate'],
-    enemyNames: ['The Loop Tyrant', 'Loop Warden', 'Crown Gate'],
+    enemyIds: ['loop-tyrant', 'briar-warden', 'crown-sentinel'],
+    enemyNames: ['The Loop Tyrant', 'The Briar Warden', 'The Crown Sentinel'],
     backgroundId: 'crypt',
     effect: 'spectral'
   }
@@ -2145,8 +2145,8 @@ function promotePlayerIfReady(room, player) {
   const currentTier = player.loopTier ?? 1;
   const nextTier = loopTierForLaps(player.laps ?? 0);
   if (nextTier <= currentTier) return false;
-  if (isSoloPlayer(room, player) && !player.soloGatesCleared.includes(currentTier)) {
-    return challengeSoloGate(room, player, currentTier);
+  if (!player.soloGatesCleared.includes(currentTier)) {
+    return challengeActBoss(room, player, currentTier);
   }
   player.loopTier = Math.min(3, currentTier + 1);
   player.tierStartScore = score(player);
@@ -2155,12 +2155,11 @@ function promotePlayerIfReady(room, player) {
   resetPlayerBoard(room, player);
   player.hp = player.maxHp;
   player.armor = Math.max(player.armor, player.loopTier);
-  player.combat = null;
   if (isSoloPlayer(room, player)) {
     player.soloCorruption = (player.soloCorruption ?? 0) + 4;
   }
-  player.event = player.loopTier >= 3 ? `entered tier ${player.loopTier}; Tyrant wakes in ${bossLoopRequirement} loops` : `entered tier ${player.loopTier}`;
-  addLog(room, `${player.name} entered tier ${player.loopTier}; their loop collapsed into fresh road.`);
+  player.event = player.loopTier >= 3 ? `entered act ${player.loopTier}; Tyrant wakes in ${bossLoopRequirement} loops` : `entered act ${player.loopTier}`;
+  addLog(room, `${player.name} entered act ${player.loopTier}; their loop collapsed into fresh road.`);
   emitRuleEvent(room, 'playerTierChanged', {
     playerId: player.id,
     from: currentTier,
@@ -2173,41 +2172,41 @@ function promotePlayerIfReady(room, player) {
     nextMovement: player.nextMovement,
     arrivalMovement: player.arrivalMovement
   });
-  if (player.loopTier >= 3) addLog(room, `The Loop Tyrant is stirring. ${player.name} must survive ${bossLoopRequirement} tier III loops.`);
+  if (player.loopTier >= 3) addLog(room, `The Loop Tyrant is stirring. ${player.name} must survive ${bossLoopRequirement} act III loops.`);
   if (loopTierForLaps(player.laps ?? 0) > player.loopTier) return promotePlayerIfReady(room, player);
   return true;
 }
 
-function challengeSoloGate(room, player, tier) {
+function challengeActBoss(room, player, tier) {
   if (isCombatLocked(room, player)) return false;
-  const gate = soloGateByTier[tier];
-  if (!gate) return false;
+  const boss = actBossByTier[tier];
+  if (!boss) return false;
   if (isSoloPlayer(room, player) && (player.tilesPlaced ?? 0) <= 0) {
     player.hp = 0;
     resolveDefeat(room, player);
-    addLog(room, `${player.name} reached the ${gate.label} with an unchanged road and was forced back to camp.`);
+    addLog(room, `${player.name} reached the ${boss.label} with an unchanged road and was forced back to camp.`);
     return false;
   }
   player.soloGateAttempts = (player.soloGateAttempts ?? 0) + 1;
   player.hp = player.maxHp;
-  player.armor = Math.max(player.armor, tier + 1);
-  const corruptionPressure = Math.floor((player.soloCorruption ?? 0) * 0.35);
+  player.armor = Math.max(player.armor, boss.armor);
+  const corruptionPressure = isSoloPlayer(room, player) ? Math.floor((player.soloCorruption ?? 0) * 0.35) : 0;
   const survived = fight(
     room,
     player,
-    gate.label,
-    gate.threat + corruptionPressure + player.soloGateAttempts * 2,
-    gate.reward,
-    gate.enemyCount
+    boss.label,
+    boss.threat + corruptionPressure + player.soloGateAttempts * 2,
+    boss.reward,
+    boss.enemyCount
   );
   if (!survived) {
     resolveDefeatAfterVisibleCombat(room, player);
-    addLog(room, `${player.name} failed the ${gate.label}; corruption thickens around tier ${tier}.`);
+    addLog(room, `${player.name} failed the ${boss.label}; the act holds.`);
     return false;
   }
   player.soloGatesCleared = [...new Set([...(player.soloGatesCleared ?? []), tier])];
-  player.event = `cleared the ${gate.label}`;
-  addLog(room, `${player.name} broke the ${gate.label} and unlocked tier ${gate.nextTier}.`);
+  player.event = `cleared the ${boss.label}`;
+  addLog(room, `${player.name} broke the ${boss.label} and unlocked act ${boss.nextTier}.`);
   return promotePlayerIfReady(room, player);
 }
 
@@ -2225,7 +2224,7 @@ function challengeLoopBoss(room, player) {
   const survived = fight(room, player, 'loop tyrant', 42 + corruptionPressure + player.bossAttempts * 3, 160, 5);
   if (!survived) {
     resolveDefeatAfterVisibleCombat(room, player);
-    addLog(room, `${player.name} was broken by the Loop Tyrant and must rebuild tier 3.`);
+    addLog(room, `${player.name} was broken by the Loop Tyrant and must rebuild act 3.`);
     return null;
   }
   return finishClaim(room, player);
@@ -2678,24 +2677,25 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   const graveDirge = player.heroId === 'grave-singer' ? clamp(player.graveEcho ?? 0, 0, 8) : 0;
   const runeMarks = player.heroId === 'rune-archer' ? clamp(player.runeMarkCount ?? 0, 0, 8) : 0;
   const runeWard = runeMarks > 0 && staged.pressure >= 3 ? Math.min(4, 1 + Math.floor(runeMarks / 2)) : 0;
-  const runePower = runeMarks > 0 && (staged.pressure >= 5 || ['gate warden', 'crown gate', 'loop tyrant'].includes(label))
+  const bossLabels = ['briar warden', 'crown sentinel', 'loop tyrant'];
+  const runePower = runeMarks > 0 && (staged.pressure >= 5 || bossLabels.includes(label))
     ? Math.min(2, Math.floor(runeMarks / 3))
     : 0;
-  const mossPower = player.heroId === 'moss-warden' && (staged.pressure >= 6 || ['gate warden', 'crown gate', 'loop tyrant'].includes(label))
+  const mossPower = player.heroId === 'moss-warden' && (staged.pressure >= 6 || bossLabels.includes(label))
     ? Math.min(3, Math.floor(((player.wardenOvergrowth ?? 0) + 1) / 2))
     : 0;
   const heroBonus = player.heroId === 'ember-knight' && player.hp < player.maxHp * 0.45 ? 2 + emberHeat : emberHeat;
   const graveBonus = player.heroId === 'grave-singer' && threat >= 10 ? 4 : 0;
   const power = Math.max(4, player.power + emberHeat + runePower + mossPower + Math.floor(graveDirge / 2) + (isSoloPlayer(room, player) ? 0 : Math.floor(player.level / 3)));
   const scaledThreat = threat + tierThreat + Math.floor(corruption * 0.18);
-  const enemyMaxHp = clamp(scaledThreat * 2 + reward + player.level * 3 + enemyCount * 12 + Math.floor(corruption * 0.65), 24, label === 'loop tyrant' ? 320 : 210);
+  const enemyMaxHp = clamp(scaledThreat * 2 + reward + player.level * 3 + enemyCount * 12 + Math.floor(corruption * 0.65), 24, bossLabels.includes(label) ? 320 : 210);
   const rounds = clamp(Math.ceil(enemyMaxHp / power), enemyCount, enemyCount + 5);
   const stackedPressure = (enemyCount - 1) * 2 + Math.max(0, rounds - 2);
   const graveWard = player.heroId === 'grave-singer' && threat >= 10 ? Math.min(5, enemyCount + 1 + Math.floor(graveDirge / 4)) : 0;
-  const damage = clamp(scaledThreat + stackedPressure + cursePenalty + Math.floor(corruption / 16) - Math.floor(player.guard / 1.7) - player.armor - graveWard - runeWard, 2, label === 'loop tyrant' ? 56 : 42);
+  const damage = clamp(scaledThreat + stackedPressure + cursePenalty + Math.floor(corruption / 16) - Math.floor(player.guard / 1.7) - player.armor - graveWard - runeWard, 2, bossLabels.includes(label) ? 56 : 42);
   player.hp -= damage;
   let vanished = false;
-  const canVanish = !['gate warden', 'crown gate', 'loop tyrant'].includes(label);
+  const canVanish = !bossLabels.includes(label);
   if (player.hp <= 0 && canVanish && player.heroId === 'night-vagrant' && player.vagrantEscapeTier !== tier) {
     player.vagrantEscapeTier = tier;
     player.hp = 1;
@@ -2884,9 +2884,9 @@ function revivePlayer(room, player) {
   player.combat = null;
   player.hand = player.hand.slice(0, 3);
   if (solo) applySoloDeathPenalty(room, player);
-  player.event = `fell, then restarted tier ${player.loopTier ?? 1}`;
+  player.event = `fell, then restarted act ${player.loopTier ?? 1}`;
   player.lastEventAt = now(room);
-  addLog(room, `${player.name} got knocked back to the start of tier ${player.loopTier ?? 1}.`);
+  addLog(room, `${player.name} got knocked back to the start of act ${player.loopTier ?? 1}.`);
   emitRuleEvent(room, 'playerDefeated', {
     playerId: player.id,
     deaths: player.deaths,
