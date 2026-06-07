@@ -68,19 +68,75 @@ const soloGateByTier = {
 };
 
 const combatEncounters = {
-  'wolf grove': {
-    enemyId: 'thorn-wolf',
-    enemyName: 'Thorn Wolf',
-    enemyIds: ['thorn-wolf'],
-    enemyNames: ['Thorn Wolf'],
+  'rat grove': {
+    enemyId: 'plague-rat',
+    enemyName: 'Plague Rat',
+    enemyIds: ['plague-rat', 'mire-slime'],
+    enemyNames: ['Plague Rat', 'Mire Slime'],
     backgroundId: 'grove',
     effect: 'claw'
+  },
+  'wolf grove': {
+    enemyId: 'dusk-wolf',
+    enemyName: 'Dusk Wolf',
+    enemyIds: ['dusk-wolf'],
+    enemyNames: ['Dusk Wolf'],
+    backgroundId: 'grove',
+    effect: 'claw'
+  },
+  'thorn grove': {
+    enemyId: 'thorn-wolf',
+    enemyName: 'Thorn Wolf',
+    enemyIds: ['thorn-wolf', 'dusk-wolf'],
+    enemyNames: ['Thorn Wolf', 'Dusk Wolf'],
+    backgroundId: 'grove',
+    effect: 'claw'
+  },
+  'dire grove': {
+    enemyId: 'dire-thorn',
+    enemyName: 'Dire Thorn',
+    enemyIds: ['dire-thorn', 'thorn-wolf'],
+    enemyNames: ['Dire Thorn', 'Thorn Wolf'],
+    backgroundId: 'grove',
+    effect: 'claw'
+  },
+  'skeleton crypt': {
+    enemyId: 'crypt-skeleton',
+    enemyName: 'Crypt Skeleton',
+    enemyIds: ['crypt-skeleton'],
+    enemyNames: ['Crypt Skeleton'],
+    backgroundId: 'crypt',
+    effect: 'spectral'
+  },
+  'haunted crypt': {
+    enemyId: 'crypt-wraith',
+    enemyName: 'Haunted Crypt',
+    enemyIds: ['crypt-skeleton', 'crypt-wraith'],
+    enemyNames: ['Crypt Skeleton', 'Crypt Wraith'],
+    backgroundId: 'crypt',
+    effect: 'spectral'
   },
   'crypt duel': {
     enemyId: 'crypt-wraith',
     enemyName: 'Crypt Wraith',
     enemyIds: ['crypt-wraith'],
     enemyNames: ['Crypt Wraith'],
+    backgroundId: 'crypt',
+    effect: 'spectral'
+  },
+  'grave crypt': {
+    enemyId: 'grave-knight',
+    enemyName: 'Grave Knight',
+    enemyIds: ['grave-knight', 'crypt-wraith'],
+    enemyNames: ['Grave Knight', 'Crypt Wraith'],
+    backgroundId: 'crypt',
+    effect: 'spectral'
+  },
+  'skeleton pit': {
+    enemyId: 'crypt-skeleton',
+    enemyName: 'Skeleton Pit',
+    enemyIds: ['crypt-skeleton', 'crypt-skeleton', 'crypt-wraith'],
+    enemyNames: ['Crypt Skeleton', 'Crypt Skeleton', 'Crypt Wraith'],
     backgroundId: 'crypt',
     effect: 'spectral'
   },
@@ -92,13 +148,61 @@ const combatEncounters = {
     backgroundId: 'crypt',
     effect: 'spectral'
   },
-  'wolf den': {
-    enemyId: 'dire-thorn',
-    enemyName: 'Wolf Pack',
-    enemyIds: ['dire-thorn', 'thorn-wolf', 'thorn-wolf'],
-    enemyNames: ['Dire Thorn', 'Thorn Wolf', 'Thorn Wolf'],
+  'grave pit': {
+    enemyId: 'bone-host',
+    enemyName: 'Grave Host',
+    enemyIds: ['bone-host', 'grave-knight', 'crypt-wraith'],
+    enemyNames: ['Bone Host', 'Grave Knight', 'Crypt Wraith'],
+    backgroundId: 'crypt',
+    effect: 'spectral'
+  },
+  'dusk wolf den': {
+    enemyId: 'dusk-wolf',
+    enemyName: 'Dusk Wolf Den',
+    enemyIds: ['dusk-wolf', 'dusk-wolf'],
+    enemyNames: ['Dusk Wolf', 'Dusk Wolf'],
     backgroundId: 'grove',
     effect: 'claw'
+  },
+  'wolf den': {
+    enemyId: 'thorn-wolf',
+    enemyName: 'Wolf Pack',
+    enemyIds: ['thorn-wolf', 'dusk-wolf', 'dusk-wolf'],
+    enemyNames: ['Thorn Wolf', 'Dusk Wolf', 'Dusk Wolf'],
+    backgroundId: 'grove',
+    effect: 'claw'
+  },
+  'dire wolf den': {
+    enemyId: 'dire-thorn',
+    enemyName: 'Dire Wolf Pack',
+    enemyIds: ['dire-thorn', 'thorn-wolf', 'dusk-wolf'],
+    enemyNames: ['Dire Thorn', 'Thorn Wolf', 'Dusk Wolf'],
+    backgroundId: 'grove',
+    effect: 'claw'
+  },
+  'bandit camp': {
+    enemyId: 'road-bandit',
+    enemyName: 'Road Bandit',
+    enemyIds: ['road-bandit', 'goblin-cutthroat'],
+    enemyNames: ['Road Bandit', 'Goblin Cutthroat'],
+    backgroundId: 'road',
+    effect: 'sword'
+  },
+  'goblin camp': {
+    enemyId: 'goblin-cutthroat',
+    enemyName: 'Goblin Cutthroat',
+    enemyIds: ['goblin-cutthroat', 'road-bandit'],
+    enemyNames: ['Goblin Cutthroat', 'Road Bandit'],
+    backgroundId: 'road',
+    effect: 'sword'
+  },
+  'brigand keep': {
+    enemyId: 'brigand',
+    enemyName: 'Road Brigand',
+    enemyIds: ['brigand', 'goblin-cutthroat', 'crypt-skeleton'],
+    enemyNames: ['Road Brigand', 'Goblin Cutthroat', 'Crypt Skeleton'],
+    backgroundId: 'road',
+    effect: 'sword'
   },
   'ruined keep': {
     enemyId: 'keep-reaver',
@@ -124,11 +228,19 @@ const combatEncounters = {
     backgroundId: 'forge',
     effect: 'ember'
   },
+  'road ambush': {
+    enemyId: 'road-bandit',
+    enemyName: 'Road Bandit',
+    enemyIds: ['road-bandit'],
+    enemyNames: ['Road Bandit'],
+    backgroundId: 'road',
+    effect: 'sword'
+  },
   'bandit ambush': {
     enemyId: 'brigand',
     enemyName: 'Road Brigand',
-    enemyIds: ['brigand', 'keep-reaver'],
-    enemyNames: ['Road Brigand', 'Keep Reaver'],
+    enemyIds: ['brigand', 'goblin-cutthroat', 'keep-reaver'],
+    enemyNames: ['Road Brigand', 'Goblin Cutthroat', 'Keep Reaver'],
     backgroundId: 'road',
     effect: 'sword'
   },
@@ -164,6 +276,48 @@ const combatEncounters = {
     backgroundId: 'crypt',
     effect: 'spectral'
   }
+};
+
+const combatEncounterStages = {
+  'wolf grove': [
+    { minPressure: 0, label: 'rat grove', threatDelta: -4, rewardDelta: -3 },
+    { minPressure: 1, label: 'wolf grove', threatDelta: -2, rewardDelta: 0 },
+    { minPressure: 2, label: 'thorn grove', threatDelta: 0, rewardDelta: 2 },
+    { minPressure: 4, label: 'dire grove', threatDelta: 3, rewardDelta: 5 }
+  ],
+  'crypt duel': [
+    { minPressure: 0, label: 'skeleton crypt', threatDelta: -5, rewardDelta: -5 },
+    { minPressure: 1, label: 'haunted crypt', threatDelta: -2, rewardDelta: -2 },
+    { minPressure: 2, label: 'crypt duel', threatDelta: 0, rewardDelta: 0 },
+    { minPressure: 4, label: 'grave crypt', threatDelta: 3, rewardDelta: 4 }
+  ],
+  'wolf den': [
+    { minPressure: 0, label: 'dusk wolf den', threatDelta: -3, rewardDelta: -2 },
+    { minPressure: 2, label: 'wolf den', threatDelta: 0, rewardDelta: 1 },
+    { minPressure: 4, label: 'dire wolf den', threatDelta: 4, rewardDelta: 5 }
+  ],
+  'bone pit': [
+    { minPressure: 0, label: 'skeleton pit', threatDelta: -4, rewardDelta: -3 },
+    { minPressure: 2, label: 'bone pit', threatDelta: 0, rewardDelta: 1 },
+    { minPressure: 4, label: 'grave pit', threatDelta: 3, rewardDelta: 5 }
+  ],
+  'ruined keep': [
+    { minPressure: 0, label: 'bandit camp', threatDelta: -4, rewardDelta: -3 },
+    { minPressure: 1, label: 'goblin camp', threatDelta: -2, rewardDelta: -1 },
+    { minPressure: 2, label: 'brigand keep', threatDelta: 0, rewardDelta: 1 },
+    { minPressure: 4, label: 'ruined keep', threatDelta: 3, rewardDelta: 5 }
+  ],
+  'bandit ambush': [
+    { minPressure: 0, label: 'road ambush', threatDelta: -4, rewardDelta: -3 },
+    { minPressure: 1, label: 'goblin camp', threatDelta: -2, rewardDelta: -1 },
+    { minPressure: 2, label: 'bandit ambush', threatDelta: 0, rewardDelta: 1 },
+    { minPressure: 4, label: 'ruined keep', threatDelta: 2, rewardDelta: 4 }
+  ],
+  'road skirmish': [
+    { minPressure: 0, label: 'road ambush', threatDelta: -3, rewardDelta: -2 },
+    { minPressure: 1, label: 'goblin camp', threatDelta: -1, rewardDelta: 0 },
+    { minPressure: 2, label: 'road skirmish', threatDelta: 1, rewardDelta: 2 }
+  ]
 };
 
 export const heroes = [
@@ -2440,10 +2594,47 @@ function encounterLineup(encounter, enemyCount) {
   }));
 }
 
+function encounterPressure(player) {
+  const tier = Math.max(1, player.loopTier ?? 1);
+  const tierConfig = matchTiers.find((candidate) => candidate.id === tier);
+  const tierStartLap = player.tierStartLap ?? tierConfig?.minLoops ?? 0;
+  const loopsInTier = Math.max(0, (player.laps ?? 0) - tierStartLap);
+  return (tier - 1) * 2 + Math.min(1, Math.floor(loopsInTier / 2));
+}
+
+function stagedEncounter(player, label, threat, reward) {
+  const stages = combatEncounterStages[label];
+  const pressure = encounterPressure(player);
+  const stage = stages
+    ?.filter((candidate) => pressure >= candidate.minPressure)
+    .at(-1);
+  const resolvedLabel = stage?.label ?? label;
+  const encounter = combatEncounters[resolvedLabel] ?? combatEncounters[label] ?? {
+    enemyId: 'ash-imp',
+    enemyName: 'Ash Imp',
+    enemyIds: ['ash-imp'],
+    enemyNames: ['Ash Imp'],
+    backgroundId: 'forge',
+    effect: 'ember'
+  };
+  return {
+    label: resolvedLabel,
+    encounter,
+    threat: Math.max(1, threat + (stage?.threatDelta ?? 0)),
+    reward: Math.max(1, reward + (stage?.rewardDelta ?? 0)),
+    pressure
+  };
+}
+
 function fight(room, player, label, threat, reward, enemyCount = 1) {
+  const baseLabel = label;
+  const staged = stagedEncounter(player, label, threat, reward);
+  label = staged.label;
+  threat = staged.threat;
+  reward = staged.reward;
   const hpBefore = player.hp;
   const tier = player.loopTier ?? room.tier?.id ?? 1;
-  const tierThreat = (tier - 1) * 5;
+  const tierThreat = (tier - 1) * 4;
   const tierReward = 1 + (tier - 1) * 0.28;
   const corruption = isSoloPlayer(room, player) ? player.soloCorruption ?? 0 : 0;
   const cursePenalty = player.curse > 0 ? 3 : 0;
@@ -2480,14 +2671,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     const survivalLine = player.hp > 0 ? ` You survived with ${Math.ceil(player.hp)} HP.` : ' The chain was lethal, so the loop forced a reset.';
     pushGuidedRecap(room, `${label} happened because this tile was on your road: ${enemyCount} foe${enemyCount === 1 ? '' : 's'}, ${damage} damage, ${xpReward} XP.${heatLine}${survivalLine}`);
   }
-  const encounter = combatEncounters[label] ?? {
-    enemyId: 'ash-imp',
-    enemyName: 'Ash Imp',
-    enemyIds: ['ash-imp'],
-    enemyNames: ['Ash Imp'],
-    backgroundId: 'forge',
-    effect: 'ember'
-  };
+  const encounter = staged.encounter;
   const lineup = encounterLineup(encounter, enemyCount);
   const timestamp = now(room);
   const timing = combatTiming(room);
@@ -2531,6 +2715,8 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     laps: player.laps,
     tileType: player.board[player.position]?.type ?? null,
     label,
+    baseLabel,
+    encounterPressure: staged.pressure,
     enemyCount,
     damage,
     reward: xpReward,

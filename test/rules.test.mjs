@@ -437,7 +437,8 @@ test('combat events expose encounter details for the board overlay', () => {
 
   testApi.triggerTile(room, player, player.board[player.position]);
 
-  assert.equal(player.combat.enemyId, 'crypt-wraith');
+  assert.equal(player.combat.enemyId, 'crypt-skeleton');
+  assert.equal(player.combat.enemyName, 'Crypt Skeleton');
   assert.equal(player.combat.backgroundId, 'crypt');
   assert.equal(player.combat.effect, 'spectral');
   assert.equal(player.combat.enemyHpAfter, 0);
@@ -467,11 +468,46 @@ test('danger terrain can stack multiple enemies into one longer combat lock', ()
   assert.equal(player.combat.durationMs, 518 + player.combat.beats.length * 422);
   assert.equal(player.combat.beats[0].atMs, 320);
   assert.equal(player.combat.beats[1].atMs - player.combat.beats[0].atMs, 422);
-  assert.equal(player.combat.enemyName, 'Bone Host');
-  assert.equal(player.combat.enemyId, 'bone-host');
+  assert.equal(player.combat.enemyName, 'Skeleton Pit');
+  assert.equal(player.combat.enemyId, 'crypt-skeleton');
   assert.equal(player.combat.enemyIds.length, player.combat.enemyCount);
-  assert.ok(player.combat.enemyIds.includes('grave-knight'));
-  assert.equal(player.combat.enemyNames[0], 'Bone Host');
+  assert.ok(player.combat.enemyIds.includes('crypt-wraith'));
+  assert.equal(player.combat.enemyNames[0], 'Crypt Skeleton');
+});
+
+test('combat roster replaces basic enemies with elites as loop pressure rises', () => {
+  const fresh = testApi.createPlayer('fresh', 'Fresh', 'ember-knight', false, room);
+  testApi.fight(room, fresh, 'wolf grove', 8, 10, 1);
+
+  assert.equal(fresh.combat.label, 'rat grove');
+  assert.equal(fresh.combat.enemyId, 'plague-rat');
+  assert.ok(fresh.combat.damage <= 5);
+
+  const practiced = testApi.createPlayer('practiced', 'Practiced', 'ember-knight', false, room);
+  practiced.laps = 2;
+  testApi.fight(room, practiced, 'wolf grove', 8, 10, 1);
+
+  assert.equal(practiced.combat.label, 'wolf grove');
+  assert.equal(practiced.combat.enemyId, 'dusk-wolf');
+  assert.ok(practiced.combat.damage >= fresh.combat.damage);
+
+  const veteran = testApi.createPlayer('veteran', 'Veteran', 'ember-knight', false, room);
+  veteran.loopTier = 2;
+  veteran.tierStartLap = 4;
+  testApi.fight(room, veteran, 'wolf grove', 8, 10, 1);
+
+  assert.equal(veteran.combat.label, 'thorn grove');
+  assert.equal(veteran.combat.enemyId, 'thorn-wolf');
+  assert.ok(veteran.combat.damage > practiced.combat.damage);
+
+  const dyingLoop = testApi.createPlayer('dying-loop', 'Dying Loop', 'ember-knight', false, room);
+  dyingLoop.loopTier = 3;
+  dyingLoop.tierStartLap = 9;
+  testApi.fight(room, dyingLoop, 'ruined keep', 18, 24, 3);
+
+  assert.equal(dyingLoop.combat.label, 'ruined keep');
+  assert.equal(dyingLoop.combat.enemyId, 'keep-reaver');
+  assert.ok(dyingLoop.combat.enemyIds.includes('grave-knight'));
 });
 
 test('simulated combat timing stays compact for balance runs', () => {
