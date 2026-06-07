@@ -2025,6 +2025,7 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
   const beats = presentation.beats;
   const [activeBeatIndex, setActiveBeatIndex] = useState(-1);
   const [presentationPhase, setPresentationPhase] = useState<'entry' | 'beat' | 'result' | 'exit'>('entry');
+  const [logOpen, setLogOpen] = useState(false);
   const [displayHp, setDisplayHp] = useState({
     hero: combat.heroHpBefore,
     enemy: combat.enemyHpBefore
@@ -2070,12 +2071,23 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
   }, [presentation, beats, resultAtMs, exitAtMs]);
 
   return (
-    <div className={`combat-overlay phase-${presentationPhase}`} style={{
+    <div className={`combat-overlay phase-${presentationPhase} ${logOpen ? 'log-open' : ''}`} style={{
       '--combat-bg': `url(${combatBackgroundUrl(combat.backgroundId)})`,
       '--combat-duration': `${visibleDurationMs}ms`,
       '--combat-delay': '0ms'
     } as CSSProperties}>
       <div className="combat-vignette" />
+      <button
+        type="button"
+        className="combat-log-toggle"
+        aria-expanded={logOpen}
+        aria-controls={`combat-log-${combat.startedAt}`}
+        onClick={() => setLogOpen((open) => !open)}
+        title={logOpen ? 'Hide combat log' : 'Show combat log'}
+      >
+        <ScrollText size={14} aria-hidden="true" />
+        <span>Log</span>
+      </button>
       <div className="combat-announcement" aria-hidden="true">
         <span>
           Fight!
@@ -2109,14 +2121,16 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
           </b>
         )}
       </div>
-      <ol className="combat-log" aria-label="Combat play by play">
-        {combatLog.map((beat) => (
-          <li key={`${beat.attacker}-${beat.index}-${beat.atMs}`} className={`combat-log-${beat.state}`}>
-            <i aria-hidden="true" />
-            <span>{beat.text ?? (beat.attacker === 'hero' ? `You hit ${combat.enemyName}` : `${combat.enemyName} hits you`)}</span>
-          </li>
-        ))}
-      </ol>
+      {logOpen && (
+        <ol id={`combat-log-${combat.startedAt}`} className="combat-log" aria-label="Combat play by play">
+          {combatLog.map((beat) => (
+            <li key={`${beat.attacker}-${beat.index}-${beat.atMs}`} className={`combat-log-${beat.state}`}>
+              <i aria-hidden="true" />
+              <span>{beat.text ?? (beat.attacker === 'hero' ? `You hit ${combat.enemyName}` : `${combat.enemyName} hits you`)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
       <div className={`combatant enemy-combat ${activeBeat?.attacker === 'enemy' ? 'combat-attacking' : ''} ${activeBeat?.attacker === 'hero' ? 'combat-taking-hit' : ''}`}>
         <div className={`enemy-party enemy-party-${enemyLineup.length}`} aria-hidden="true">
           {enemyLineup.map((enemy, index) => (
