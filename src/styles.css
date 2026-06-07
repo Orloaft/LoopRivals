@@ -332,6 +332,7 @@ body::before {
   .enemy-party img,
   .combat-fx-sprite,
   .combat-damage-float,
+  .runner-floater,
   .combat-log li,
   .combat-log-active::after {
     animation-duration: 1ms !important;
@@ -1522,6 +1523,117 @@ input:focus {
     drop-shadow(0 0 8px color-mix(in srgb, var(--hero-color) 70%, transparent));
 }
 
+.runner-hp-plate {
+  position: absolute;
+  left: 50%;
+  top: -18%;
+  z-index: 7;
+  display: grid;
+  grid-template-columns: auto 34px;
+  align-items: center;
+  gap: 4px;
+  min-width: 56px;
+  height: 18px;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--hero-color) 48%, rgba(255, 224, 138, 0.52));
+  border-radius: 4px;
+  color: #fff3bd;
+  background:
+    linear-gradient(180deg, rgba(31, 10, 9, 0.94), rgba(8, 6, 5, 0.9)),
+    rgba(0, 0, 0, 0.88);
+  box-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.62),
+    0 0 12px color-mix(in srgb, var(--hero-color) 28%, transparent);
+  font-size: 0.64rem;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.runner-hp-plate b {
+  min-width: 1.8em;
+  color: #fff4c2;
+  text-align: right;
+  text-shadow: 0 1px 0 #000;
+}
+
+.runner-hp-plate i {
+  display: block;
+  height: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 224, 138, 0.2);
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, var(--blood), var(--gold-bright)) 0 / var(--hp-ratio) 100% no-repeat,
+    rgba(0, 0, 0, 0.58);
+  transition: background-size 260ms ease;
+}
+
+.runner-floaters {
+  position: absolute;
+  left: 50%;
+  top: -28%;
+  z-index: 9;
+  pointer-events: none;
+}
+
+.runner-floater {
+  position: absolute;
+  left: calc((var(--float-lane) - 1) * 18px);
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: max-content;
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 244, 194, 0.42);
+  border-radius: 4px;
+  color: #fff7ce;
+  background: rgba(16, 10, 7, 0.88);
+  box-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.7),
+    0 0 14px color-mix(in srgb, var(--floater-color, var(--gold-bright)) 34%, transparent);
+  font-size: 0.7rem;
+  font-weight: 1000;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-shadow: 0 1px 0 #000;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  animation: runner-floater-rise 1.42s cubic-bezier(0.16, 0.86, 0.24, 1) both;
+}
+
+.runner-floater.gain {
+  --floater-color: #ffe08a;
+  color: #ffeaa8;
+}
+
+.runner-floater.loss {
+  --floater-color: #ff644d;
+  border-color: rgba(255, 118, 91, 0.58);
+  color: #ffb199;
+}
+
+.runner-floater.health {
+  --floater-color: #8ee099;
+  border-color: rgba(142, 224, 153, 0.52);
+  color: #c9ffd0;
+}
+
+.runner-floater.gold {
+  --floater-color: #ffd75f;
+  color: #ffe696;
+}
+
+.runner-floater.xp,
+.runner-floater.loop {
+  --floater-color: #91d4ff;
+  border-color: rgba(145, 212, 255, 0.5);
+  color: #d5efff;
+}
+
 /* Soft ground shadow under the sprite. */
 .runner-sprite::before {
   content: '';
@@ -1585,6 +1697,29 @@ input:focus {
 
   50% {
     transform: translateY(-2px);
+  }
+}
+
+@keyframes runner-floater-rise {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px) scale(0.72);
+    filter: brightness(1.28);
+  }
+
+  12% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-2px) scale(1.08);
+  }
+
+  72% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-24px) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-36px) scale(0.92);
   }
 }
 
@@ -6032,6 +6167,7 @@ body.loot-drag-active * {
 
 .authority-paused .gothic-parallax span,
 .authority-paused .runner img,
+.authority-paused .runner-floater,
 .authority-paused .event-burst,
 .authority-paused .combat-entry-cue {
   animation-play-state: paused;

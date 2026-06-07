@@ -19,6 +19,13 @@ type LocalProfile = {
   bestLevel: number;
 };
 
+type RunnerFloater = {
+  id: string;
+  text: string;
+  tone: 'gain' | 'loss' | 'health' | 'gold' | 'xp' | 'loop';
+  lane: number;
+};
+
 const equipmentSlots: EquipmentSlot[] = ['weapon', 'shield', 'helm', 'armor', 'gloves', 'boots', 'ring', 'charm'];
 const equipmentLabels: Record<EquipmentSlot, string> = {
   weapon: 'Weapon',
@@ -204,6 +211,13 @@ function eventImpact(event: string) {
   if (lower.includes('loop tyrant')) return { tone: 'danger', title: 'TYRANT', detail: event };
   if (/(failed|broken|defeated|died|knock)/.test(lower)) return { tone: 'danger', title: 'DOWN', detail: event };
   return null;
+}
+
+function runnerStatusLabel(player: Player) {
+  if (player.combat) return 'Combat';
+  if ((player.stunRemainingMs ?? 0) > 0) return 'Stunned';
+  const currentTile = player.board[player.position] ?? player.board[0];
+  return tileNames[currentTile?.type ?? 'road'] ?? 'Loop';
 }
 
 function comboHint(card: Card) {
@@ -1764,6 +1778,9 @@ function PlayerPanel({
   const boardRef = useRef<HTMLDivElement | null>(null);
   const runnerRef = useRef<HTMLSpanElement | null>(null);
   const runnerHighlightRef = useRef<HTMLSpanElement | null>(null);
+  const previousRunnerStatsRef = useRef<{ hp: number; score: number; gold: number; xp: number; level: number; laps: number } | null>(null);
+  const floaterTimersRef = useRef<number[]>([]);
+  const [runnerFloaters, setRunnerFloaters] = useState<RunnerFloater[]>([]);
   const motionSeedKey = useMemo(
     () => `${player.id}:${player.board.map((tile) => `${tile.index}:${tile.coord[0]},${tile.coord[1]}`).join('|')}`,
     [player.board, player.id]
@@ -1778,10 +1795,66 @@ function PlayerPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [motionSeedKey]);
   useRunnerMotion(runnerRef, runnerHighlightRef, player, gameStatus, serverNow, receivedAt, authorityPaused);
+  useEffect(() => {
+    const current = {
+      hp: Math.ceil(player.hp),
+      score: player.score,
+      gold: player.gold ?? 0,
+      xp: player.xp,
+      level: player.level,
+      laps: player.laps
+    };
+    const previous = previousRunnerStatsRef.current;
+    previousRunnerStatsRef.current = current;
+    if (!previous) return;
+
+    const createdAt = player.lastEventAt ?? player.lastMoveAt ?? serverNow ?? Date.now();
+    const nextFloaters: RunnerFloater[] = [];
+    const addFloater = (text: string, tone: RunnerFloater['tone']) => {
+      nextFloaters.push({
+        id: `${player.id}-${createdAt}-${nextFloaters.length}-${text}`,
+        text,
+        tone,
+        lane: nextFloaters.length % 3
+      });
+    };
+    const signed = (value: number, suffix: string) => `${value > 0 ? '+' : ''}${value}${suffix}`;
+    const hpDelta = current.hp - previous.hp;
+    const scoreDelta = current.score - previous.score;
+    const goldDelta = current.gold - previous.gold;
+    const xpDelta = current.xp - previous.xp;
+    const levelDelta = current.level - previous.level;
+    const lapDelta = current.laps - previous.laps;
+
+    if (hpDelta !== 0) addFloater(signed(hpDelta, ' HP'), hpDelta > 0 ? 'health' : 'loss');
+    if (scoreDelta !== 0) addFloater(signed(scoreDelta, ' score'), scoreDelta > 0 ? 'gain' : 'loss');
+    if (goldDelta !== 0) addFloater(signed(goldDelta, 'g'), goldDelta > 0 ? 'gold' : 'loss');
+    if (levelDelta > 0) addFloater(`+${levelDelta} Lv`, 'xp');
+    else if (xpDelta !== 0) addFloater(signed(xpDelta, ' XP'), xpDelta > 0 ? 'xp' : 'loss');
+    if (lapDelta > 0) addFloater(`+${lapDelta} loop${lapDelta === 1 ? '' : 's'}`, 'loop');
+
+    if (nextFloaters.length === 0) return;
+    const addTimer = window.setTimeout(() => {
+      setRunnerFloaters((existing) => [...existing, ...nextFloaters].slice(-8));
+    }, 0);
+    floaterTimersRef.current.push(addTimer);
+    nextFloaters.forEach((floater) => {
+      const timer = window.setTimeout(() => {
+        setRunnerFloaters((existing) => existing.filter((item) => item.id !== floater.id));
+      }, 1420);
+      floaterTimersRef.current.push(timer);
+    });
+  }, [player.gold, player.hp, player.id, player.lastEventAt, player.lastMoveAt, player.laps, player.level, player.score, player.xp, serverNow]);
+  useEffect(() => () => {
+    floaterTimersRef.current.forEach(window.clearTimeout);
+    floaterTimersRef.current = [];
+  }, []);
   const stunSeconds = Math.ceil((player.stunRemainingMs ?? 0) / 1000);
   const compactRival = !active && !focused;
   const impact = eventImpact(player.event);
   const lobbyStart = active && gameStatus === 'lobby';
+  const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+  const statusLabel = runnerStatusLabel(player);
   const runnerPoint = tileCenter(player.board[player.position] ?? player.board[0]);
   const pendingCombatCursor = pendingCombatStopCursor(player, serverNow, receivedAt, authorityPaused);
   const pendingCombatArmed = pendingCombatCursor !== null
@@ -1853,6 +1926,23 @@ function PlayerPanel({
         <span ref={runnerRef} className="runner">
           <span className="runner-sprite">
             <img src={heroSpriteUrl(player.heroId)} alt="" />
+            <span className="runner-hp-plate" style={{ '--hp-ratio': `${hpRatio}%` } as CSSProperties}>
+              <b>{Math.ceil(player.hp)}</b>
+              <i aria-hidden="true" />
+            </span>
+            {runnerFloaters.length > 0 && (
+              <span className="runner-floaters" aria-hidden="true">
+                {runnerFloaters.map((floater) => (
+                  <b
+                    key={floater.id}
+                    className={`runner-floater ${floater.tone}`}
+                    style={{ '--float-lane': floater.lane } as CSSProperties}
+                  >
+                    {floater.text}
+                  </b>
+                ))}
+              </span>
+            )}
           </span>
         </span>
         <div className="board-core">
@@ -1881,8 +1971,8 @@ function PlayerPanel({
             <>
               <div className="bc-event-stage">
                 <small>{rank === 1 ? 'Leader' : active ? 'You' : player.name}</small>
-                <strong>{player.event}</strong>
-                <span>Lap {player.laps} · Lv {player.level} · Corr {player.soloCorruption ?? 0}</span>
+                <strong>{statusLabel}</strong>
+                <span>{Math.ceil(player.hp)}/{player.maxHp} HP · Lap {player.laps} · Lv {player.level}</span>
               </div>
               {player.signature && (
                 <div className="bc-signature" style={{ '--sig-ratio': `${Math.max(0, Math.min(100, (player.signature.value / Math.max(1, player.signature.max)) * 100))}%` } as CSSProperties}>
