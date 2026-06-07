@@ -9,7 +9,7 @@ import {
   itemSpriteUrl,
   talentIconUrl
 } from './game-assets';
-import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, playerMotionIsLocked, pointAlongBoard, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, type RunnerPoint } from './movement';
+import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, pendingCombatStopCursor, playerMotionIsLocked, pointAlongBoard, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, type RunnerPoint } from './movement';
 import type { Card, Combat, CombatBeat, EquipmentSlot, GameConfig, GameState, Loot, Player, RoomSettings, ShopOffer, Tile, Trait } from './types';
 
 type LocalProfile = {
@@ -1776,8 +1776,19 @@ function PlayerPanel({
   const impact = eventImpact(player.event);
   const lobbyStart = active && gameStatus === 'lobby';
   const runnerPoint = tileCenter(player.board[player.position] ?? player.board[0]);
-  const combatCuePoint = player.combat ? tileCenter(player.board[player.position] ?? player.board[0]) : runnerPoint;
-  const combatCueKey = player.combat ? `combat-cue-${player.combat.startedAt}` : null;
+  const pendingCombatCursor = pendingCombatStopCursor(player, serverNow, receivedAt, authorityPaused);
+  const pendingCombatArmed = pendingCombatCursor !== null
+    && Math.abs(visualCursorForPlayer(player, serverNow, receivedAt, authorityPaused) - pendingCombatCursor) < 0.12;
+  const combatCuePoint = player.combat
+    ? tileCenter(player.board[player.position] ?? player.board[0])
+    : pendingCombatCursor !== null
+      ? pointAlongBoard(player.board, pendingCombatCursor)
+      : runnerPoint;
+  const combatCueKey = player.combat
+    ? `combat-cue-${player.combat.startedAt}`
+    : pendingCombatArmed
+      ? `combat-cue-pending-${pendingCombatCursor}`
+      : null;
 
   return (
     <article
@@ -1901,7 +1912,7 @@ function PlayerPanel({
         {combatCueKey && (
           <div
             key={combatCueKey}
-            className="combat-entry-cue active"
+            className={`combat-entry-cue active ${player.combat ? 'confirmed' : 'pending'}`}
             style={{
               '--cue-left': `${combatCuePoint.left}%`,
               '--cue-top': `${combatCuePoint.top}%`
@@ -1930,12 +1941,17 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
   }));
   const beats = presentation.beats;
   const [activeBeatIndex, setActiveBeatIndex] = useState(-1);
+  const [presentationPhase, setPresentationPhase] = useState<'entry' | 'beat' | 'result' | 'exit'>('entry');
   const [displayHp, setDisplayHp] = useState({
     hero: combat.heroHpBefore,
     enemy: combat.enemyHpBefore
   });
   const activeBeat = activeBeatIndex >= 0 ? beats[activeBeatIndex] : null;
-  const visibleDurationMs = Math.max(600, (combat.durationMs ?? 1734) - 500);
+  const visibleDurationMs = Math.max(1100, combat.durationMs ?? 1734);
+  const lastBeatAtMs = Math.max(0, ...beats.map((beat) => beat.atMs));
+  const resultAtMs = Math.min(Math.max(lastBeatAtMs + 220, visibleDurationMs - 560), Math.max(0, visibleDurationMs - 260));
+  const exitAtMs = Math.max(resultAtMs + 180, visibleDurationMs - 220);
+  const combatOutcome = combat.heroHpAfter <= 0 ? 'Hero Fell' : combat.enemyCount > 1 ? 'Loot Found' : 'Victory';
   const logFocusIndex = Math.max(0, activeBeatIndex);
   const logStart = Math.max(0, Math.min(logFocusIndex - 1, Math.max(0, beats.length - 2)));
   const combatLog = beats.slice(logStart, logStart + 2).map((beat, offset) => {
@@ -1957,18 +1973,21 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
 
   useEffect(() => {
     const timers = beats.map((beat, index) => window.setTimeout(() => {
+      setPresentationPhase('beat');
       setActiveBeatIndex(index);
       setDisplayHp({ hero: beat.heroHp, enemy: beat.enemyHp });
     }, beat.atMs));
+    timers.push(window.setTimeout(() => setPresentationPhase('result'), resultAtMs));
+    timers.push(window.setTimeout(() => setPresentationPhase('exit'), exitAtMs));
     timers.push(window.setTimeout(() => {
       setDisplayHp({ hero: presentation.heroHpAfter, enemy: presentation.enemyHpAfter });
-    }, Math.max(0, visibleDurationMs - 140)));
+    }, resultAtMs));
 
     return () => timers.forEach(window.clearTimeout);
-  }, [presentation, beats, visibleDurationMs]);
+  }, [presentation, beats, resultAtMs, exitAtMs]);
 
   return (
-    <div className="combat-overlay" style={{
+    <div className={`combat-overlay phase-${presentationPhase}`} style={{
       '--combat-bg': `url(${combatBackgroundUrl(combat.backgroundId)})`,
       '--combat-duration': `${visibleDurationMs}ms`,
       '--combat-delay': '0ms'
@@ -1999,8 +2018,8 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
         {activeBeat && <div key={`fx-${activeBeatIndex}`} className={combatFxClass(combat.effect)} aria-hidden="true" />}
         <strong>{combat.label}</strong>
         {combat.enemyCount > 1 && <em>{combat.enemyCount} foes · {combat.rounds} clashes</em>}
-        <span>{activeBeat ? `-${activeBeat.damage} HP` : 'Fight'}</span>
-        <small>{activeBeat?.text ?? `+${combat.reward} XP when cleared`}</small>
+        <span>{presentationPhase === 'result' || presentationPhase === 'exit' ? combatOutcome : activeBeat ? `-${activeBeat.damage} HP` : 'Fight'}</span>
+        <small>{presentationPhase === 'result' || presentationPhase === 'exit' ? `+${combat.reward} XP when cleared` : activeBeat?.text ?? `+${combat.reward} XP when cleared`}</small>
         {activeBeat && (
           <b key={`${activeBeatIndex}-${activeBeat.attacker}`} className={`combat-damage-float ${activeBeat.attacker}`}>
             -{activeBeat.damage}

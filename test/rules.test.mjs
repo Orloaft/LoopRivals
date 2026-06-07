@@ -464,12 +464,29 @@ test('danger terrain can stack multiple enemies into one longer combat lock', ()
   assert.ok(player.combat.beats.every((beat) => Number.isInteger(beat.enemyIndex)));
   assert.ok(player.combat.beats.every((beat) => beat.enemyIndex >= 0 && beat.enemyIndex < player.combat.enemyCount));
   assert.ok(new Set(player.combat.beats.filter((beat) => beat.attacker === 'enemy').map((beat) => beat.enemyIndex)).size > 1);
-  assert.equal(player.combat.durationMs, 420 + player.combat.beats.length * 360);
+  assert.equal(player.combat.durationMs, 518 + player.combat.beats.length * 422);
+  assert.equal(player.combat.beats[0].atMs, 320);
+  assert.equal(player.combat.beats[1].atMs - player.combat.beats[0].atMs, 422);
   assert.equal(player.combat.enemyName, 'Bone Host');
   assert.equal(player.combat.enemyId, 'bone-host');
   assert.equal(player.combat.enemyIds.length, player.combat.enemyCount);
   assert.ok(player.combat.enemyIds.includes('grave-knight'));
   assert.equal(player.combat.enemyNames[0], 'Bone Host');
+});
+
+test('simulated combat timing stays compact for balance runs', () => {
+  const simRoom = testApi.createRoom('simulated-combat-timing', { simulated: true, now: 1000 });
+  const player = testApi.createPlayer('fighter', 'Fighter', 'ember-knight');
+  simRoom.players[player.id] = player;
+  player.board[1].type = 'crypt';
+  player.position = 1;
+
+  testApi.triggerTile(simRoom, player, player.board[player.position]);
+
+  assert.ok(player.combat);
+  assert.equal(player.combat.beats[0].atMs, 180);
+  assert.equal(player.combat.beats[1].atMs - player.combat.beats[0].atMs, 203);
+  assert.equal(player.combat.durationMs, 360 + player.combat.beats.length * 203);
 });
 
 test('players have a complete paperdoll loadout with varied equipment slots', () => {

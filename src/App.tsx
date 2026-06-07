@@ -44,6 +44,15 @@ export type LocalProfile = {
 const emptyProfile: LocalProfile = { matches: 0, wins: 0, bestScore: 0, bestLevel: 1 };
 const authorityStaleMs = 1800;
 
+function activeCombatNotice(game: GameState | null) {
+  const player = game?.players.find((item) => item.combat);
+  if (!player?.combat) return null;
+  return {
+    key: `${player.id}:${player.combat.startedAt}`,
+    message: `${player.name}: ${player.combat.label} vs ${player.combat.enemyName}`
+  };
+}
+
 function GothicParallaxBackdrop({
   player,
   gameStatus,
@@ -177,6 +186,7 @@ function App() {
   const [recordedFinishId, setRecordedFinishId] = useState<string | null>(null);
   const [mobileDrawer, setMobileDrawer] = useState<'loot' | 'talents' | 'log' | 'menu' | null>(null);
   const lastRoomEventSeqRef = useRef(0);
+  const lastCombatNoticeKeyRef = useRef('');
 
   useEffect(() => {
     socket.on('connect', () => {
@@ -236,6 +246,13 @@ function App() {
     const timer = window.setInterval(() => setNetworkNow(Date.now()), 250);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const combatNotice = activeCombatNotice(game);
+    if (!combatNotice || combatNotice.key === lastCombatNoticeKeyRef.current) return;
+    lastCombatNoticeKeyRef.current = combatNotice.key;
+    setNotice(combatNotice.message);
+  }, [game]);
 
   // Esc toggles the game menu (and closes the rules overlay first if it's open).
   useEffect(() => {
