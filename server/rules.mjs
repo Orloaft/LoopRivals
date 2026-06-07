@@ -282,41 +282,42 @@ const combatEncounterStages = {
   'wolf grove': [
     { minPressure: 0, label: 'rat grove', threatDelta: -4, rewardDelta: -3 },
     { minPressure: 1, label: 'wolf grove', threatDelta: -2, rewardDelta: 0 },
-    { minPressure: 2, label: 'thorn grove', threatDelta: 0, rewardDelta: 2 },
-    { minPressure: 4, label: 'dire grove', threatDelta: 3, rewardDelta: 5 }
+    { minPressure: 3, label: 'thorn grove', threatDelta: 0, rewardDelta: 2 },
+    { minPressure: 6, label: 'dire grove', threatDelta: 3, rewardDelta: 5 }
   ],
   'crypt duel': [
     { minPressure: 0, label: 'skeleton crypt', threatDelta: -5, rewardDelta: -5 },
     { minPressure: 1, label: 'haunted crypt', threatDelta: -2, rewardDelta: -2 },
-    { minPressure: 2, label: 'crypt duel', threatDelta: 0, rewardDelta: 0 },
-    { minPressure: 4, label: 'grave crypt', threatDelta: 3, rewardDelta: 4 }
+    { minPressure: 3, label: 'crypt duel', threatDelta: 0, rewardDelta: 0 },
+    { minPressure: 5, label: 'grave crypt', threatDelta: 3, rewardDelta: 4 }
   ],
   'wolf den': [
     { minPressure: 0, label: 'dusk wolf den', threatDelta: -3, rewardDelta: -2 },
-    { minPressure: 2, label: 'wolf den', threatDelta: 0, rewardDelta: 1 },
-    { minPressure: 4, label: 'dire wolf den', threatDelta: 4, rewardDelta: 5 }
+    { minPressure: 3, label: 'wolf den', threatDelta: 0, rewardDelta: 1 },
+    { minPressure: 6, label: 'dire wolf den', threatDelta: 4, rewardDelta: 5 }
   ],
   'bone pit': [
     { minPressure: 0, label: 'skeleton pit', threatDelta: -4, rewardDelta: -3 },
-    { minPressure: 2, label: 'bone pit', threatDelta: 0, rewardDelta: 1 },
-    { minPressure: 4, label: 'grave pit', threatDelta: 3, rewardDelta: 5 }
+    { minPressure: 3, label: 'bone pit', threatDelta: 0, rewardDelta: 1 },
+    { minPressure: 5, label: 'grave pit', threatDelta: 3, rewardDelta: 5 }
   ],
   'ruined keep': [
     { minPressure: 0, label: 'bandit camp', threatDelta: -4, rewardDelta: -3 },
     { minPressure: 1, label: 'goblin camp', threatDelta: -2, rewardDelta: -1 },
-    { minPressure: 2, label: 'brigand keep', threatDelta: 0, rewardDelta: 1 },
-    { minPressure: 4, label: 'ruined keep', threatDelta: 3, rewardDelta: 5 }
+    { minPressure: 3, label: 'brigand keep', threatDelta: 0, rewardDelta: 1 },
+    { minPressure: 5, label: 'ruined keep', threatDelta: 3, rewardDelta: 5 }
   ],
   'bandit ambush': [
     { minPressure: 0, label: 'road ambush', threatDelta: -4, rewardDelta: -3 },
     { minPressure: 1, label: 'goblin camp', threatDelta: -2, rewardDelta: -1 },
-    { minPressure: 2, label: 'bandit ambush', threatDelta: 0, rewardDelta: 1 },
-    { minPressure: 4, label: 'ruined keep', threatDelta: 2, rewardDelta: 4 }
+    { minPressure: 3, label: 'bandit ambush', threatDelta: 0, rewardDelta: 1 },
+    { minPressure: 5, label: 'ruined keep', threatDelta: 2, rewardDelta: 4 }
   ],
   'road skirmish': [
     { minPressure: 0, label: 'road ambush', threatDelta: -3, rewardDelta: -2 },
     { minPressure: 1, label: 'goblin camp', threatDelta: -1, rewardDelta: 0 },
-    { minPressure: 2, label: 'road skirmish', threatDelta: 1, rewardDelta: 2 }
+    { minPressure: 3, label: 'road skirmish', threatDelta: 1, rewardDelta: 2 },
+    { minPressure: 5, label: 'bandit ambush', threatDelta: 2, rewardDelta: 4 }
   ]
 };
 
@@ -1631,6 +1632,7 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
   player.cardsPlayed += 1;
   player.rivalHits += 1;
   if (player.heroId === 'rune-archer') {
+    target.marked = true;
     target.curse += 1;
     target.nextMoveAt += 180 * roomTimeScale(room);
     target.nextMovement = movementSegmentForPlayer(target);
@@ -2599,7 +2601,14 @@ function encounterPressure(player) {
   const tierConfig = matchTiers.find((candidate) => candidate.id === tier);
   const tierStartLap = player.tierStartLap ?? tierConfig?.minLoops ?? 0;
   const loopsInTier = Math.max(0, (player.laps ?? 0) - tierStartLap);
-  return (tier - 1) * 2 + Math.min(1, Math.floor(loopsInTier / 2));
+  const intraTierPressure = loopsInTier <= 0
+    ? 0
+    : loopsInTier <= 2
+      ? 1
+      : loopsInTier <= 4
+        ? 2
+        : 3;
+  return (tier - 1) * 3 + intraTierPressure;
 }
 
 function stagedEncounter(player, label, threat, reward) {
@@ -2634,21 +2643,26 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   reward = staged.reward;
   const hpBefore = player.hp;
   const tier = player.loopTier ?? room.tier?.id ?? 1;
-  const tierThreat = (tier - 1) * 4;
+  const tierThreat = (tier - 1) * 3;
   const tierReward = 1 + (tier - 1) * 0.28;
   const corruption = isSoloPlayer(room, player) ? player.soloCorruption ?? 0 : 0;
   const cursePenalty = player.curse > 0 ? 3 : 0;
   const emberHeat = player.heroId === 'ember-knight' ? clamp(player.heroHeat ?? 0, 0, 3) : 0;
   const graveDirge = player.heroId === 'grave-singer' ? clamp(player.graveEcho ?? 0, 0, 8) : 0;
+  const runeMarks = player.heroId === 'rune-archer' ? clamp(player.runeMarkCount ?? 0, 0, 8) : 0;
+  const runeWard = runeMarks > 0 && staged.pressure >= 3 ? Math.min(4, 1 + Math.floor(runeMarks / 2)) : 0;
+  const runePower = runeMarks > 0 && (staged.pressure >= 5 || ['gate warden', 'crown gate', 'loop tyrant'].includes(label))
+    ? Math.min(2, Math.floor(runeMarks / 3))
+    : 0;
   const heroBonus = player.heroId === 'ember-knight' && player.hp < player.maxHp * 0.45 ? 2 + emberHeat : emberHeat;
   const graveBonus = player.heroId === 'grave-singer' && threat >= 10 ? 4 : 0;
-  const power = Math.max(4, player.power + emberHeat + Math.floor(graveDirge / 2) + (isSoloPlayer(room, player) ? 0 : Math.floor(player.level / 3)));
+  const power = Math.max(4, player.power + emberHeat + runePower + Math.floor(graveDirge / 2) + (isSoloPlayer(room, player) ? 0 : Math.floor(player.level / 3)));
   const scaledThreat = threat + tierThreat + Math.floor(corruption * 0.18);
   const enemyMaxHp = clamp(scaledThreat * 2 + reward + player.level * 3 + enemyCount * 12 + Math.floor(corruption * 0.65), 24, label === 'loop tyrant' ? 320 : 210);
   const rounds = clamp(Math.ceil(enemyMaxHp / power), enemyCount, enemyCount + 5);
   const stackedPressure = (enemyCount - 1) * 2 + Math.max(0, rounds - 2);
   const graveWard = player.heroId === 'grave-singer' && threat >= 10 ? Math.min(5, enemyCount + 1 + Math.floor(graveDirge / 4)) : 0;
-  const damage = clamp(scaledThreat + stackedPressure + cursePenalty + Math.floor(corruption / 16) - Math.floor(player.guard / 1.7) - player.armor - graveWard, 2, label === 'loop tyrant' ? 56 : 38);
+  const damage = clamp(scaledThreat + stackedPressure + cursePenalty + Math.floor(corruption / 16) - Math.floor(player.guard / 1.7) - player.armor - graveWard - runeWard, 2, label === 'loop tyrant' ? 56 : 42);
   player.hp -= damage;
   let vanished = false;
   const canVanish = !['gate warden', 'crown gate', 'loop tyrant'].includes(label);
@@ -2665,6 +2679,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   if (player.heroId === 'grave-singer' && threat >= 10) player.graveEcho = Math.min(8, (player.graveEcho ?? 0) + enemyCount);
   player.event = `${label}: ${enemyCount} foe${enemyCount === 1 ? '' : 's'}, -${damage} hp, +${xpReward} xp`;
   if (emberHeat > 0) player.event += `, heat ${emberHeat}`;
+  if (runeWard > 0) player.event += `, rune ward ${runeWard}`;
   if (vanished) player.event += ', vanished at 1 hp';
   if (isGuidedHuman(room, player)) {
     const heatLine = emberHeat > 0 ? ` Heat added ${emberHeat} power to the exchange.` : '';
@@ -2962,10 +2977,11 @@ function triggerTile(room, player, tile) {
     if (tile.charges <= 0) tile.type = 'road';
   } else {
     const roll = random(room);
-    if (roll < 0.3) {
-      player.hp -= 6;
-      player.event = 'road fatigue: -6 hp';
-    } else if (roll < 0.52) {
+    if (roll < 0.18) {
+      const fatigueDamage = Math.min(6, 3 + (room.tier?.id ?? player.loopTier ?? 1));
+      player.hp -= fatigueDamage;
+      player.event = `road fatigue: -${fatigueDamage} hp`;
+    } else if (roll < 0.48) {
       player.hp = clamp(player.hp + 3, 0, player.maxHp);
       player.event = 'quiet road: +3 hp';
     } else player.event = 'sprinting';

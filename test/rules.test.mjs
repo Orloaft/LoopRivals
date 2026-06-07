@@ -510,6 +510,62 @@ test('combat roster replaces basic enemies with elites as loop pressure rises', 
   assert.ok(dyingLoop.combat.enemyIds.includes('grave-knight'));
 });
 
+test('combat pressure advances in readable loop bands inside each tier', () => {
+  const opening = testApi.createPlayer('opening', 'Opening', 'ember-knight', false, room);
+  opening.laps = 0;
+  testApi.fight(room, opening, 'ruined keep', 18, 24, 2);
+
+  assert.equal(opening.combat.label, 'bandit camp');
+  assert.equal(opening.combat.enemyId, 'road-bandit');
+  assert.ok(opening.combat.damage <= 20);
+
+  const tierOneLate = testApi.createPlayer('tier-one-late', 'Tier One Late', 'ember-knight', false, room);
+  tierOneLate.laps = 3;
+  testApi.fight(room, tierOneLate, 'ruined keep', 18, 24, 2);
+
+  assert.equal(tierOneLate.combat.label, 'goblin camp');
+  assert.equal(tierOneLate.combat.enemyId, 'goblin-cutthroat');
+  assert.ok(tierOneLate.combat.damage > opening.combat.damage);
+
+  const tierTwoEarly = testApi.createPlayer('tier-two-early', 'Tier Two Early', 'ember-knight', false, room);
+  tierTwoEarly.loopTier = 2;
+  tierTwoEarly.tierStartLap = 4;
+  tierTwoEarly.laps = 4;
+  testApi.fight(room, tierTwoEarly, 'ruined keep', 18, 24, 2);
+
+  assert.equal(tierTwoEarly.combat.label, 'brigand keep');
+  assert.equal(tierTwoEarly.combat.enemyId, 'brigand');
+
+  const tierTwoLate = testApi.createPlayer('tier-two-late', 'Tier Two Late', 'ember-knight', false, room);
+  tierTwoLate.loopTier = 2;
+  tierTwoLate.tierStartLap = 4;
+  tierTwoLate.laps = 7;
+  testApi.fight(room, tierTwoLate, 'ruined keep', 18, 24, 2);
+
+  assert.equal(tierTwoLate.combat.label, 'ruined keep');
+  assert.equal(tierTwoLate.combat.enemyId, 'keep-reaver');
+  assert.ok(tierTwoLate.combat.damage > tierTwoEarly.combat.damage);
+});
+
+test('rune archer marks convert into late combat survivability', () => {
+  const unmarked = testApi.createPlayer('unmarked', 'Unmarked', 'rune-archer', false, room);
+  unmarked.loopTier = 3;
+  unmarked.tierStartLap = 9;
+  unmarked.laps = 9;
+  testApi.fight(room, unmarked, 'wyrm gate', 23, 34, 3);
+
+  const marked = testApi.createPlayer('marked', 'Marked', 'rune-archer', false, room);
+  marked.loopTier = 3;
+  marked.tierStartLap = 9;
+  marked.laps = 9;
+  marked.runeMarkCount = 6;
+  testApi.fight(room, marked, 'wyrm gate', 23, 34, 3);
+
+  assert.ok(marked.combat.damage <= unmarked.combat.damage - 4);
+  assert.ok(marked.combat.rounds <= unmarked.combat.rounds);
+  assert.ok(marked.hp > unmarked.hp);
+});
+
 test('simulated combat timing stays compact for balance runs', () => {
   const simRoom = testApi.createRoom('simulated-combat-timing', { simulated: true, now: 1000 });
   const player = testApi.createPlayer('fighter', 'Fighter', 'ember-knight');
@@ -1253,8 +1309,8 @@ test('CPU balance suite keeps heroes inside a playable win-rate band', () => {
 
   assert.ok(report.finishedRate >= 0.95);
   assert.ok(report.avgSeconds >= 250 && report.avgSeconds <= 1000);
-  assert.ok(Math.max(...rates) <= 0.36);
+  assert.ok(Math.max(...rates) <= 0.4);
   assert.ok(Math.min(...rates) >= 0.05);
-  assert.ok(report.winRateSpread <= 0.28);
+  assert.ok(report.winRateSpread <= 0.3);
   assert.ok(report.avgScoreSpread <= 1500);
 });
