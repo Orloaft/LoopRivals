@@ -161,6 +161,28 @@ test('pending combat stop disappears once authoritative combat is present', () =
   );
 });
 
+test('pending combat stop ignores the already occupied combat tile after resolution', () => {
+  const player = {
+    board: board([2, 5]),
+    position: 2,
+    laps: 0,
+    combat: null,
+    stunRemainingMs: 0,
+    nextMovement: {
+      fromCursor: 2,
+      toCursor: 3,
+      departAt: 2000,
+      arriveAt: 2800
+    },
+    arrivalMovement: null
+  };
+
+  assert.equal(
+    pendingCombatStopCursor(player, 2200, Date.now()),
+    null
+  );
+});
+
 test('confirmed combat keeps moving on the server arrival segment until engagement', () => {
   const player = {
     board: board([2]),

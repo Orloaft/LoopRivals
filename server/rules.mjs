@@ -418,6 +418,8 @@ export const shopRotationMs = 60 * 1000;
 const combatWindupMs = 100;
 const combatBeatMs = 132;
 const combatTailMs = 162;
+const postCombatResumeMs = 80;
+const simulatedPostCombatResumeMs = 320;
 const simulatedCombatWindupMs = 180;
 const simulatedCombatBeatMs = 203;
 const simulatedCombatTailMs = 360;
@@ -1353,8 +1355,9 @@ function settleDueMovementBeforeTerrainPlacement(room, player) {
 
 function scheduleNextMovementFromCurrentTile(room, player, options = {}) {
   const boardLength = boardPath.length;
+  const postCombatDelayMs = room.simulated ? simulatedPostCombatResumeMs : postCombatResumeMs;
   const resumeAt = player.combat
-    ? player.combat.expiresAt + Math.round(320 * roomTimeScale(room))
+    ? player.combat.expiresAt + Math.round(postCombatDelayMs * roomTimeScale(room))
     : options.preserveResumeAt
       ? Math.max(now(room), player.moveStartedAt ?? now(room))
       : now(room);
@@ -2849,7 +2852,8 @@ function advancePlayer(room, player) {
     event: player.event,
     message: player.message
   });
-  const nextDepartAt = player.combat ? player.combat.expiresAt + Math.round(320 * roomTimeScale(room)) : arrivedAt;
+  const postCombatDelayMs = room.simulated ? simulatedPostCombatResumeMs : postCombatResumeMs;
+  const nextDepartAt = player.combat ? player.combat.expiresAt + Math.round(postCombatDelayMs * roomTimeScale(room)) : arrivedAt;
   const delay = movementDelay(room, player);
   player.moveStartedAt = nextDepartAt;
   player.nextMoveAt = room.simulated ? Math.max(arrivedAt + delay, nextDepartAt) : nextDepartAt + delay;

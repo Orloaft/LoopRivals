@@ -98,7 +98,7 @@ function GothicParallaxBackdrop({
       const cursor = visualCursorForPlayer(current.player, current.serverNow ?? Date.now(), current.receivedAt, authorityPaused);
       cursorRef.current = cursor;
       lastFrameAtRef.current = null;
-      backdrop.style.setProperty('--loop-progress', (cursor / boardLength).toFixed(3));
+      backdrop.style.setProperty('--loop-progress', (cursor / boardLength).toFixed(4));
       if (!current.player.combat || authorityPaused || gameStatus !== 'running') return undefined;
     }
 
@@ -111,7 +111,7 @@ function GothicParallaxBackdrop({
         const cursor = visualCursorForPlayer(current.player, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused);
         cursorRef.current = cursor;
         lastFrameAtRef.current = null;
-        backdrop.style.setProperty('--loop-progress', (cursor / Math.max(1, current.player.board.length)).toFixed(3));
+        backdrop.style.setProperty('--loop-progress', (cursor / Math.max(1, current.player.board.length)).toFixed(4));
         if (combatEngageIsPending(current.player, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused)) {
           frame = window.requestAnimationFrame(tick);
         }
@@ -127,7 +127,7 @@ function GothicParallaxBackdrop({
       const nextCursor = visualFrameCursorForPlayer(current.player, previousCursor, localStepCursor, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused);
       lastFrameAtRef.current = frameAt;
       cursorRef.current = nextCursor;
-      backdrop.style.setProperty('--loop-progress', (nextCursor / Math.max(1, current.player.board.length)).toFixed(3));
+      backdrop.style.setProperty('--loop-progress', (nextCursor / Math.max(1, current.player.board.length)).toFixed(4));
       frame = window.requestAnimationFrame(tick);
     };
     tick();

@@ -194,13 +194,14 @@ export function visualFrameCursorForPlayer(
 export function pendingCombatStopCursor(player: Player, serverNow: number, receivedAt?: number, authorityPaused = false) {
   if (player.combat || player.stunRemainingMs || authorityPaused) return null;
   const baseCursor = authoritativeCursor(player);
+  const searchFromCursor = baseCursor + 0.001;
   const candidateCursors = [
     player.arrivalMovement?.toCursor,
     player.nextMovement?.toCursor,
     visualCursorForPlayer(player, serverNow, receivedAt, authorityPaused)
   ].filter((cursor): cursor is number => typeof cursor === 'number' && Number.isFinite(cursor));
-  const lookaheadCursor = Math.max(baseCursor, ...candidateCursors);
-  return firstMovementStopCursor(player.board, baseCursor, lookaheadCursor);
+  const lookaheadCursor = Math.max(searchFromCursor, ...candidateCursors);
+  return firstMovementStopCursor(player.board, searchFromCursor, lookaheadCursor);
 }
 
 export function visualPointForPlayer(player: Player, serverNow: number, receivedAt?: number, authorityPaused = false) {

@@ -852,6 +852,10 @@ function PlayerSideDock({
   const draggingLoot = draggingLootId ? player.loot.find((item) => item.id === draggingLootId) ?? null : null;
   const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
   const loopProgress = tierLoopProgress(config, player);
+  const abilityUnavailable = Boolean(
+    player.ability &&
+    (!player.ability.ready || game.status !== 'running' || player.combat || player.stunRemainingMs)
+  );
 
   return (
     <aside className="player-side-dock" style={{ '--hero-color': player.color } as CSSProperties}>
@@ -913,8 +917,11 @@ function PlayerSideDock({
             <button
               type="button"
               className={`hero-ability-button ${player.ability.ready ? 'ready' : 'cooling'}`}
-              onClick={onActivateAbility}
-              disabled={!player.ability.ready || game.status !== 'running' || Boolean(player.combat) || Boolean(player.stunRemainingMs)}
+              onClick={() => {
+                if (abilityUnavailable) return;
+                onActivateAbility();
+              }}
+              aria-disabled={abilityUnavailable}
               aria-label={player.ability.name}
             >
               <span className="ability-glyph">{player.ability.icon}</span>

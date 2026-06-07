@@ -3833,6 +3833,8 @@ body.loot-drag-active * {
 .side-control-button:focus-visible .hover-pop,
 .combatant:hover .hover-pop,
 .combatant:focus-visible .hover-pop,
+.hero-ability-button:hover .hover-pop,
+.hero-ability-button:focus-visible .hover-pop,
 .equip-slot:hover .hover-pop,
 .equip-slot:focus-visible .hover-pop,
 .loot-chip:hover .hover-pop,
@@ -4605,25 +4607,26 @@ body.loot-drag-active * {
 
 .hero-ability-button {
   position: absolute;
-  left: 15.6%;
-  right: 15.6%;
-  top: 16.8%;
+  left: 22.4%;
+  right: 22.4%;
+  top: 3.8%;
+  z-index: 7;
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr) 18px;
+  grid-template-columns: 42px minmax(0, 1fr) 16px;
   align-items: center;
-  gap: 8px;
-  min-height: 62px;
-  padding: 6px 9px 6px 6px;
+  gap: 6px;
+  min-height: 48px;
+  padding: 5px 7px 5px 5px;
   border: 0;
   border-radius: 0;
   color: var(--parchment);
   background:
-    radial-gradient(circle at 26px 50%, rgba(7, 5, 4, 0.82) 0 22px, transparent 24px),
+    radial-gradient(circle at 21px 50%, rgba(7, 5, 4, 0.82) 0 18px, transparent 20px),
     linear-gradient(90deg, rgba(22, 12, 8, 0.58), rgba(9, 6, 5, 0.16) 78%, transparent);
   text-align: left;
 }
 
-.hero-ability-button:disabled {
+.hero-ability-button[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.58;
 }
@@ -4637,12 +4640,12 @@ body.loot-drag-active * {
 .ability-glyph {
   display: grid;
   place-items: center;
-  width: 54px;
+  width: 42px;
   aspect-ratio: 1;
   border: 1px solid rgba(239, 218, 153, 0.42);
   border-radius: 999px;
   color: var(--gold-bright);
-  font-size: 1.55rem;
+  font-size: 1.22rem;
   background:
     radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--hero-color) 34%, rgba(210, 177, 92, 0.2)), transparent 58%),
     conic-gradient(from -18deg, color-mix(in srgb, var(--hero-color) 68%, var(--gold)) 0 18%, rgba(0, 0, 0, 0.38) 18% 32%, rgba(210, 177, 92, 0.78) 32% 48%, rgba(0, 0, 0, 0.42) 48% 62%, rgba(210, 177, 92, 0.64) 62% 78%, rgba(0, 0, 0, 0.36) 78% 100%);
@@ -4668,12 +4671,12 @@ body.loot-drag-active * {
 .hero-ability-button strong {
   color: #fff2bd;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 0.83rem;
+  font-size: 0.76rem;
 }
 
 .hero-ability-button small {
   color: var(--gold);
-  font-size: 0.66rem;
+  font-size: 0.6rem;
   font-weight: 950;
   text-transform: uppercase;
 }
@@ -5016,6 +5019,11 @@ body.loot-drag-active * {
   left: auto;
   right: 0;
   transform: translateX(0) translateY(4px);
+}
+
+.hero-ability-button .hover-pop {
+  top: calc(100% + 8px);
+  bottom: auto;
 }
 
 .player-side-dock .paper-slot:hover .hover-pop,
