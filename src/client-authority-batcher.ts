@@ -129,6 +129,11 @@ export function applyQueuedRoomAuthorityMessages(
     }
 
     drainDeltas();
+    const incomingSeq = stateEventSeq(message.payload);
+    if (incomingSeq < stateEventSeq(nextState) || incomingSeq < acceptedSeq) {
+      clearCoveredRecovery();
+      continue;
+    }
     nextState = withReceivedAt(message.payload, receivedAt);
     committed = true;
     acceptedSeq = Math.max(acceptedSeq, stateEventSeq(nextState));

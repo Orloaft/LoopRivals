@@ -209,3 +209,18 @@ test('queued snapshot cancels recovery for a gap it covers', () => {
   assert.equal(result.state.players[0].score, 99);
   assert.equal(result.state.receivedAt, 2222);
 });
+
+test('queued stale snapshot does not roll back an applied delta', () => {
+  const staleSnapshot = state(1, 20);
+  const result = applyQueuedRoomAuthorityMessages(state(1, 20), [
+    { type: 'delta', payload: delta(2, { score: 70 }) },
+    { type: 'state', payload: staleSnapshot }
+  ], applyRoomDelta, 3333);
+
+  assert.equal(result.recovery, null);
+  assert.equal(result.committed, true);
+  assert.equal(result.acceptedSeq, 2);
+  assert.equal(result.state.runtime.eventSeq, 2);
+  assert.equal(result.state.players[0].score, 70);
+  assert.equal(result.state.receivedAt, 3333);
+});

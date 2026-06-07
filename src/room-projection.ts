@@ -283,7 +283,16 @@ function applyRoomEvent(state: GameState, event: RoomEvent) {
   }
 
   if (event.type === 'combatEnded') {
-    replacePlayer(state, playerId, (player) => ({ ...player, combat: null }));
+    const hasNextMovement = hasOwn(payload, 'nextMovement');
+    const hasArrivalMovement = hasOwn(payload, 'arrivalMovement');
+    replacePlayer(state, playerId, (player) => ({
+      ...player,
+      position: numberValue(payload.position) ?? numberValue(payload.tileIndex) ?? player.position,
+      laps: numberValue(payload.laps) ?? player.laps,
+      nextMovement: hasNextMovement ? movementValue(payload.nextMovement) : player.nextMovement,
+      arrivalMovement: hasArrivalMovement ? movementValue(payload.arrivalMovement) : player.arrivalMovement,
+      combat: null
+    }));
     return;
   }
 
@@ -404,6 +413,13 @@ function applyRoomEvent(state: GameState, event: RoomEvent) {
   }
 }
 
+function applyRoomEventClock(state: GameState, event: RoomEvent) {
+  const serverTime = numberValue(event.serverTime);
+  if (serverTime !== null) state.now = Math.max(state.now, serverTime);
+  const tick = numberValue(event.tick);
+  if (tick !== null) state.tick = Math.max(state.tick, tick);
+}
+
 export function applyRoomDelta(state: GameState, delta: RoomDelta, receivedAt = Date.now()): RoomProjectionResult {
   const currentSeq = state.runtime?.eventSeq ?? 0;
   if (delta.roomId !== state.id || delta.lastSeq <= currentSeq) {
@@ -453,6 +469,7 @@ export function applyRoomDelta(state: GameState, delta: RoomDelta, receivedAt = 
         needsRecovery: true
       };
     }
+    applyRoomEventClock(nextState, event);
     applyRoomEvent(nextState, event);
     runtime.eventSeq = event.seq;
     runtime.generatedAt = receivedAt;

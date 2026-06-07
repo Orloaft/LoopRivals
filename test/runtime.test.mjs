@@ -36,6 +36,29 @@ test('room runtime records commands and emits sequenced domain events', () => {
   assert.equal(runtime.serialize().commands[0].commandId, 'join-1');
 });
 
+test('room runtime stamps live events with fresh wall-clock server time', () => {
+  const room = testApi.createRoom('runtime-live-server-time', { now: 1000, seed: 'runtime-live-server-time' });
+  const runtime = createRoomRuntime(room);
+  const before = Date.now();
+
+  const event = runtime.appendEvent('diagnostic');
+  const after = Date.now();
+
+  assert.equal(room.simulated, false);
+  assert.notEqual(event.serverTime, room.now);
+  assert.equal(event.serverTime >= before, true);
+  assert.equal(event.serverTime <= after, true);
+});
+
+test('room runtime keeps simulated event server time deterministic', () => {
+  const room = testApi.createRoom('runtime-sim-server-time', { simulated: true, now: 4242, seed: 'runtime-sim-server-time' });
+  const runtime = createRoomRuntime(room);
+
+  const event = runtime.appendEvent('diagnostic');
+
+  assert.equal(event.serverTime, 4242);
+});
+
 test('room runtime rejects no-op commands instead of recording fake acceptance', () => {
   const room = testApi.createRoom('runtime-reject', { now: 1000, seed: 'runtime-reject' });
   const runtime = createRoomRuntime(room);

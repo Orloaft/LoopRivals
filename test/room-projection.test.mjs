@@ -170,6 +170,8 @@ test('client projection applies ordered movement and tile events', () => {
   assert.equal(host.level, 2);
   assert.deepEqual(host.nextMovement, nextMovement);
   assert.equal(result.state.leaderboard[0].id, 'host');
+  assert.equal(result.state.now, 1200);
+  assert.equal(result.state.tick, 2);
   assert.equal(result.state.receivedAt, 5000);
 });
 
@@ -315,6 +317,42 @@ test('client projection ignores trailing arrival movement after a visually lande
   assert.equal(host.arrivalMovement, null);
   assert.equal(host.nextMovement, null);
   assert.equal(visualCursorForPlayer(host, 1100, result.state.receivedAt), 2);
+});
+
+test('client projection applies resumed movement carried by combat end events', () => {
+  const initial = state();
+  initial.players[0] = {
+    ...initial.players[0],
+    position: 2,
+    combat: { startedAt: 2000, expiresAt: 3200 },
+    arrivalMovement: null,
+    nextMovement: null
+  };
+  const resumedMovement = { fromCursor: 2, toCursor: 3, departAt: 3600, arriveAt: 4400 };
+
+  const result = applyRoomDelta(initial, {
+    roomId: 'projection-room',
+    firstSeq: 1,
+    lastSeq: 1,
+    events: [
+      event(1, 'combatEnded', {
+        playerId: 'host',
+        tileIndex: 2,
+        position: 2,
+        laps: 0,
+        arrivalMovement: null,
+        nextMovement: resumedMovement
+      })
+    ]
+  }, Date.now());
+
+  const host = result.state.players.find((item) => item.id === 'host');
+  assert.equal(host.position, 2);
+  assert.equal(host.combat, null);
+  assert.equal(host.arrivalMovement, null);
+  assert.deepEqual(host.nextMovement, resumedMovement);
+  assert.equal(visualCursorForPlayer(host, 3500, result.state.receivedAt), 2);
+  assert.ok(visualCursorForPlayer(host, 4100, result.state.receivedAt) > 2);
 });
 
 test('client projection infers combat start from arrival movement before queued next movement', () => {

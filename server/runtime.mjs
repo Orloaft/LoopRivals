@@ -30,6 +30,10 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function roomEventServerTime(room) {
+  return room?.simulated && Number.isFinite(room.now) ? room.now : Date.now();
+}
+
 function normalizeCommandId(commandId) {
   const id = String(commandId ?? '').trim();
   return id ? id.slice(0, 80) : null;
@@ -196,7 +200,7 @@ export class RoomRuntime {
       type,
       roomId: this.room.id,
       tick: this.room.tick,
-      serverTime: this.room.now ?? Date.now(),
+      serverTime: roomEventServerTime(this.room),
       payload
     };
     this.events.push(event);
