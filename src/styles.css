@@ -107,8 +107,9 @@ body::before {
   height: 62vh;
   background:
     linear-gradient(180deg, rgba(5, 6, 7, 0.04), rgba(5, 6, 7, 0.2) 76%, rgba(5, 5, 4, 0.72)),
-    url('/assets/background/loopduel-parallax-sky-v2.png') top center / cover no-repeat;
-  background-size: auto, cover;
+    url('/assets/background/loopduel-parallax-sky-v2.png') top center;
+  background-repeat: no-repeat, repeat-x;
+  background-size: auto, auto 100%;
   opacity: 0.9;
   -webkit-mask-image: linear-gradient(180deg, #000 0 74%, transparent 100%);
   mask-image: linear-gradient(180deg, #000 0 74%, transparent 100%);
@@ -165,7 +166,9 @@ body::before {
   height: min(44vh, 440px);
   background:
     linear-gradient(180deg, transparent 0 20%, rgba(5, 5, 5, 0.04) 54%, rgba(2, 2, 2, 0.28) 100%),
-    url('/assets/background/loopduel-parallax-spires-v2.png') bottom center / cover no-repeat;
+    url('/assets/background/loopduel-parallax-spires-v2.png') bottom center;
+  background-repeat: no-repeat, repeat-x;
+  background-size: auto, auto 100%;
   transform: translate3d(calc(var(--loop-progress) * -120px), 0, 0);
   animation: spireCreep 24s ease-in-out infinite alternate;
   opacity: 0.98;
@@ -186,7 +189,9 @@ body::before {
   height: min(34vh, 320px);
   background:
     linear-gradient(180deg, rgba(5, 5, 5, 0.02), rgba(3, 3, 3, 0.28) 88%),
-    url('/assets/background/loopduel-parallax-graves-v2.png') bottom center / cover no-repeat;
+    url('/assets/background/loopduel-parallax-graves-v2.png') bottom center;
+  background-repeat: no-repeat, repeat-x;
+  background-size: auto, auto 100%;
   transform: translate3d(calc(var(--loop-progress) * -200px), 0, 0);
   animation: gravesCreep 16s ease-in-out infinite alternate;
   opacity: 0.96;
@@ -201,7 +206,9 @@ body::before {
   height: min(30vh, 280px);
   background:
     linear-gradient(180deg, rgba(5, 5, 5, 0.02), rgba(3, 3, 3, 0.3) 76%),
-    url('/assets/background/loopduel-parallax-brambles-v2.png') bottom center / cover no-repeat;
+    url('/assets/background/loopduel-parallax-brambles-v2.png') bottom center;
+  background-repeat: no-repeat, repeat-x;
+  background-size: auto, auto 100%;
   transform: translate3d(calc(var(--loop-progress) * -380px), 0, 0);
   animation: brambleCreep 11s ease-in-out infinite alternate;
   opacity: 0.98;
@@ -2461,7 +2468,7 @@ input:focus {
   translate: -50% -50%;
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.58)),
-    var(--combat-bg) center / cover no-repeat,
+    var(--combat-bg) center / auto 100% repeat-x,
     #15110d;
   box-shadow:
     inset 0 0 0 1px rgba(0, 0, 0, 0.72),
@@ -2636,8 +2643,8 @@ input:focus {
   position: relative;
   display: grid;
   place-items: end center;
-  width: min(100%, 310px);
-  height: clamp(132px, 31vw, 210px);
+  width: min(100%, 350px);
+  height: clamp(154px, 35vw, 246px);
   isolation: isolate;
 }
 
@@ -2646,40 +2653,42 @@ input:focus {
   --enemy-scale: 0.86;
   position: absolute;
   inset: auto auto 0 50%;
-  width: clamp(64px, 17vw, 116px);
-  height: clamp(96px, 24vw, 156px);
+  width: clamp(82px, 20vw, 146px);
+  height: auto;
   opacity: 0.9;
+  object-fit: contain;
+  object-position: center bottom;
   transform: translateX(var(--enemy-x)) scale(var(--enemy-scale));
   transform-origin: 50% 100%;
   z-index: 4;
 }
 
 .enemy-party-1 img {
-  --enemy-scale: 0.98;
-  width: clamp(78px, 20vw, 138px);
+  --enemy-scale: 1.03;
+  width: clamp(112px, 26vw, 188px);
 }
 
 .enemy-party-2 img {
-  --enemy-x: calc(-50% - 46px);
-  --enemy-scale: 0.84;
+  --enemy-x: calc(-50% - 54px);
+  --enemy-scale: 0.88;
 }
 
 .enemy-party-2 img:nth-child(2) {
-  --enemy-x: calc(-50% + 46px);
-  --enemy-scale: 0.86;
+  --enemy-x: calc(-50% + 54px);
+  --enemy-scale: 0.9;
 }
 
 .enemy-party-3 img,
 .enemy-party-4 img,
 .enemy-party-5 img {
-  --enemy-scale: 0.8;
+  --enemy-scale: 0.84;
 }
 
 .enemy-party-3 img:nth-child(1),
 .enemy-party-4 img:nth-child(1),
 .enemy-party-5 img:nth-child(1) {
-  --enemy-x: calc(-50% - 72px);
-  --enemy-scale: 0.76;
+  --enemy-x: calc(-50% - 82px);
+  --enemy-scale: 0.8;
   z-index: 3;
 }
 
@@ -2687,34 +2696,34 @@ input:focus {
 .enemy-party-4 img:nth-child(2),
 .enemy-party-5 img:nth-child(2) {
   --enemy-x: -50%;
-  --enemy-scale: 0.84;
+  --enemy-scale: 0.9;
   z-index: 5;
 }
 
 .enemy-party-3 img:nth-child(3),
 .enemy-party-4 img:nth-child(3),
 .enemy-party-5 img:nth-child(3) {
-  --enemy-x: calc(-50% + 72px);
-  --enemy-scale: 0.78;
+  --enemy-x: calc(-50% + 82px);
+  --enemy-scale: 0.82;
   z-index: 4;
 }
 
 .enemy-party-4 img:nth-child(4),
 .enemy-party-5 img:nth-child(4) {
-  --enemy-x: calc(-50% + 108px);
-  --enemy-scale: 0.68;
+  --enemy-x: calc(-50% + 118px);
+  --enemy-scale: 0.72;
   z-index: 2;
 }
 
 .enemy-party-5 img:nth-child(5) {
-  --enemy-x: calc(-50% - 108px);
-  --enemy-scale: 0.66;
+  --enemy-x: calc(-50% - 118px);
+  --enemy-scale: 0.72;
   z-index: 1;
 }
 
 .enemy-party-4 img,
 .enemy-party-5 img {
-  width: clamp(54px, 14vw, 96px);
+  width: clamp(68px, 16vw, 116px);
 }
 
 .enemy-party img.active-enemy {

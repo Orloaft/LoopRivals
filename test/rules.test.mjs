@@ -465,9 +465,9 @@ test('danger terrain can stack multiple enemies into one longer combat lock', ()
   assert.ok(player.combat.beats.every((beat) => Number.isInteger(beat.enemyIndex)));
   assert.ok(player.combat.beats.every((beat) => beat.enemyIndex >= 0 && beat.enemyIndex < player.combat.enemyCount));
   assert.ok(new Set(player.combat.beats.filter((beat) => beat.attacker === 'enemy').map((beat) => beat.enemyIndex)).size > 1);
-  assert.equal(player.combat.durationMs, 518 + player.combat.beats.length * 422);
-  assert.equal(player.combat.beats[0].atMs, 320);
-  assert.equal(player.combat.beats[1].atMs - player.combat.beats[0].atMs, 422);
+  assert.equal(player.combat.durationMs, 410 + player.combat.beats.length * 339);
+  assert.equal(player.combat.beats[0].atMs, 262);
+  assert.equal(player.combat.beats[1].atMs - player.combat.beats[0].atMs, 339);
   assert.equal(player.combat.enemyName, 'Skeleton Pit');
   assert.equal(player.combat.enemyId, 'crypt-skeleton');
   assert.equal(player.combat.enemyIds.length, player.combat.enemyCount);

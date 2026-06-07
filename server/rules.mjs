@@ -597,9 +597,9 @@ export const traits = Object.values(talentTrees).flat();
 export const equipmentSlots = ['weapon', 'shield', 'helm', 'armor', 'gloves', 'boots', 'ring', 'charm'];
 export const shopSize = 5;
 export const shopRotationMs = 60 * 1000;
-const combatWindupMs = 100;
-const combatBeatMs = 132;
-const combatTailMs = 162;
+const combatWindupMs = 82;
+const combatBeatMs = 106;
+const combatTailMs = 128;
 const postCombatResumeMs = 80;
 const simulatedPostCombatResumeMs = 320;
 const simulatedCombatWindupMs = 180;
@@ -622,9 +622,9 @@ function combatTiming(room) {
   }
   const scale = roomTimeScale(room);
   return {
-    windupMs: scaledCombatMs(combatWindupMs, scale, 260, 340),
-    beatMs: scaledCombatMs(combatBeatMs, scale, 360, 460),
-    tailMs: scaledCombatMs(combatTailMs, scale, 420, 620),
+    windupMs: scaledCombatMs(combatWindupMs, scale, 220, 320),
+    beatMs: scaledCombatMs(combatBeatMs, scale, 300, 420),
+    tailMs: scaledCombatMs(combatTailMs, scale, 360, 540),
     entryLeadMs: 0,
     multiEnemyCounters: true
   };
