@@ -53,3 +53,23 @@ stutters.
   but the engine direction remains sequenced movement segment events.
 - Future tile UI additions should stay out of the per-frame and per-position-snapshot
   motion path unless they are explicitly part of the motion overlay.
+
+## React Churn Follow-Up
+
+Date: 2026-06-07
+
+- Reward floaters used to live in React state, so every gain/loss appeared and expired
+  through a PlayerPanel render. They now spawn as capped runner-layer DOM nodes and remove
+  themselves on animation end.
+- The authority-staleness check used to call `setNetworkNow(Date.now())` every 250ms,
+  forcing the app shell to re-render even when no room event arrived. It now polls in the
+  background and only re-enters React when the stale/not-stale value changes.
+- Other React touch points found in the movement-facing surface are bounded or local:
+  drag ghost coordinates update only while a card/loot drag is active, notice/profile
+  timers do not run during normal movement, and combat beat timers are scoped to the
+  combat overlay rather than the runner transform loop.
+
+Remaining watch point: rival combat overlays still run local React beat timers while other
+runners may be moving. If stutter lines up with rival fights after the timer fix, the next
+cheapness pass should move beat presentation closer to CSS animation or imperative overlay
+DOM, the same way runner floaters were handled.

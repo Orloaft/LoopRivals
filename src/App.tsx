@@ -156,7 +156,8 @@ function App() {
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
   const [socketConnected, setSocketConnected] = useState(() => socket.connected);
-  const [networkNow, setNetworkNow] = useState(() => Date.now());
+  const authorityStateStaleRef = useRef(false);
+  const [authorityStateStale, setAuthorityStateStale] = useState(false);
   const [name, setName] = useState(() => `Player ${Math.floor(Math.random() * 900 + 100)}`);
   const [roomId, setRoomId] = useState(initialRoomId);
   const [heroId, setHeroId] = useState('ember-knight');
@@ -233,9 +234,16 @@ function App() {
   }, [heroId, name, shouldAutoReconnect, socket]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNetworkNow(Date.now()), 250);
+    const updateAuthorityStateStale = () => {
+      const nextStale = isAuthorityStateStale(game, Date.now(), authorityStaleMs);
+      if (authorityStateStaleRef.current === nextStale) return;
+      authorityStateStaleRef.current = nextStale;
+      setAuthorityStateStale(nextStale);
+    };
+    updateAuthorityStateStale();
+    const timer = window.setInterval(updateAuthorityStateStale, 250);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [game]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -264,7 +272,6 @@ function App() {
   const draggedLoot = me?.loot.find((item) => item.id === dragLootId) ?? null;
   const activeCard = draggedCard ?? selectedCard;
   const isHost = Boolean(me && game?.hostId === me.id);
-  const authorityStateStale = isAuthorityStateStale(game, networkNow, authorityStaleMs);
   const hostPlayer = game?.players.find((player) => player.id === game.hostId) ?? null;
   const hostMissing = Boolean(hostPlayer && !hostPlayer.connected);
   const serverAuthorityPaused = Boolean(game?.authority?.paused);
