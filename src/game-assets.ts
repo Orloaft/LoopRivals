@@ -17,9 +17,6 @@ function talentArtUrl(traitId: string) {
 }
 
 function combatEnemyUrl(enemyId: string) {
-  if (['briar-warden', 'crown-sentinel', 'loop-tyrant'].includes(enemyId)) {
-    return `/assets/combat/enemy-${enemyId}.svg`;
-  }
   return `/assets/combat/enemy-${enemyId}.png`;
 }
 
