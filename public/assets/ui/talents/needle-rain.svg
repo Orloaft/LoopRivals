@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Needle Rain">
+  <rect width="64" height="64" fill="none"/>
+  <circle cx="32" cy="32" r="29" fill="#091620" opacity=".86"/>
+  <path d="M13 32c0-11 8-20 19-20s19 9 19 20-8 20-19 20-19-9-19-20z" fill="#1d4d73" opacity=".42"/>
+  <rect x="32" y="50" width="2" height="2" fill="#c6b86a" opacity=".58"/><rect x="40" y="41" width="2" height="2" fill="#1d4d73" opacity=".58"/><rect x="30" y="50" width="1" height="1" fill="#c6b86a" opacity=".58"/><rect x="29" y="29" width="1" height="1" fill="#1d4d73" opacity=".58"/><rect x="12" y="47" width="2" height="2" fill="#c6b86a" opacity=".58"/><rect x="21" y="40" width="1" height="1" fill="#1d4d73" opacity=".58"/>
+  <g transform="rotate(2 32 32)">
+    <circle cx="32" cy="32" r="18" fill="#1d4d73" stroke="#091620" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><path d="M20 32c0-9 10-14 18-8 7 5 4 17-6 17" fill="none" stroke="#d3f0ff" stroke-width="5"/>
+  </g>
+  <rect x="14" y="54" width="8" height="3" fill="#c6b86a" opacity=".88"/>
+</svg>

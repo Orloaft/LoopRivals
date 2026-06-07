@@ -7,6 +7,7 @@ import {
   heroPortraitUrl,
   heroSpriteUrl,
   itemSpriteUrl,
+  talentArtUrl,
   talentIconUrl
 } from './game-assets';
 import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, pendingCombatStopCursor, playerMotionIsLocked, pointAlongBoard, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, type RunnerPoint } from './movement';
@@ -1142,8 +1143,6 @@ function MobileDrawer({
 
   const hero = config.heroes.find((item) => item.id === player.heroId);
   const tree = config.talentTrees[player.heroId] ?? [];
-  const pending = tree.filter((trait) => player.pendingTraits.includes(trait.id));
-  const learned = tree.filter((trait) => player.traits.includes(trait.id));
   const equippedIds = new Set(Object.values(player.loadout).filter(Boolean).map((item) => item?.id));
   const looseLoot = player.loot.filter((item) => !equippedIds.has(item.id));
   const draggingLoot = draggingLootId ? player.loot.find((item) => item.id === draggingLootId) ?? null : null;
@@ -1220,22 +1219,22 @@ function MobileDrawer({
 
       {mode === 'talents' && (
         <div className="mobile-drawer-body mobile-talent-list">
-          {[...pending, ...learned].slice(0, 8).map((trait) => {
+          {tree.map((trait) => {
             const ready = player.pendingTraits.includes(trait.id);
+            const isLearned = player.traits.includes(trait.id);
             return (
               <button
                 key={trait.id}
-                className={`mobile-talent-item ${ready ? 'ready' : 'learned'}`}
+                className={`mobile-talent-item ${ready ? 'ready' : isLearned ? 'learned' : 'locked'}`}
                 disabled={!ready}
                 onClick={() => onChoose(trait.id)}
               >
-                <span>{traitGlyph(trait.name)}</span>
+                <span className="mobile-talent-icon" style={{ '--talent-art': `url(${talentArtUrl(trait.id)})` } as CSSProperties} />
                 <b>{trait.name}</b>
                 <small>{trait.text}</small>
               </button>
             );
           })}
-          {pending.length === 0 && learned.length === 0 && <span className="mobile-empty">Level up to awaken the first node.</span>}
         </div>
       )}
 
@@ -1345,13 +1344,13 @@ function TalentTreeDock({
             <button
               key={trait.id}
               className={`talent-node ${state}`}
-              style={{ left: `${trait.x}%`, top: `${trait.y}%` }}
+              style={{ left: `${trait.x}%`, top: `${trait.y}%`, '--talent-art': `url(${talentArtUrl(trait.id)})` } as CSSProperties}
               aria-disabled={!availableNode}
               onClick={() => {
                 if (availableNode) onChoose(trait.id);
               }}
             >
-              <span className="talent-glyph">{traitGlyph(trait.name)}</span>
+              <span className="talent-art" aria-hidden="true" />
               <strong className="talent-node-label">{trait.name}</strong>
               <InfoPopover
                 title={trait.name}

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Split Shot">
+  <rect width="64" height="64" fill="none"/>
+  <circle cx="32" cy="32" r="29" fill="#091620" opacity=".86"/>
+  <path d="M13 32c0-11 8-20 19-20s19 9 19 20-8 20-19 20-19-9-19-20z" fill="#1d4d73" opacity=".42"/>
+  <rect x="3" y="-15" width="1" height="1" fill="#c6b86a" opacity=".58"/><rect x="3" y="-32" width="1" height="1" fill="#1d4d73" opacity=".58"/><rect x="9" y="-14" width="1" height="1" fill="#c6b86a" opacity=".58"/><rect x="-2" y="-20" width="1" height="1" fill="#1d4d73" opacity=".58"/><rect x="-30" y="1" width="1" height="1" fill="#c6b86a" opacity=".58"/><rect x="-23" y="-28" width="0" height="0" fill="#1d4d73" opacity=".58"/>
+  <g transform="rotate(-3 32 32)">
+    <path d="M41 8l9 9-24 30-8-8z" fill="#d3f0ff" stroke="#091620" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><path d="M18 39l8 8-8 7-8-8z" fill="#c6b86a" stroke="#091620" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><path d="M37 15l7 7" stroke="#62a7d5" stroke-width="4"/>
+  </g>
+  <rect x="25" y="54" width="8" height="3" fill="#c6b86a" opacity=".88"/>
+</svg>

@@ -526,49 +526,69 @@ function talent(heroId, id, name, text, tier, x, y, bonus, prereqs = []) {
 
 export const talentTrees = {
   'ember-knight': [
-    talent('ember-knight', 'ember-oath', 'Ember Oath', '+1 power, +4 max HP.', 1, 50, 12, { power: 1, maxHp: 4 }),
-    talent('ember-knight', 'cinder-step', 'Cinder Step', '+1 speed, draw faster.', 2, 28, 34, { speed: 1, drawRate: 0.92 }, ['ember-oath']),
-    talent('ember-knight', 'shield-heat', 'Shield Heat', '+2 guard, +3 max HP.', 2, 72, 34, { guard: 2, maxHp: 3 }, ['ember-oath']),
-    talent('ember-knight', 'red-riposte', 'Red Riposte', '+3 rival damage, +1 power.', 3, 20, 58, { sabotage: 3, power: 1 }, ['cinder-step']),
-    talent('ember-knight', 'hearthguard', 'Hearthguard', '+1 guard, heal more on laps.', 3, 80, 58, { guard: 1, lapHeal: 3 }, ['shield-heat']),
-    talent('ember-knight', 'overheat', 'Overheat', '+2 power after revives.', 4, 35, 82, { revivePower: 2 }, ['red-riposte']),
-    talent('ember-knight', 'loopforged', 'Loopforged', '+1 power, +1 guard, +1 speed, terrain scores more.', 4, 65, 82, { power: 1, guard: 1, speed: 1, terrainScore: 2 }, ['hearthguard'])
+    talent('ember-knight', 'ember-oath', 'Ember Oath', '+1 power, +4 max HP.', 1, 50, 9, { power: 1, maxHp: 4 }),
+    talent('ember-knight', 'cinder-step', 'Cinder Step', '+1 speed, draw faster.', 2, 20, 27, { speed: 1, drawRate: 0.93 }, ['ember-oath']),
+    talent('ember-knight', 'shield-heat', 'Shield Heat', '+2 guard, +2 max HP.', 2, 50, 31, { guard: 2, maxHp: 2 }, ['ember-oath']),
+    talent('ember-knight', 'ash-tithe', 'Ash Tithe', 'Terrain scores more and loot turns up slightly more often.', 2, 80, 27, { terrainScore: 3, lootLuck: 0.03 }, ['ember-oath']),
+    talent('ember-knight', 'red-riposte', 'Red Riposte', '+3 rival damage, +1 power.', 3, 15, 49, { sabotage: 3, power: 1 }, ['cinder-step']),
+    talent('ember-knight', 'furnace-heart', 'Furnace Heart', '+1 guard, +3 max HP, heal more on laps.', 3, 38, 53, { guard: 1, maxHp: 3, lapHeal: 2 }, ['shield-heat']),
+    talent('ember-knight', 'banner-flame', 'Banner Flame', '+2 rival damage, terrain scores more.', 3, 62, 53, { sabotage: 2, terrainScore: 2 }, ['shield-heat']),
+    talent('ember-knight', 'coal-veins', 'Coal Veins', '+3 max HP, draw slightly faster, find loot slightly more often.', 3, 85, 49, { maxHp: 3, drawRate: 0.96, lootLuck: 0.04 }, ['ash-tithe']),
+    talent('ember-knight', 'overheat', 'Overheat', '+1 power after revives, +1 power.', 4, 27, 78, { revivePower: 1, power: 1 }, ['red-riposte']),
+    talent('ember-knight', 'loopforged', 'Loopforged', '+1 power, +1 guard, +1 speed, terrain scores more.', 4, 50, 84, { power: 1, guard: 1, speed: 1, terrainScore: 2 }, ['furnace-heart', 'banner-flame']),
+    talent('ember-knight', 'sunbrand', 'Sunbrand', '+1 power, +2 rival damage, +3 max HP.', 4, 73, 78, { power: 1, sabotage: 2, maxHp: 3 }, ['coal-veins'])
   ],
   'moss-warden': [
-    talent('moss-warden', 'warden-root', 'Warden Root', '+2 lap heal, terrain scores more.', 1, 50, 12, { lapHeal: 2, terrainScore: 2 }),
-    talent('moss-warden', 'greenwall', 'Greenwall', '+2 guard, +5 max HP.', 2, 28, 34, { guard: 2, maxHp: 5 }, ['warden-root']),
-    talent('moss-warden', 'path-sower', 'Path Sower', 'Terrain cards score more.', 2, 72, 34, { terrainScore: 4 }, ['warden-root']),
-    talent('moss-warden', 'meadowbind', 'Meadowbind', '+4 lap heal, +2 max HP.', 3, 20, 58, { lapHeal: 4, maxHp: 2 }, ['greenwall']),
-    talent('moss-warden', 'seed-cache', 'Seed Cache', 'Draw faster and find loot slightly more often.', 3, 80, 58, { drawRate: 0.94, lootLuck: 0.08 }, ['path-sower']),
-    talent('moss-warden', 'old-bark', 'Old Bark', '+2 guard, +4 max HP.', 4, 35, 82, { guard: 2, maxHp: 4 }, ['meadowbind']),
-    talent('moss-warden', 'wild-cartographer', 'Wild Cartographer', '+2 power, +1 speed, terrain scores more.', 4, 65, 82, { power: 2, speed: 1, terrainScore: 3 }, ['seed-cache'])
+    talent('moss-warden', 'warden-root', 'Warden Root', '+2 lap heal, terrain scores more.', 1, 50, 9, { lapHeal: 2, terrainScore: 2 }),
+    talent('moss-warden', 'greenwall', 'Greenwall', '+2 guard, +4 max HP.', 2, 20, 27, { guard: 2, maxHp: 4 }, ['warden-root']),
+    talent('moss-warden', 'path-sower', 'Path Sower', 'Terrain cards score more.', 2, 50, 31, { terrainScore: 4 }, ['warden-root']),
+    talent('moss-warden', 'thorn-lash', 'Thorn Lash', '+1 power, +2 rival damage.', 2, 80, 27, { power: 1, sabotage: 2 }, ['warden-root']),
+    talent('moss-warden', 'meadowbind', 'Meadowbind', '+4 lap heal, +2 max HP.', 3, 15, 49, { lapHeal: 4, maxHp: 2 }, ['greenwall']),
+    talent('moss-warden', 'old-bark', 'Old Bark', '+2 guard, +4 max HP.', 3, 38, 53, { guard: 2, maxHp: 4 }, ['greenwall']),
+    talent('moss-warden', 'briar-compass', 'Briar Compass', '+1 speed, terrain scores more.', 3, 62, 53, { speed: 1, terrainScore: 2 }, ['path-sower']),
+    talent('moss-warden', 'seed-cache', 'Seed Cache', 'Draw faster and find loot slightly more often.', 3, 85, 49, { drawRate: 0.96, lootLuck: 0.06 }, ['thorn-lash']),
+    talent('moss-warden', 'haven-heart', 'Haven Heart', '+1 guard, +5 max HP, heal more on laps.', 4, 27, 78, { guard: 1, maxHp: 5, lapHeal: 3 }, ['meadowbind']),
+    talent('moss-warden', 'wild-cartographer', 'Wild Cartographer', '+2 power, +1 speed, terrain scores more.', 4, 50, 84, { power: 2, speed: 1, terrainScore: 3 }, ['briar-compass']),
+    talent('moss-warden', 'crown-grove', 'Crown Grove', '+1 power, terrain scores much more.', 4, 73, 78, { power: 1, terrainScore: 4 }, ['seed-cache'])
   ],
   'night-vagrant': [
-    talent('night-vagrant', 'moon-pocket', 'Moon Pocket', 'Find loot more often, draw slightly faster.', 1, 50, 12, { lootLuck: 0.06, drawRate: 0.97 }),
-    talent('night-vagrant', 'softstep', 'Softstep', '+1 speed, +1 guard.', 2, 28, 34, { speed: 1, guard: 1 }, ['moon-pocket']),
-    talent('night-vagrant', 'black-market', 'Black Market', 'Find better loot more often.', 2, 72, 34, { lootLuck: 0.06 }, ['moon-pocket']),
-    talent('night-vagrant', 'knife-rhythm', 'Knife Rhythm', '+1 power, draw faster.', 3, 20, 58, { power: 1, drawRate: 0.94 }, ['softstep']),
-    talent('night-vagrant', 'smoke-veil', 'Smoke Veil', '+8 max HP, +2 guard.', 3, 80, 58, { maxHp: 8, guard: 2 }, ['black-market']),
-    talent('night-vagrant', 'night-haul', 'Night Haul', '+1 speed and stronger loot odds.', 4, 35, 82, { speed: 1, lootLuck: 0.04 }, ['knife-rhythm']),
-    talent('night-vagrant', 'vanish-loop', 'Vanish Loop', '+1 speed, +1 power, +4 max HP.', 4, 65, 82, { speed: 1, power: 1, maxHp: 4 }, ['smoke-veil'])
+    talent('night-vagrant', 'moon-pocket', 'Moon Pocket', 'Find loot more often, draw slightly faster.', 1, 50, 9, { lootLuck: 0.03, drawRate: 0.99 }),
+    talent('night-vagrant', 'softstep', 'Softstep', '+1 speed, +1 guard.', 2, 20, 27, { speed: 1, guard: 1 }, ['moon-pocket']),
+    talent('night-vagrant', 'black-market', 'Black Market', 'Find better loot more often.', 2, 50, 31, { lootLuck: 0.03 }, ['moon-pocket']),
+    talent('night-vagrant', 'street-sense', 'Street Sense', '+3 max HP, terrain scores more.', 2, 80, 27, { maxHp: 3, terrainScore: 2 }, ['moon-pocket']),
+    talent('night-vagrant', 'knife-rhythm', 'Knife Rhythm', '+1 power, draw faster.', 3, 15, 49, { power: 1, drawRate: 0.95 }, ['softstep']),
+    talent('night-vagrant', 'smoke-veil', 'Smoke Veil', '+6 max HP, +2 guard.', 3, 38, 53, { maxHp: 6, guard: 2 }, ['softstep']),
+    talent('night-vagrant', 'moonlift', 'Moonlift', 'Terrain scores more and draw slightly faster.', 3, 62, 53, { terrainScore: 2, drawRate: 0.98 }, ['black-market']),
+    talent('night-vagrant', 'cutpurse-map', 'Cutpurse Map', 'Draw slightly faster and find loot slightly more often.', 3, 85, 49, { drawRate: 0.98, lootLuck: 0.02 }, ['street-sense']),
+    talent('night-vagrant', 'night-haul', 'Night Haul', '+1 speed and stronger loot odds.', 4, 27, 78, { speed: 1, lootLuck: 0.02 }, ['knife-rhythm']),
+    talent('night-vagrant', 'vanish-loop', 'Vanish Loop', '+1 power, +4 max HP.', 4, 50, 84, { power: 1, maxHp: 4 }, ['smoke-veil', 'moonlift']),
+    talent('night-vagrant', 'shadow-ledger', 'Shadow Ledger', '+2 rival damage and find loot slightly more often.', 4, 73, 78, { sabotage: 2, lootLuck: 0.02 }, ['cutpurse-map'])
   ],
   'rune-archer': [
-    talent('rune-archer', 'rune-string', 'Rune String', '+2 rival damage, draw faster.', 1, 50, 12, { sabotage: 2, drawRate: 0.94 }),
-    talent('rune-archer', 'blue-fletching', 'Blue Fletching', '+1 power, +1 speed.', 2, 28, 34, { power: 1, speed: 1 }, ['rune-string']),
-    talent('rune-archer', 'markbreaker', 'Markbreaker', '+4 rival damage.', 2, 72, 34, { sabotage: 4 }, ['rune-string']),
-    talent('rune-archer', 'watcher-code', 'Watcher Code', 'Terrain scores more, draw faster.', 3, 20, 58, { terrainScore: 4, drawRate: 0.93 }, ['blue-fletching']),
-    talent('rune-archer', 'hex-line', 'Hex Line', '+2 rival damage, +1 guard.', 3, 80, 58, { sabotage: 2, guard: 1 }, ['markbreaker']),
-    talent('rune-archer', 'split-shot', 'Split Shot', '+1 power and stronger rival damage.', 4, 35, 82, { power: 1, sabotage: 3 }, ['watcher-code']),
-    talent('rune-archer', 'sky-sigil', 'Sky Sigil', '+1 speed, +8 max HP.', 4, 65, 82, { speed: 1, maxHp: 8 }, ['hex-line'])
+    talent('rune-archer', 'rune-string', 'Rune String', '+2 rival damage, draw faster.', 1, 50, 9, { sabotage: 2, drawRate: 0.95 }),
+    talent('rune-archer', 'blue-fletching', 'Blue Fletching', '+1 power, +1 speed.', 2, 20, 27, { power: 1, speed: 1 }, ['rune-string']),
+    talent('rune-archer', 'markbreaker', 'Markbreaker', '+4 rival damage.', 2, 50, 31, { sabotage: 4 }, ['rune-string']),
+    talent('rune-archer', 'rune-ward', 'Rune Ward', '+1 guard, +4 max HP.', 2, 80, 27, { guard: 1, maxHp: 4 }, ['rune-string']),
+    talent('rune-archer', 'watcher-code', 'Watcher Code', 'Terrain scores more, draw faster.', 3, 15, 49, { terrainScore: 4, drawRate: 0.95 }, ['blue-fletching']),
+    talent('rune-archer', 'needle-rain', 'Needle Rain', '+1 power, +2 rival damage.', 3, 38, 53, { power: 1, sabotage: 2 }, ['blue-fletching']),
+    talent('rune-archer', 'hex-line', 'Hex Line', '+2 rival damage, +1 guard.', 3, 62, 53, { sabotage: 2, guard: 1 }, ['markbreaker']),
+    talent('rune-archer', 'star-map', 'Star Map', '+1 speed, terrain scores more.', 3, 85, 49, { speed: 1, terrainScore: 2 }, ['rune-ward']),
+    talent('rune-archer', 'split-shot', 'Split Shot', '+1 power and stronger rival damage.', 4, 27, 78, { power: 1, sabotage: 3 }, ['watcher-code']),
+    talent('rune-archer', 'sky-sigil', 'Sky Sigil', '+1 speed, +7 max HP.', 4, 50, 84, { speed: 1, maxHp: 7 }, ['needle-rain', 'hex-line']),
+    talent('rune-archer', 'comet-mark', 'Comet Mark', '+1 power, +2 rival damage, draw slightly faster.', 4, 73, 78, { power: 1, sabotage: 2, drawRate: 0.97 }, ['star-map'])
   ],
   'grave-singer': [
-    talent('grave-singer', 'bone-chorus', 'Bone Chorus', '+1 power, revives hit harder.', 1, 50, 12, { power: 1, revivePower: 1 }),
-    talent('grave-singer', 'crypt-hunger', 'Crypt Hunger', '+2 power, +2 terrain score.', 2, 28, 34, { power: 2, terrainScore: 2 }, ['bone-chorus']),
-    talent('grave-singer', 'last-verse', 'Last Verse', '+7 max HP, revives hit harder.', 2, 72, 34, { maxHp: 7, revivePower: 1 }, ['bone-chorus']),
-    talent('grave-singer', 'dirge-step', 'Dirge Step', '+1 speed, draw faster.', 3, 20, 58, { speed: 1, drawRate: 0.94 }, ['crypt-hunger']),
-    talent('grave-singer', 'bone-plate', 'Bone Plate', '+2 guard, +4 max HP.', 3, 80, 58, { guard: 2, maxHp: 4 }, ['last-verse']),
-    talent('grave-singer', 'hollow-gold', 'Hollow Gold', 'Find loot more often, +1 power.', 4, 35, 82, { lootLuck: 0.14, power: 1 }, ['dirge-step']),
-    talent('grave-singer', 'requiem-loop', 'Requiem Loop', '+2 revive power, +1 guard.', 4, 65, 82, { revivePower: 2, guard: 1 }, ['bone-plate'])
+    talent('grave-singer', 'bone-chorus', 'Bone Chorus', '+1 power, revives hit harder.', 1, 50, 9, { power: 1, revivePower: 1 }),
+    talent('grave-singer', 'crypt-hunger', 'Crypt Hunger', '+2 power, terrain scores more.', 2, 20, 27, { power: 2, terrainScore: 1 }, ['bone-chorus']),
+    talent('grave-singer', 'last-verse', 'Last Verse', '+6 max HP, revives hit harder.', 2, 50, 31, { maxHp: 6, revivePower: 1 }, ['bone-chorus']),
+    talent('grave-singer', 'grave-robber', 'Grave Robber', 'Find loot more often, draw slightly faster.', 2, 80, 27, { lootLuck: 0.07, drawRate: 0.97 }, ['bone-chorus']),
+    talent('grave-singer', 'dirge-step', 'Dirge Step', '+1 speed, draw faster.', 3, 15, 49, { speed: 1, drawRate: 0.95 }, ['crypt-hunger']),
+    talent('grave-singer', 'bone-plate', 'Bone Plate', '+2 guard, +4 max HP.', 3, 38, 53, { guard: 2, maxHp: 4 }, ['last-verse']),
+    talent('grave-singer', 'choir-knife', 'Choir Knife', '+1 power, +2 rival damage.', 3, 62, 53, { power: 1, sabotage: 2 }, ['last-verse']),
+    talent('grave-singer', 'hollow-gold', 'Hollow Gold', 'Find loot more often, +1 power.', 3, 85, 49, { lootLuck: 0.09, power: 1 }, ['grave-robber']),
+    talent('grave-singer', 'wraith-cadence', 'Wraith Cadence', '+1 speed, revives hit harder.', 4, 27, 78, { speed: 1, revivePower: 2 }, ['dirge-step']),
+    talent('grave-singer', 'requiem-loop', 'Requiem Loop', '+2 revive power, +1 guard.', 4, 50, 84, { revivePower: 2, guard: 1 }, ['bone-plate', 'choir-knife']),
+    talent('grave-singer', 'ossuary-crown', 'Ossuary Crown', '+1 power, +5 max HP, terrain scores more.', 4, 73, 78, { power: 1, maxHp: 5, terrainScore: 2 }, ['hollow-gold'])
   ]
 };
 
@@ -3125,11 +3145,11 @@ function bestItemScore(item) {
 
 function chooseBotTrait(player) {
   const priorities = {
-    'night-vagrant': ['moon-pocket', 'black-market', 'softstep', 'knife-rhythm', 'night-haul', 'smoke-veil', 'vanish-loop'],
-    'moss-warden': ['warden-root', 'path-sower', 'greenwall', 'seed-cache', 'wild-cartographer', 'meadowbind', 'old-bark'],
-    'rune-archer': ['rune-string', 'markbreaker', 'blue-fletching', 'hex-line', 'split-shot', 'watcher-code', 'sky-sigil'],
-    'grave-singer': ['bone-chorus', 'crypt-hunger', 'last-verse', 'dirge-step', 'hollow-gold', 'bone-plate', 'requiem-loop'],
-    'ember-knight': ['ember-oath', 'cinder-step', 'shield-heat', 'red-riposte', 'loopforged', 'hearthguard', 'overheat']
+    'night-vagrant': ['moon-pocket', 'softstep', 'street-sense', 'knife-rhythm', 'smoke-veil', 'black-market', 'moonlift', 'vanish-loop', 'night-haul', 'cutpurse-map', 'shadow-ledger'],
+    'moss-warden': ['warden-root', 'path-sower', 'thorn-lash', 'briar-compass', 'wild-cartographer', 'greenwall', 'seed-cache', 'crown-grove', 'meadowbind', 'old-bark', 'haven-heart'],
+    'rune-archer': ['rune-string', 'markbreaker', 'blue-fletching', 'hex-line', 'needle-rain', 'sky-sigil', 'watcher-code', 'split-shot', 'rune-ward', 'star-map', 'comet-mark'],
+    'grave-singer': ['bone-chorus', 'crypt-hunger', 'last-verse', 'dirge-step', 'choir-knife', 'requiem-loop', 'hollow-gold', 'grave-robber', 'wraith-cadence', 'bone-plate', 'ossuary-crown'],
+    'ember-knight': ['ember-oath', 'cinder-step', 'shield-heat', 'red-riposte', 'furnace-heart', 'banner-flame', 'loopforged', 'overheat', 'ash-tithe', 'coal-veins', 'sunbrand']
   }[player.heroId] ?? [];
   refreshPendingTraits(player);
   return priorities.find((traitId) => player.pendingTraits.includes(traitId)) ?? player.pendingTraits[0];

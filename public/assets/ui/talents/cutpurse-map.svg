@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Cutpurse Map">
+  <rect width="64" height="64" fill="none"/>
+  <circle cx="32" cy="32" r="29" fill="#0b1020" opacity=".86"/>
+  <path d="M13 32c0-11 8-20 19-20s19 9 19 20-8 20-19 20-19-9-19-20z" fill="#2d3358" opacity=".42"/>
+  <rect x="46" y="48" width="1" height="1" fill="#caa35e" opacity=".58"/><rect x="47" y="29" width="2" height="2" fill="#2d3358" opacity=".58"/><rect x="36" y="13" width="2" height="2" fill="#caa35e" opacity=".58"/><rect x="24" y="20" width="1" height="1" fill="#2d3358" opacity=".58"/><rect x="22" y="22" width="1" height="1" fill="#caa35e" opacity=".58"/><rect x="28" y="34" width="1" height="1" fill="#2d3358" opacity=".58"/>
+  <g transform="rotate(3 32 32)">
+    <path d="M15 17l14-5 20 7v29l-16-6-18 7z" fill="#e3d9ff" stroke="#0b1020" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><path d="M29 12v31M34 17v25" stroke="#2d3358" stroke-width="3"/><path d="M19 36l8-6 8 3 10-8" fill="none" stroke="#caa35e" stroke-width="4"/>
+  </g>
+  <rect x="24" y="54" width="8" height="3" fill="#caa35e" opacity=".88"/>
+</svg>

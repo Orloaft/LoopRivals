@@ -12,6 +12,10 @@ function talentIconUrl(heroId: string) {
   return `/assets/ui/talent-icon-${heroId}-v1.png`;
 }
 
+function talentArtUrl(traitId: string) {
+  return `/assets/ui/talents/${traitId}.svg`;
+}
+
 function combatEnemyUrl(enemyId: string) {
   return `/assets/combat/enemy-${enemyId}.png`;
 }
@@ -79,5 +83,6 @@ export {
   heroSpriteUrl,
   itemSpriteUrl,
   statLine,
+  talentArtUrl,
   talentIconUrl
 };
