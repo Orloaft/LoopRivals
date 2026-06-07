@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   firstMovementStopCursor,
   hardVisualCorrectionCursor,
+  maxVisualFrameStepMs,
   keepForwardVisualCursor,
   maxVisualAuthorityLeadCursor,
   pendingCombatStopCursor,
@@ -39,6 +40,19 @@ test('visual reconciliation caps local runway ahead of authority', () => {
   );
 });
 
+test('visual reconciliation can bridge a whole ordinary tile between authority ticks', () => {
+  assert.ok(maxVisualAuthorityLeadCursor > 1, 'runner should have enough local runway to avoid between-tile stalls');
+  assert.equal(
+    reconcileVisualCursor(board(), 6.1, 6.2, 7.25),
+    7.25
+  );
+});
+
+test('visual motion uses a bounded frame step for delayed animation frames', () => {
+  assert.ok(maxVisualFrameStepMs > 16);
+  assert.ok(maxVisualFrameStepMs < 80);
+});
+
 test('visual reconciliation does not run through deterministic combat stops', () => {
   const targetCursor = 6.7;
 
@@ -71,7 +85,7 @@ test('visual reconciliation keeps small timing corrections bounded instead of sn
 
   assert.equal(
     reconcileVisualCursor(board(), previousCursor, targetCursor, previousCursor + 0.1),
-    targetCursor + maxVisualAuthorityLeadCursor
+    previousCursor + 0.1
   );
 });
 

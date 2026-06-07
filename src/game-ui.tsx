@@ -9,7 +9,7 @@ import {
   itemSpriteUrl,
   talentIconUrl
 } from './game-assets';
-import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, pendingCombatStopCursor, playerMotionIsLocked, pointAlongBoard, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, type RunnerPoint } from './movement';
+import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, pendingCombatStopCursor, playerMotionIsLocked, pointAlongBoard, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, type RunnerPoint } from './movement';
 import type { Card, Combat, CombatBeat, EquipmentSlot, GameConfig, GameState, Loot, Player, RoomSettings, ShopOffer, Tile, Trait } from './types';
 
 type LocalProfile = {
@@ -343,7 +343,7 @@ function useRunnerMotion(
 
     let frame = 0;
     const tick = () => {
-      const frameAt = Date.now();
+      const frameAt = performance.now();
       const clock = clockRef.current;
       const currentPlayer = playerRef.current;
       if (playerMotionIsLocked(currentPlayer, authorityPaused)) {
@@ -357,7 +357,7 @@ function useRunnerMotion(
         return;
       }
       const previousCursor = cursorRef.current;
-      const elapsedMs = lastFrameAtRef.current === null ? 0 : frameAt - lastFrameAtRef.current;
+      const elapsedMs = lastFrameAtRef.current === null ? 0 : Math.min(maxVisualFrameStepMs, frameAt - lastFrameAtRef.current);
       const segment = currentPlayer.nextMovement ?? currentPlayer.arrivalMovement;
       const segmentDurationMs = Math.max(1, (segment?.arriveAt ?? 0) - (segment?.departAt ?? 0)) || 800;
       const localStepCursor = previousCursor === null

@@ -6,8 +6,9 @@ export type RunnerPoint = {
 };
 
 export const serverPresentationBufferMs = 420;
-export const maxVisualAuthorityLeadCursor = 0.65;
+export const maxVisualAuthorityLeadCursor = 1.18;
 export const hardVisualCorrectionCursor = 0.75;
+export const maxVisualFrameStepMs = 48;
 
 export function tileCenter(tile: Tile): RunnerPoint {
   return {

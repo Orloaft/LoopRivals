@@ -5,7 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield, ShoppingBag } from 'lucide-react';
 import { isAuthorityStateStale } from './authority-timeline';
 import { heroPortraitUrl, statLine } from './game-assets';
-import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, playerMotionIsLocked, visualCursorForPlayer, visualFrameCursorForPlayer } from './movement';
+import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, playerMotionIsLocked, visualCursorForPlayer, visualFrameCursorForPlayer } from './movement';
 import { applyRoomDelta } from './room-projection';
 import type { GameConfig, GameState, Loot, RoomDelta, RoomSettings, ShopOffer, Tile } from './types';
 import {
@@ -43,15 +43,6 @@ export type LocalProfile = {
 
 const emptyProfile: LocalProfile = { matches: 0, wins: 0, bestScore: 0, bestLevel: 1 };
 const authorityStaleMs = 1800;
-
-function activeCombatNotice(game: GameState | null) {
-  const player = game?.players.find((item) => item.combat);
-  if (!player?.combat) return null;
-  return {
-    key: `${player.id}:${player.combat.startedAt}`,
-    message: `${player.name}: ${player.combat.label} vs ${player.combat.enemyName}`
-  };
-}
 
 function GothicParallaxBackdrop({
   player,
@@ -104,7 +95,7 @@ function GothicParallaxBackdrop({
 
     let frame = 0;
     const tick = () => {
-      const frameAt = Date.now();
+      const frameAt = performance.now();
       const current = motionRef.current;
       if (!current.player) return;
       if (playerMotionIsLocked(current.player, current.authorityPaused)) {
@@ -118,7 +109,7 @@ function GothicParallaxBackdrop({
         return;
       }
       const previousCursor = cursorRef.current;
-      const elapsedMs = lastFrameAtRef.current === null ? 0 : frameAt - lastFrameAtRef.current;
+      const elapsedMs = lastFrameAtRef.current === null ? 0 : Math.min(maxVisualFrameStepMs, frameAt - lastFrameAtRef.current);
       const segment = current.player.nextMovement ?? current.player.arrivalMovement;
       const segmentDurationMs = Math.max(1, (segment?.arriveAt ?? 0) - (segment?.departAt ?? 0)) || 800;
       const localStepCursor = previousCursor === null
@@ -186,7 +177,6 @@ function App() {
   const [recordedFinishId, setRecordedFinishId] = useState<string | null>(null);
   const [mobileDrawer, setMobileDrawer] = useState<'loot' | 'talents' | 'log' | 'menu' | null>(null);
   const lastRoomEventSeqRef = useRef(0);
-  const lastCombatNoticeKeyRef = useRef('');
 
   useEffect(() => {
     socket.on('connect', () => {
@@ -248,11 +238,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const combatNotice = activeCombatNotice(game);
-    if (!combatNotice || combatNotice.key === lastCombatNoticeKeyRef.current) return;
-    lastCombatNoticeKeyRef.current = combatNotice.key;
-    setNotice(combatNotice.message);
-  }, [game]);
+    if (!notice) return undefined;
+    const timer = window.setTimeout(() => setNotice(''), 2600);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   // Esc toggles the game menu (and closes the rules overlay first if it's open).
   useEffect(() => {
