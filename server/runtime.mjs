@@ -11,6 +11,7 @@ const snapshotRequiredEventTypes = new Set([
   'cardDrawn',
   'cardPlayed',
   'cardSold',
+  'heroAbilityActivated',
   'levelReached',
   'lootEquipped',
   'lootSold',

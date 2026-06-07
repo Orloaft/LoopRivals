@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, Bot, Coins, Crown, Footprints, Gem, GitBranch, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, Sparkles, Swords, UserX, Users, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Bot, Coins, Crown, Footprints, Gem, GitBranch, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, ShoppingBag, Sparkles, Swords, UserX, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import {
   combatBackgroundUrl,
   combatEnemyUrl,
@@ -9,7 +9,7 @@ import {
   itemSpriteUrl,
   talentIconUrl
 } from './game-assets';
-import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, playerMotionIsLocked, pointAlongBoard, serverPresentationClock, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, type RunnerPoint } from './movement';
+import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, playerMotionIsLocked, pointAlongBoard, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, type RunnerPoint } from './movement';
 import type { Card, Combat, CombatBeat, EquipmentSlot, GameConfig, GameState, Loot, Player, RoomSettings, ShopOffer, Tile, Trait } from './types';
 
 type LocalProfile = {
@@ -293,6 +293,7 @@ function useRunnerMotion(
   const playerRef = useRef(player);
   const guidedDormant = Boolean((player as Player & { guidedDormant?: boolean }).guidedDormant);
   const moving = gameStatus === 'running' && !player.stunRemainingMs && !guidedDormant;
+  const combatMotionKey = player.combat ? `combat:${player.combat.startedAt}:${player.combat.expiresAt}` : 'travel';
   const boardGeometryKey = useMemo(
     () => player.board.map((tile) => `${tile.index}:${tile.coord[0]},${tile.coord[1]}`).join('|'),
     [player.board]
@@ -356,7 +357,7 @@ function useRunnerMotion(
     };
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [authorityPaused, boardGeometryKey, gameStatus, highlightRef, moving, runnerRef]);
+  }, [authorityPaused, boardGeometryKey, combatMotionKey, gameStatus, highlightRef, moving, runnerRef]);
 }
 
 function PhaseStrip({ game, player, config }: { game: GameState; player?: Player; config?: GameConfig }) {
@@ -814,6 +815,7 @@ function PlayerSideDock({
   onAddBot,
   onFillCpu,
   onStartRoom,
+  onActivateAbility,
   isHost,
   onSettings,
   profile,
@@ -833,6 +835,7 @@ function PlayerSideDock({
   onAddBot: () => void;
   onFillCpu: () => void;
   onStartRoom: () => void;
+  onActivateAbility: () => void;
   isHost: boolean;
   onSettings: (settings: Partial<RoomSettings>) => void;
   profile: LocalProfile;
@@ -905,6 +908,29 @@ function PlayerSideDock({
             </div>
             <span className="loop-tier-meter"><i /></span>
           </section>
+
+          {player.ability && (
+            <button
+              type="button"
+              className={`hero-ability-button ${player.ability.ready ? 'ready' : 'cooling'}`}
+              onClick={onActivateAbility}
+              disabled={!player.ability.ready || game.status !== 'running' || Boolean(player.combat) || Boolean(player.stunRemainingMs)}
+              aria-label={player.ability.name}
+            >
+              <span className="ability-glyph">{player.ability.icon}</span>
+              <span>
+                <strong>{player.ability.name}</strong>
+                <small>{player.ability.ready ? 'Ready' : `${player.ability.remainingLoops} loop${player.ability.remainingLoops === 1 ? '' : 's'}`}</small>
+              </span>
+              <Zap size={15} />
+              <InfoPopover
+                title={player.ability.name}
+                eyebrow={player.ability.ready ? 'Activated ability ready' : 'Loop cooldown'}
+                body={player.ability.text}
+                hint={player.ability.ready ? 'click to use' : `ready after ${player.ability.remainingLoops} more loop${player.ability.remainingLoops === 1 ? '' : 's'}`}
+              />
+            </button>
+          )}
 
           <div className={`paperdoll ${draggingLoot ? 'loot-dragging' : ''}`}>
             <div className="paperdoll-body">
@@ -1428,6 +1454,109 @@ function SellZone({
   );
 }
 
+export function ShopDrawer({
+  open,
+  player,
+  onClose,
+  onDrop,
+  onBuy
+}: {
+  open: boolean;
+  player: Player;
+  onClose: () => void;
+  onDrop: (kind: 'card' | 'loot', id: string) => void;
+  onBuy: (offer: ShopOffer) => void;
+}) {
+  const offers = player.shop?.offers ?? [];
+  const remainingSeconds = Math.max(0, Math.ceil((player.shop?.remainingMs ?? 0) / 1000));
+
+  function offerTitle(offer: ShopOffer) {
+    return offer.kind === 'card' ? offer.card.name : offer.loot.name;
+  }
+
+  function offerMeta(offer: ShopOffer) {
+    return offer.kind === 'card'
+      ? `${cardSuit(offer.card)} card`
+      : `${offer.loot.rarity} ${offer.loot.role ?? equipmentLabels[offer.loot.slot]}`;
+  }
+
+  function canBuy(offer: ShopOffer) {
+    if ((player.gold ?? 0) < offer.price) return false;
+    if (offer.kind === 'card') return player.hand.length < 7;
+    return player.loot.length < 10;
+  }
+
+  return (
+    <section
+      className={`shop-drawer ${open ? 'open' : ''}`}
+      style={{ '--hero-color': player.color } as CSSProperties}
+      aria-hidden={!open}
+      data-loopduel-drop={open ? 'sell-zone' : undefined}
+      onDragOver={(event) => {
+        if (!open) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+      }}
+      onDrop={(event) => {
+        if (!open) return;
+        event.preventDefault();
+        const kind = event.dataTransfer.getData('application/x-loopduel-kind');
+        const cardId = event.dataTransfer.getData('application/x-loopduel-card-id');
+        const lootId = event.dataTransfer.getData('application/x-loopduel-loot-id');
+        if (kind === 'card' && cardId) onDrop('card', cardId);
+        if (kind === 'loot' && lootId) onDrop('loot', lootId);
+      }}
+    >
+      <div className="shop-drawer-head">
+        <span className="shop-drawer-mark"><ShoppingBag size={18} /></span>
+        <div>
+          <strong>Loop Market</strong>
+          <small>{player.gold ?? 0} gold · refresh {remainingSeconds}s</small>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close shop">
+          <ArrowLeft size={17} />
+        </button>
+      </div>
+      <div className="shop-drawer-offers">
+        {offers.map((offer) => {
+          const affordable = canBuy(offer);
+          return (
+            <button
+              key={offer.id}
+              type="button"
+              className={`shop-drawer-offer ${offer.kind} ${affordable ? '' : 'locked'}`}
+              onClick={() => {
+                if (affordable) onBuy(offer);
+              }}
+            >
+              {offer.kind === 'card' ? (
+                <span className={`shop-drawer-glyph card ${cardFaceClass(offer.card)}`}>{offer.card.icon}</span>
+              ) : (
+                <span className={`shop-drawer-glyph loot ${offer.loot.slot} ${offer.loot.rarity}`}><ItemSprite item={offer.loot} /></span>
+              )}
+              <span>
+                <strong>{offerTitle(offer)}</strong>
+                <small>{offerMeta(offer)}</small>
+              </span>
+              <b>{offer.price}g</b>
+              <InfoPopover
+                title={offerTitle(offer)}
+                eyebrow={offerMeta(offer)}
+                lines={offer.kind === 'card' ? [offer.card.text] : itemPopoverLines(offer.loot, player.loadout[offer.loot.slot])}
+                hint={affordable ? 'click to buy' : (player.gold ?? 0) < offer.price ? 'not enough gold' : offer.kind === 'card' ? 'hand is full' : 'loot bag is full'}
+              />
+            </button>
+          );
+        })}
+      </div>
+      <div className="shop-drawer-sell">
+        <Coins size={16} />
+        <span>Drop cards or loose gear here to sell.</span>
+      </div>
+    </section>
+  );
+}
+
 function RivalIntel({
   players,
   focusedId,
@@ -1780,32 +1909,15 @@ function PlayerPanel({
             aria-hidden="true"
           />
         )}
-        {player.combat && <CombatOverlay key={player.combat.startedAt} player={player} serverNow={serverNow} receivedAt={receivedAt} />}
+        {player.combat && <CombatOverlay key={player.combat.startedAt} player={player} />}
       </div>
     </article>
   );
 }
 
-function CombatOverlay({ player, serverNow, receivedAt }: { player: Player; serverNow: number; receivedAt?: number }) {
+function CombatOverlay({ player }: { player: Player }) {
   const combat = player.combat;
   if (!combat) return null;
-  return <CombatOverlayGate player={player} combat={combat} serverNow={serverNow} receivedAt={receivedAt} />;
-}
-
-function CombatOverlayGate({ player, combat, serverNow, receivedAt }: { player: Player; combat: Combat; serverNow: number; receivedAt?: number }) {
-  const [, setClockPulse] = useState(0);
-  const arrivalPending = Boolean(player.arrivalMovement && serverPresentationClock(serverNow, receivedAt) < combat.startedAt);
-  const ready = !arrivalPending;
-
-  useEffect(() => {
-    const delayMs = player.arrivalMovement
-      ? Math.max(0, combat.startedAt - serverPresentationClock(serverNow, receivedAt))
-      : 0;
-    const timer = window.setTimeout(() => setClockPulse((pulse) => pulse + 1), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [combat.startedAt, player.arrivalMovement, receivedAt, serverNow]);
-
-  if (!ready) return null;
   return <CombatOverlayBody player={player} combat={combat} />;
 }
 

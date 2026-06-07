@@ -233,8 +233,8 @@ test('client projection anchors combat start on the combat tile before tile reso
   const host = result.state.players.find((item) => item.id === 'host');
   assert.equal(host.position, 2);
   assert.equal(host.nextMovement, null);
-  assert.deepEqual(host.arrivalMovement, { fromCursor: 1, toCursor: 2, departAt: 1000, arriveAt: 2000 });
-  assertNear(visualCursorForPlayer(host, 1920, result.state.receivedAt), 1.5);
+  assert.equal(host.arrivalMovement, null);
+  assert.equal(visualCursorForPlayer(host, 1920, result.state.receivedAt), 2);
   assert.equal(visualCursorForPlayer(host, 2420, result.state.receivedAt), 2);
 });
 
@@ -346,9 +346,9 @@ test('client projection infers combat start from arrival movement before queued 
 
   const host = result.state.players.find((item) => item.id === 'host');
   assert.equal(host.position, 2);
-  assert.deepEqual(host.arrivalMovement, { fromCursor: 1, toCursor: 2, departAt: 1000, arriveAt: 2000 });
+  assert.equal(host.arrivalMovement, null);
   assert.deepEqual(host.nextMovement, { fromCursor: 2, toCursor: 3, departAt: 3600, arriveAt: 4600 });
-  assertNear(visualCursorForPlayer(host, 1920, result.state.receivedAt), 1.5);
+  assert.equal(visualCursorForPlayer(host, 1920, result.state.receivedAt), 2);
   assert.equal(visualCursorForPlayer(host, 3800, result.state.receivedAt), 2);
 });
 

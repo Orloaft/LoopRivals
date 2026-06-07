@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import {
+  activateHeroAbility,
   addBot,
   buyShopOffer,
   chooseTrait,
@@ -528,6 +529,20 @@ async function startServer() {
         const bought = buyShopOffer(room, player, offerId);
         if (bought) touchRoom(room);
         return bought;
+      });
+    });
+
+    onPlayerAction(socket, 'activateHeroAbility', ({ commandId = null } = {}) => {
+      const { room, player } = getSocketPlayer(socket);
+      if (!player) return;
+      commitRoomCommand(io, room, 'activateHeroAbility', {
+        playerId: player.id,
+        commandId,
+        payload: {}
+      }, () => {
+        const activated = activateHeroAbility(room, player);
+        if (activated) touchRoom(room);
+        return activated;
       });
     });
 

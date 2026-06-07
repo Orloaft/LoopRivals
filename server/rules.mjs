@@ -173,6 +173,13 @@ export const heroes = [
     title: 'tempo bruiser',
     icon: '🔥',
     color: '#f45d43',
+    ability: {
+      id: 'cinder-surge',
+      name: 'Cinder Surge',
+      icon: '🔥',
+      cooldownLoops: 2,
+      text: 'Stoke Heat, armor, and HP before the next dangerous stop.'
+    },
     maxHp: 46,
     power: 9,
     guard: 5,
@@ -186,6 +193,13 @@ export const heroes = [
     title: 'board shaper',
     icon: '🌿',
     color: '#45b36b',
+    ability: {
+      id: 'rootcraft',
+      name: 'Rootcraft',
+      icon: '🌿',
+      cooldownLoops: 2,
+      text: 'Bloom a road ahead into healing terrain and recover HP.'
+    },
     maxHp: 50,
     power: 7,
     guard: 6,
@@ -200,6 +214,13 @@ export const heroes = [
     title: 'loot sprinter',
     icon: '🌙',
     color: '#8f7cff',
+    ability: {
+      id: 'moonlift',
+      name: 'Moonlift',
+      icon: '🌙',
+      cooldownLoops: 1,
+      text: 'Lift extra cards and gold from the loop.'
+    },
     maxHp: 36,
     power: 7,
     guard: 2,
@@ -213,6 +234,13 @@ export const heroes = [
     title: 'rival control',
     icon: '🏹',
     color: '#4ab9ef',
+    ability: {
+      id: 'pinning-rune',
+      name: 'Pinning Rune',
+      icon: '🏹',
+      cooldownLoops: 2,
+      text: 'Mark, curse, and slow the leading rival.'
+    },
     maxHp: 56,
     power: 10,
     guard: 9,
@@ -226,6 +254,13 @@ export const heroes = [
     title: 'risk engine',
     icon: '💀',
     color: '#d8d1b0',
+    ability: {
+      id: 'grave-bloom',
+      name: 'Grave Bloom',
+      icon: '💀',
+      cooldownLoops: 3,
+      text: 'Plant a Crypt ahead, then gain XP and deathward HP.'
+    },
     maxHp: 39,
     power: 9,
     guard: 2,
@@ -380,9 +415,9 @@ export const traits = Object.values(talentTrees).flat();
 export const equipmentSlots = ['weapon', 'shield', 'helm', 'armor', 'gloves', 'boots', 'ring', 'charm'];
 export const shopSize = 5;
 export const shopRotationMs = 60 * 1000;
-const combatWindupMs = 400;
-const combatBeatMs = 440;
-const combatTailMs = 650;
+const combatWindupMs = 130;
+const combatBeatMs = 240;
+const combatTailMs = 280;
 const simulatedCombatWindupMs = 180;
 const simulatedCombatBeatMs = 203;
 const simulatedCombatTailMs = 360;
@@ -397,15 +432,17 @@ function combatTiming(room) {
       windupMs: simulatedCombatWindupMs,
       beatMs: simulatedCombatBeatMs,
       tailMs: simulatedCombatTailMs,
-      entryLeadMs: 0
+      entryLeadMs: 0,
+      multiEnemyCounters: false
     };
   }
   const scale = roomTimeScale(room);
   return {
-    windupMs: scaledCombatMs(combatWindupMs, scale, 240, 760),
-    beatMs: scaledCombatMs(combatBeatMs, scale, 260, 860),
-    tailMs: scaledCombatMs(combatTailMs, scale, 360, 1120),
-    entryLeadMs: 0
+    windupMs: scaledCombatMs(combatWindupMs, scale, 120, 260),
+    beatMs: scaledCombatMs(combatBeatMs, scale, 220, 360),
+    tailMs: scaledCombatMs(combatTailMs, scale, 220, 420),
+    entryLeadMs: 0,
+    multiEnemyCounters: true
   };
 }
 
@@ -961,6 +998,19 @@ function heroSignature(player) {
   return null;
 }
 
+function heroAbilityState(player) {
+  const hero = heroes.find((item) => item.id === player.heroId);
+  if (!hero?.ability) return null;
+  const readyLap = player.abilityReadyLap ?? 0;
+  const remainingLoops = Math.max(0, readyLap - (player.laps ?? 0));
+  return {
+    ...hero.ability,
+    ready: remainingLoops === 0,
+    remainingLoops,
+    readyLap
+  };
+}
+
 export function roomSnapshot(room) {
   refreshRoomAuthority(room);
   for (const player of Object.values(room.players)) refreshShop(room, player);
@@ -969,6 +1019,7 @@ export function roomSnapshot(room) {
     board: visibleBoard(player),
     nextMovement: player.combat ? null : player.nextMovement,
     signature: heroSignature(player),
+    ability: heroAbilityState(player),
     shop: player.shop ? {
       ...player.shop,
       remainingMs: Math.max(0, player.shop.rotatesAt - now(room))
@@ -1071,6 +1122,7 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     vagrantEscapeTier: 0,
     runeMarkCount: 0,
     graveEcho: 0,
+    abilityReadyLap: 0,
     position: 0,
     laps: 0,
     level: 1,
@@ -1633,6 +1685,155 @@ export function buyShopOffer(room, player, offerId) {
   return true;
 }
 
+function tileAhead(player, predicate, start = 1) {
+  for (let offset = start; offset < player.board.length; offset += 1) {
+    const tile = player.board[(player.position + offset) % player.board.length];
+    if (predicate(tile)) return tile;
+  }
+  return null;
+}
+
+function setAbilityCooldown(player, hero, strength) {
+  const baseCooldown = hero.ability?.cooldownLoops ?? 2;
+  const cooldown = Math.max(1, baseCooldown + (strength >= 4 ? -1 : 0));
+  player.abilityReadyLap = (player.laps ?? 0) + cooldown;
+  return cooldown;
+}
+
+export function activateHeroAbility(room, player) {
+  if (!player || room.status !== 'running') return false;
+  if (isStunned(room, player) || isCombatLocked(room, player)) return false;
+  const hero = heroes.find((item) => item.id === player.heroId);
+  if (!hero?.ability) return false;
+  if ((player.abilityReadyLap ?? 0) > (player.laps ?? 0)) return false;
+
+  const strength = Math.max(1, player.loopTier ?? 1);
+  const events = [];
+  let detail = '';
+
+  if (player.heroId === 'ember-knight') {
+    const heatGain = 1 + Math.floor(strength / 3);
+    const armorGain = 3 + strength;
+    const heal = 4 + strength * 2;
+    player.heroHeat = clamp((player.heroHeat ?? 0) + heatGain, 0, 3 + Math.floor(strength / 2));
+    player.armor = (player.armor ?? 0) + armorGain;
+    player.hp = clamp(player.hp + heal, 0, player.maxHp);
+    detail = `stoked ${heatGain} Heat, ${armorGain} armor, and ${heal} HP`;
+  } else if (player.heroId === 'moss-warden') {
+    const tile = tileAhead(player, (candidate) => candidate.type === 'road', 1);
+    if (!tile) return false;
+    tile.type = strength >= 3 ? 'village' : 'meadow';
+    tile.charges = 0;
+    tile.expiresOnLap = player.laps + tileLoopLife(player) + (strength >= 4 ? 1 : 0);
+    const heal = 8 + strength * 3;
+    player.hp = clamp(player.hp + heal, 0, player.maxHp);
+    player.wardenOvergrowth = (player.wardenOvergrowth ?? 0) + 1;
+    detail = `bloomed tile ${tile.index} into ${tile.type === 'village' ? 'Village' : 'Meadow'} and healed ${heal}`;
+    events.push({
+      type: 'tileChanged',
+      payload: {
+        playerId: player.id,
+        tileIndex: tile.index,
+        tile: cloneJson(visibleTile(tile)),
+        cause: 'heroAbility'
+      }
+    });
+  } else if (player.heroId === 'night-vagrant') {
+    const draws = Math.min(2, Math.max(1, strength >= 3 ? 2 : 1));
+    let drawn = 0;
+    while (drawn < draws && player.hand.length < 7) {
+      const card = drawCard(room, null, player);
+      player.hand.push(card);
+      drawn += 1;
+      events.push({
+        type: 'cardDrawn',
+        payload: {
+          playerId: player.id,
+          cardId: card.id,
+          cardInstanceId: card.instanceId,
+          kind: card.kind
+        }
+      });
+    }
+    const gold = 14 + strength * 7;
+    player.gold = (player.gold ?? 0) + gold;
+    detail = `lifted ${gold} gold${drawn > 0 ? ` and ${drawn} card${drawn === 1 ? '' : 's'}` : ''}`;
+  } else if (player.heroId === 'rune-archer') {
+    const target = Object.values(room.players)
+      .filter((candidate) => candidate.id !== player.id)
+      .sort((a, b) => score(b) - score(a))[0];
+    if (!target) return false;
+    const slow = Math.round((900 + strength * 260) * roomTimeScale(room));
+    const damage = 2 + strength;
+    const movementBefore = movementKey(target.nextMovement);
+    target.marked = true;
+    target.curse = (target.curse ?? 0) + 1 + Math.floor(strength / 2);
+    target.hp -= damage;
+    target.nextMoveAt += slow;
+    target.nextMovement = movementSegmentForPlayer(target);
+    target.event = `${player.name} pinned you with a rune`;
+    target.lastEventAt = now(room);
+    player.runeMarkCount = (player.runeMarkCount ?? 0) + 1;
+    const defeated = resolveDefeat(room, target);
+    detail = `pinned ${target.name}, adding curse and ${damage} damage`;
+    if (!defeated && movementBefore !== movementKey(target.nextMovement)) {
+      events.push({
+        type: 'movementSegment',
+        payload: {
+          playerId: target.id,
+          nextMovement: target.nextMovement,
+          arrivalMovement: target.arrivalMovement
+        }
+      });
+    }
+  } else if (player.heroId === 'grave-singer') {
+    const tile = tileAhead(player, (candidate) => candidate.type === 'road' && !isBlockedCombatTerrainPlacement(player, { kind: 'terrain', tile: 'crypt' }, candidate), 2);
+    if (!tile) return false;
+    tile.type = strength >= 4 ? 'bonepit' : 'crypt';
+    tile.charges = 0;
+    tile.expiresOnLap = player.laps + tileLoopLife(player);
+    const xp = 12 + strength * 5;
+    const heal = 5 + Math.min(12, (player.deathsThisTier ?? 0) * 3 + strength);
+    player.hp = clamp(player.hp + heal, 0, player.maxHp);
+    player.graveEcho = Math.min(8, (player.graveEcho ?? 0) + 1 + Math.floor(strength / 3));
+    addXp(room, player, xp);
+    detail = `raised tile ${tile.index} into ${tile.type === 'bonepit' ? 'Bone Pit' : 'Crypt'}, gained ${xp} XP, and healed ${heal}`;
+    events.push({
+      type: 'tileChanged',
+      payload: {
+        playerId: player.id,
+        tileIndex: tile.index,
+        tile: cloneJson(visibleTile(tile)),
+        cause: 'heroAbility'
+      }
+    });
+  } else {
+    return false;
+  }
+
+  const cooldownLoops = setAbilityCooldown(player, hero, strength);
+  player.event = `${hero.ability.name}: ${detail}`;
+  room.lastActivityAt = now(room);
+  addLog(room, `${player.name} used ${hero.ability.name}: ${detail}.`);
+  emitRuleEvent(room, 'heroAbilityActivated', {
+    playerId: player.id,
+    heroId: player.heroId,
+    abilityId: hero.ability.id,
+    abilityName: hero.ability.name,
+    strength,
+    cooldownLoops,
+    readyLap: player.abilityReadyLap,
+    detail,
+    hp: player.hp,
+    gold: player.gold ?? 0,
+    score: score(player),
+    level: player.level
+  });
+  for (const event of events) emitRuleEvent(room, event.type, event.payload);
+  checkWinner(room);
+  return true;
+}
+
 export function runRoomStep(room, options = {}) {
   if (room.status !== 'running') return;
   if (refreshRoomAuthority(room)) return;
@@ -1814,7 +2015,7 @@ function challengeSoloGate(room, player, tier) {
     gate.enemyCount
   );
   if (!survived) {
-    resolveDefeat(room, player);
+    resolveDefeatAfterVisibleCombat(room, player);
     addLog(room, `${player.name} failed the ${gate.label}; corruption thickens around tier ${tier}.`);
     return false;
   }
@@ -1837,7 +2038,7 @@ function challengeLoopBoss(room, player) {
   const corruptionPressure = isSoloPlayer(room, player) ? Math.floor((player.soloCorruption ?? 0) * 0.45) : 0;
   const survived = fight(room, player, 'loop tyrant', 42 + corruptionPressure + player.bossAttempts * 3, 160, 5);
   if (!survived) {
-    resolveDefeat(room, player);
+    resolveDefeatAfterVisibleCombat(room, player);
     addLog(room, `${player.name} was broken by the Loop Tyrant and must rebuild tier 3.`);
     return null;
   }
@@ -2291,6 +2492,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     rounds,
     enemyMaxHp,
     enemyCount,
+    enemyNames: lineup.map((enemy) => enemy.name),
     heroHpBefore: hpBefore,
     heroHpAfter: player.hp,
     heroDamage: damage,
@@ -2356,8 +2558,23 @@ function activeEnemySlot(totalHp, enemyMaxHp, enemyCount) {
   return Math.max(0, Math.min(count - 1, count - Math.ceil(remaining / perEnemyMax)));
 }
 
-function combatBeats({ rounds, enemyMaxHp, enemyCount, heroHpBefore, heroHpAfter, heroDamage, power, enemyName, timing }) {
-  const counterDamages = splitDamage(heroDamage, Math.min(rounds, Math.max(1, heroDamage)));
+function livingEnemySlots(totalHp, enemyMaxHp, enemyCount) {
+  const count = Math.max(1, enemyCount);
+  const perEnemyMax = Math.max(1, Math.ceil(enemyMaxHp / count));
+  const remaining = Math.max(0, totalHp);
+  return Array.from({ length: count }, (_, index) => {
+    const laterEnemyHp = perEnemyMax * (count - index - 1);
+    return {
+      index,
+      hp: Math.max(0, Math.min(perEnemyMax, remaining - laterEnemyHp))
+    };
+  }).filter((enemy) => enemy.hp > 0);
+}
+
+function combatBeats({ rounds, enemyMaxHp, enemyCount, enemyNames = [], heroHpBefore, heroHpAfter, heroDamage, power, enemyName, timing }) {
+  const counterSlots = timing.multiEnemyCounters ? Math.max(1, enemyCount) : 1;
+  const counterCount = Math.min(rounds * counterSlots, Math.max(1, heroDamage));
+  const counterDamages = splitDamage(heroDamage, counterCount);
   let enemyHp = enemyMaxHp;
   let heroHp = heroHpBefore;
   let counterIndex = 0;
@@ -2378,18 +2595,25 @@ function combatBeats({ rounds, enemyMaxHp, enemyCount, heroHpBefore, heroHpAfter
     });
 
     if (enemyHp <= 0 || counterIndex >= counterDamages.length) continue;
-    const counterDamage = counterDamages[counterIndex];
-    counterIndex += 1;
-    heroHp = Math.max(heroHpAfter, heroHp - counterDamage);
-    beats.push({
-      attacker: 'enemy',
-      atMs: timing.windupMs + beats.length * timing.beatMs,
-      damage: counterDamage,
-      enemyIndex: activeEnemySlot(enemyHp, enemyMaxHp, enemyCount),
-      heroHp,
-      enemyHp,
-      text: `${enemyName} hits you for ${counterDamage}`
-    });
+    const livingEnemies = timing.multiEnemyCounters
+      ? livingEnemySlots(enemyHp, enemyMaxHp, enemyCount)
+      : [{ index: activeEnemySlot(enemyHp, enemyMaxHp, enemyCount) }];
+    const countersThisRound = Math.min(livingEnemies.length, counterDamages.length - counterIndex);
+    for (let counter = 0; counter < countersThisRound; counter += 1) {
+      const slot = livingEnemies[(round + counter) % livingEnemies.length]?.index ?? activeEnemySlot(enemyHp, enemyMaxHp, enemyCount);
+      const counterDamage = counterDamages[counterIndex];
+      counterIndex += 1;
+      heroHp = Math.max(heroHpAfter, heroHp - counterDamage);
+      beats.push({
+        attacker: 'enemy',
+        atMs: timing.windupMs + beats.length * timing.beatMs,
+        damage: counterDamage,
+        enemyIndex: slot,
+        heroHp,
+        enemyHp,
+        text: `${enemyNames[slot] ?? enemyName} strikes for ${counterDamage}`
+      });
+    }
   }
 
   const lastBeat = beats.at(-1);
@@ -2468,6 +2692,11 @@ function resolveDefeat(room, player) {
   if (player.hp > 0) return false;
   revivePlayer(room, player);
   return true;
+}
+
+function resolveDefeatAfterVisibleCombat(room, player) {
+  if (player.combat) return false;
+  return resolveDefeat(room, player);
 }
 
 function triggerTile(room, player, tile) {
@@ -2553,7 +2782,7 @@ function triggerTile(room, player, tile) {
     } else player.event = 'sprinting';
   }
 
-  resolveDefeat(room, player);
+  resolveDefeatAfterVisibleCombat(room, player);
   player.lastEventAt = now(room);
   if (isGuidedHuman(room, player)) updateGuidedRun(room);
 }
@@ -2738,6 +2967,7 @@ function botThink(room, player) {
 
 export const testApi = {
   absorbRoomClockDrift,
+  activateHeroAbility,
   activePlayerCount,
   addBot,
   availableTraits,
@@ -2747,6 +2977,7 @@ export const testApi = {
   createPlayer,
   createRoom,
   disconnectPlayer,
+  drainRoomEvents,
   equipmentSlots,
   equip,
   fillCpuOpponents,

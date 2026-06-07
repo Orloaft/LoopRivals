@@ -17,8 +17,6 @@ const combatBlockingTileTypes = new Set([
   'wyrmgate',
   'ambush'
 ]);
-const projectionPresentationBufferMs = 420;
-
 function numberValue(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -147,26 +145,6 @@ function movementSegmentForProjectionEvent(player: Player, movement: MovementSeg
   return movement;
 }
 
-function playerVisuallyReachedCursor(
-  player: Player,
-  cursor: number,
-  context: { previousNow?: number; previousReceivedAt?: number }
-) {
-  const boardLength = Math.max(1, player.board.length);
-  const baseCursor = (player.laps ?? 0) * boardLength + player.position;
-  if (baseCursor >= cursor) return true;
-
-  const arrivalSegment = player.nextMovement && player.nextMovement.toCursor <= cursor
-    ? player.nextMovement
-    : player.arrivalMovement;
-  if (!arrivalSegment) return false;
-
-  const previousNow = context.previousNow ?? 0;
-  const previousReceivedAt = context.previousReceivedAt ?? Date.now();
-  const presentationClock = previousNow + (Date.now() - previousReceivedAt) - projectionPresentationBufferMs;
-  return presentationClock >= arrivalSegment.arriveAt;
-}
-
 function combatStartPosition(player: Player, payload: Record<string, unknown>) {
   const payloadPosition = numberValue(payload.position) ?? numberValue(payload.tileIndex);
   if (payloadPosition !== null) return payloadPosition;
@@ -182,11 +160,7 @@ function combatStartPosition(player: Player, payload: Record<string, unknown>) {
   return player.position;
 }
 
-function applyRoomEvent(
-  state: GameState,
-  event: RoomEvent,
-  context: { previousNow?: number; previousReceivedAt?: number } = {}
-) {
+function applyRoomEvent(state: GameState, event: RoomEvent) {
   const payload = objectValue(event.payload) ?? {};
   const playerId = stringValue(payload.playerId);
 
@@ -289,19 +263,15 @@ function applyRoomEvent(
       const position = combatStartPosition(player, payload);
       const laps = numberValue(payload.laps) ?? player.laps;
       const resolvedCursor = cursorForPlayerProjection({ ...player, laps }, position);
-      const arrivedMovement = player.nextMovement && player.nextMovement.toCursor <= resolvedCursor
-        ? player.nextMovement
-        : player.arrivalMovement;
       const nextMovement = player.nextMovement && player.nextMovement.toCursor <= resolvedCursor
         ? null
         : player.nextMovement;
-      const arrivalMovement = playerVisuallyReachedCursor(player, resolvedCursor, context) ? null : arrivedMovement;
 
       return {
         ...player,
         position,
         laps,
-        arrivalMovement,
+        arrivalMovement: null,
         nextMovement,
         combat: combat ?? player.combat,
         hp: numberValue(combat?.heroHpAfter) ?? player.hp,
@@ -469,10 +439,6 @@ export function applyRoomDelta(state: GameState, delta: RoomDelta, receivedAt = 
     },
     receivedAt
   };
-  const projectionContext = {
-    previousNow: state.now,
-    previousReceivedAt: state.receivedAt
-  };
   const runtime = nextState.runtime;
   if (!runtime) throw new Error('Room projection requires runtime sequencing');
 
@@ -487,7 +453,7 @@ export function applyRoomDelta(state: GameState, delta: RoomDelta, receivedAt = 
         needsRecovery: true
       };
     }
-    applyRoomEvent(nextState, event, projectionContext);
+    applyRoomEvent(nextState, event);
     runtime.eventSeq = event.seq;
     runtime.generatedAt = receivedAt;
     appliedEvents += 1;

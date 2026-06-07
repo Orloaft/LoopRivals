@@ -190,6 +190,38 @@ test('room runtime reveals queued movement only after combat ends', () => {
   assert.equal(events.some((event) => event.type === 'tileResolved' && event.payload.position > 1), false);
 });
 
+test('room runtime keeps lethal combat visible until the combat expires', () => {
+  const room = testApi.createRoom('runtime-lethal-combat-visible', { now: 1000, seed: 'runtime-lethal-combat-visible', simulated: true });
+  const runtime = createRoomRuntime(room);
+  testApi.joinRoom(room, { playerId: 'host', name: 'Host', heroId: 'ember-knight' });
+  testApi.startRoom(room);
+
+  const player = room.players.host;
+  player.board[1].type = 'crypt';
+  player.hp = 1;
+  player.nextMoveAt = room.now;
+
+  const startEvents = runtime.step(260, 260);
+  const combatStarted = startEvents.find((event) => event.type === 'combatStarted' && event.payload.playerId === 'host');
+
+  assert.equal(Boolean(combatStarted), true);
+  assert.equal(startEvents.some((event) => event.type === 'playerDefeated'), false);
+  assert.equal(room.players.host.position, 1);
+  assert.equal(room.players.host.deaths, 0);
+  assert.equal(room.players.host.combat !== null, true);
+  assert.equal(combatStarted.payload.combat.heroHpAfter <= 0, true);
+
+  room.now = room.players.host.combat.expiresAt;
+  const endEvents = runtime.step(0, 260);
+  const defeated = endEvents.find((event) => event.type === 'playerDefeated' && event.payload.playerId === 'host');
+
+  assert.equal(endEvents.some((event) => event.type === 'combatEnded'), true);
+  assert.equal(Boolean(defeated), true);
+  assert.equal(room.players.host.position, 0);
+  assert.equal(room.players.host.deaths, 1);
+  assert.equal(room.players.host.combat, null);
+});
+
 test('room runtime does not emit heartbeat events for bare simulation ticks', () => {
   const room = testApi.createRoom('runtime-idle-tick', { now: 1000, seed: 'runtime-idle-tick' });
   const runtime = createRoomRuntime(room);

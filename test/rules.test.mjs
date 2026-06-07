@@ -377,6 +377,47 @@ test('personal shops hold five offers, rotate over time, and sell into buyable s
   else assert.equal(player.loot.length, lootBeforeBuy + 1);
 });
 
+test('hero abilities use loop cooldowns and expose ready state in snapshots', () => {
+  room = testApi.createRoom('ability-room', { simulated: true, now: 10_000 });
+  room.status = 'running';
+  const player = testApi.createPlayer('ember', 'Ember', 'ember-knight', false, room);
+  room.players.ember = player;
+  player.hp = 20;
+  player.loopTier = 2;
+
+  assert.equal(testApi.activateHeroAbility(room, player), true);
+  assert.ok(player.heroHeat > 0);
+  assert.ok(player.armor > 0);
+  assert.equal(player.abilityReadyLap, player.laps + 2);
+
+  let snapshotPlayer = testApi.roomSnapshot(room).players.find((item) => item.id === player.id);
+  assert.equal(snapshotPlayer.ability.ready, false);
+  assert.equal(snapshotPlayer.ability.remainingLoops, 2);
+
+  assert.equal(testApi.activateHeroAbility(room, player), false);
+  player.laps = player.abilityReadyLap;
+
+  snapshotPlayer = testApi.roomSnapshot(room).players.find((item) => item.id === player.id);
+  assert.equal(snapshotPlayer.ability.ready, true);
+  assert.equal(testApi.activateHeroAbility(room, player), true);
+});
+
+test('board-shaping hero abilities change future tiles authoritatively', () => {
+  room = testApi.createRoom('moss-ability-room', { simulated: true, now: 10_000 });
+  room.status = 'running';
+  const player = testApi.createPlayer('moss', 'Moss', 'moss-warden', false, room);
+  room.players.moss = player;
+  player.position = 4;
+  player.loopTier = 3;
+  const targetIndex = 5;
+
+  assert.equal(player.board[targetIndex].type, 'road');
+  assert.equal(testApi.activateHeroAbility(room, player), true);
+  assert.equal(player.board[targetIndex].type, 'village');
+  assert.ok(player.board[targetIndex].expiresOnLap > player.laps);
+  assert.equal(testApi.drainRoomEvents(room).some((event) => event.type === 'tileChanged' && event.payload.tileIndex === targetIndex), true);
+});
+
 test('a player already at zero HP revives before resolving the next tile', () => {
   const player = testApi.createPlayer('runner', 'Runner', 'grave-singer');
   player.hp = 0;
@@ -422,7 +463,8 @@ test('danger terrain can stack multiple enemies into one longer combat lock', ()
   assert.ok(player.combat.beats.every((beat) => beat.text));
   assert.ok(player.combat.beats.every((beat) => Number.isInteger(beat.enemyIndex)));
   assert.ok(player.combat.beats.every((beat) => beat.enemyIndex >= 0 && beat.enemyIndex < player.combat.enemyCount));
-  assert.equal(player.combat.durationMs, 1120 + player.combat.beats.length * 860);
+  assert.ok(new Set(player.combat.beats.filter((beat) => beat.attacker === 'enemy').map((beat) => beat.enemyIndex)).size > 1);
+  assert.equal(player.combat.durationMs, 420 + player.combat.beats.length * 360);
   assert.equal(player.combat.enemyName, 'Bone Host');
   assert.equal(player.combat.enemyId, 'bone-host');
   assert.equal(player.combat.enemyIds.length, player.combat.enemyCount);
@@ -944,6 +986,12 @@ test('solo gate failure adds corruption and score debt instead of brute-force pr
   testApi.checkWinner(room);
 
   assert.equal(player.loopTier, 1);
+  assert.equal(player.deaths, 0);
+  assert.equal(player.combat !== null, true);
+
+  player.combat.expiresAt = Date.now() - 1;
+  testApi.runRoomStep(room, { advanceMs: 0 });
+
   assert.equal(player.deaths, 1);
   assert.ok(player.soloCorruption > 0);
   assert.ok(player.scorePenalty > 0);

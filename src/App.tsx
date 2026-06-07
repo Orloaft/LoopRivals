@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
-import { Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield } from 'lucide-react';
+import { Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield, ShoppingBag } from 'lucide-react';
 import { isAuthorityStateStale } from './authority-timeline';
 import { heroPortraitUrl, statLine } from './game-assets';
 import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, playerMotionIsLocked, visualCursorForPlayer, visualFrameCursorForPlayer } from './movement';
@@ -21,7 +21,8 @@ import {
   PlayerPanel,
   RivalIntel,
   PlayerSideDock,
-  SellZone
+  SellZone,
+  ShopDrawer
 } from './game-ui';
 
 function savedPlayerToken() {
@@ -171,6 +172,7 @@ function App() {
   const [dragPoint, setDragPoint] = useState({ x: 0, y: 0 });
   const dragFrameRef = useRef<number | null>(null);
   const [bgmOn, setBgmOn] = useState(() => localStorage.getItem('loopduel.bgm') !== 'off');
+  const [shopOpen, setShopOpen] = useState(false);
   const [profile, setProfile] = useState(loadProfile);
   const [recordedFinishId, setRecordedFinishId] = useState<string | null>(null);
   const [mobileDrawer, setMobileDrawer] = useState<'loot' | 'talents' | 'log' | 'menu' | null>(null);
@@ -458,6 +460,10 @@ function App() {
 
   function buyShopOffer(offer: ShopOffer) {
     emitAuthoritative('buyShopOffer', { offerId: offer.id });
+  }
+
+  function activateHeroAbility() {
+    emitAuthoritative('activateHeroAbility', {});
   }
 
   function chooseTrait(traitId: string) {
@@ -864,6 +870,7 @@ function App() {
           lines={game.log}
           onEquip={equip}
           onChoose={chooseTrait}
+          onActivateAbility={activateHeroAbility}
           onLootDragStart={(id, point) => {
             setDragLootId(id);
             setDragPoint(point);
@@ -879,6 +886,28 @@ function App() {
           profile={profile}
           bgmOn={bgmOn}
           onToggleBgm={() => setBgmOn((on) => !on)}
+        />
+        <button
+          type="button"
+          className={`shop-dock-toggle ${shopOpen ? 'open' : ''}`}
+          onClick={() => setShopOpen((open) => !open)}
+          aria-label={shopOpen ? 'Close shop' : 'Open shop'}
+          style={{ '--hero-color': me.color } as CSSProperties}
+        >
+          <ShoppingBag size={20} />
+          <span>{me.gold ?? 0}g</span>
+          <InfoPopover
+            title="Loop Market"
+            eyebrow={shopOpen ? 'Shop open' : 'Personal shop'}
+            body="Opens the rotating shop beside your right dock."
+          />
+        </button>
+        <ShopDrawer
+          open={shopOpen}
+          player={me}
+          onClose={() => setShopOpen(false)}
+          onDrop={handleSellDrop}
+          onBuy={buyShopOffer}
         />
         <MobileDrawer
           mode={mobileDrawer}

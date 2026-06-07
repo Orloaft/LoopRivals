@@ -4,6 +4,7 @@ export type Hero = {
   title: string;
   icon: string;
   color: string;
+  ability: HeroAbility;
   maxHp: number;
   power: number;
   guard: number;
@@ -14,6 +15,14 @@ export type Hero = {
   terrainScore?: number;
   revivePower?: number;
   text: string;
+};
+
+export type HeroAbility = {
+  id: string;
+  name: string;
+  icon: string;
+  text: string;
+  cooldownLoops: number;
 };
 
 export type Card = {
@@ -222,6 +231,11 @@ export type Player = {
     value: number;
     max: number;
     text: string;
+  };
+  ability?: HeroAbility & {
+    ready: boolean;
+    remainingLoops: number;
+    readyLap: number;
   };
   position: number;
   laps: number;
