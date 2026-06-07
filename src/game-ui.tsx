@@ -20,7 +20,6 @@ type LocalProfile = {
 };
 
 type RunnerFloater = {
-  id: string;
   text: string;
   tone: 'gain' | 'loss' | 'health' | 'gold' | 'xp' | 'loop';
   lane: number;
@@ -1778,9 +1777,8 @@ function PlayerPanel({
   const boardRef = useRef<HTMLDivElement | null>(null);
   const runnerRef = useRef<HTMLSpanElement | null>(null);
   const runnerHighlightRef = useRef<HTMLSpanElement | null>(null);
+  const runnerFloatersRef = useRef<HTMLSpanElement | null>(null);
   const previousRunnerStatsRef = useRef<{ hp: number; score: number; gold: number; xp: number; level: number; laps: number } | null>(null);
-  const floaterTimersRef = useRef<number[]>([]);
-  const [runnerFloaters, setRunnerFloaters] = useState<RunnerFloater[]>([]);
   const motionSeedKey = useMemo(
     () => `${player.id}:${player.board.map((tile) => `${tile.index}:${tile.coord[0]},${tile.coord[1]}`).join('|')}`,
     [player.board, player.id]
@@ -1808,11 +1806,9 @@ function PlayerPanel({
     previousRunnerStatsRef.current = current;
     if (!previous) return;
 
-    const createdAt = player.lastEventAt ?? player.lastMoveAt ?? serverNow ?? Date.now();
     const nextFloaters: RunnerFloater[] = [];
     const addFloater = (text: string, tone: RunnerFloater['tone']) => {
       nextFloaters.push({
-        id: `${player.id}-${createdAt}-${nextFloaters.length}-${text}`,
         text,
         tone,
         lane: nextFloaters.length % 3
@@ -1833,22 +1829,24 @@ function PlayerPanel({
     else if (xpDelta !== 0) addFloater(signed(xpDelta, ' XP'), xpDelta > 0 ? 'xp' : 'loss');
     if (lapDelta > 0) addFloater(`+${lapDelta} loop${lapDelta === 1 ? '' : 's'}`, 'loop');
 
-    if (nextFloaters.length === 0) return;
-    const addTimer = window.setTimeout(() => {
-      setRunnerFloaters((existing) => [...existing, ...nextFloaters].slice(-8));
-    }, 0);
-    floaterTimersRef.current.push(addTimer);
-    nextFloaters.forEach((floater) => {
-      const timer = window.setTimeout(() => {
-        setRunnerFloaters((existing) => existing.filter((item) => item.id !== floater.id));
-      }, 1420);
-      floaterTimersRef.current.push(timer);
+    const container = runnerFloatersRef.current;
+    if (!container || nextFloaters.length === 0) return;
+
+    window.requestAnimationFrame(() => {
+      nextFloaters.forEach((floater) => {
+        const node = document.createElement('b');
+        node.className = `runner-floater ${floater.tone}`;
+        node.textContent = floater.text;
+        node.style.setProperty('--float-lane', String(floater.lane));
+        node.addEventListener('animationend', () => node.remove(), { once: true });
+        container.append(node);
+      });
+
+      while (container.childElementCount > 8) {
+        container.firstElementChild?.remove();
+      }
     });
-  }, [player.gold, player.hp, player.id, player.lastEventAt, player.lastMoveAt, player.laps, player.level, player.score, player.xp, serverNow]);
-  useEffect(() => () => {
-    floaterTimersRef.current.forEach(window.clearTimeout);
-    floaterTimersRef.current = [];
-  }, []);
+  }, [player.gold, player.hp, player.laps, player.level, player.score, player.xp]);
   const stunSeconds = Math.ceil((player.stunRemainingMs ?? 0) / 1000);
   const compactRival = !active && !focused;
   const impact = eventImpact(player.event);
@@ -1930,19 +1928,7 @@ function PlayerPanel({
               <b>{Math.ceil(player.hp)}</b>
               <i aria-hidden="true" />
             </span>
-            {runnerFloaters.length > 0 && (
-              <span className="runner-floaters" aria-hidden="true">
-                {runnerFloaters.map((floater) => (
-                  <b
-                    key={floater.id}
-                    className={`runner-floater ${floater.tone}`}
-                    style={{ '--float-lane': floater.lane } as CSSProperties}
-                  >
-                    {floater.text}
-                  </b>
-                ))}
-              </span>
-            )}
+            <span ref={runnerFloatersRef} className="runner-floaters" aria-hidden="true" />
           </span>
         </span>
         <div className="board-core">
