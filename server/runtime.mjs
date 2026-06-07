@@ -30,6 +30,35 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function normalizeCommandId(commandId) {
+  const id = String(commandId ?? '').trim();
+  return id ? id.slice(0, 80) : null;
+}
+
+function normalizeCommandPlayerId(playerId) {
+  return playerId === null || playerId === undefined ? null : String(playerId).slice(0, 80);
+}
+
+function commandResultForJournal(result) {
+  if (result === undefined) return null;
+  if (result === null || typeof result !== 'object' || Array.isArray(result)) return result;
+  return Object.fromEntries(Object.entries(result).filter(([, value]) => (
+    value === null || ['boolean', 'number', 'string'].includes(typeof value)
+  )));
+}
+
+function commandEventSeqs(events) {
+  return events
+    .map((event) => Number(event?.seq))
+    .filter(Number.isFinite);
+}
+
+function commandRejectionReason(result) {
+  if (result?.full) return 'room-full';
+  if (result === false || result === null) return 'mutator-rejected';
+  return 'no-op';
+}
+
 function movementKey(value) {
   return value ? JSON.stringify(value) : null;
 }
@@ -97,6 +126,21 @@ export function eventRequiresSnapshot(event) {
 
 export function eventsRequireSnapshot(events) {
   return Array.isArray(events) && events.some((event) => eventRequiresSnapshot(event));
+}
+
+export function roomEventBroadcastPolicy(events) {
+  const eventList = Array.isArray(events) ? events : [];
+  const delta = eventList.length > 0;
+  const snapshotRequired = eventsRequireSnapshot(eventList);
+  const eventSeqs = commandEventSeqs(eventList);
+  return {
+    delta,
+    snapshot: delta && snapshotRequired,
+    snapshotRequired,
+    eventSeqs,
+    firstSeq: eventSeqs[0] ?? null,
+    lastSeq: eventSeqs.at(-1) ?? null
+  };
 }
 
 export class RoomRuntime {
@@ -168,24 +212,74 @@ export class RoomRuntime {
     }));
   }
 
+  findCommand(name, { playerId = null, commandId = null } = {}) {
+    const normalizedCommandId = normalizeCommandId(commandId);
+    if (!normalizedCommandId) return null;
+    const normalizedPlayerId = normalizeCommandPlayerId(playerId);
+    return this.commands.findLast((command) => (
+      command?.roomId === this.room.id &&
+      command?.name === name &&
+      command?.commandId === normalizedCommandId &&
+      (command?.playerId ?? null) === normalizedPlayerId
+    )) ?? null;
+  }
+
   recordCommand(name, { playerId = null, commandId = null, payload = {} } = {}) {
     this.commandSeq += 1;
     const command = {
       seq: this.commandSeq,
-      commandId: commandId ? String(commandId).slice(0, 80) : null,
+      commandId: normalizeCommandId(commandId),
       name,
       roomId: this.room.id,
-      playerId,
+      playerId: normalizeCommandPlayerId(playerId),
       receivedAt: Date.now(),
       tick: this.room.tick,
-      payload: cloneJson(payload)
+      payload: cloneJson(payload),
+      accepted: null,
+      reason: null,
+      result: null,
+      eventSeqs: [],
+      firstEventSeq: null,
+      lastEventSeq: null,
+      snapshotRequired: false
     };
     this.commands.push(command);
     compactJournal(this.commands, this.journalLimit);
     return command;
   }
 
+  finalizeCommand(command, { result, accepted, reason, events }) {
+    const eventSeqs = commandEventSeqs(events);
+    command.accepted = Boolean(accepted);
+    command.reason = reason ?? null;
+    command.result = commandResultForJournal(result);
+    command.eventSeqs = eventSeqs;
+    command.firstEventSeq = eventSeqs[0] ?? null;
+    command.lastEventSeq = eventSeqs.at(-1) ?? null;
+    command.snapshotRequired = eventsRequireSnapshot(events);
+    return command;
+  }
+
+  commandOutcome(command, events, { duplicate = false } = {}) {
+    const eventSeqs = Array.isArray(command?.eventSeqs) ? command.eventSeqs.slice() : commandEventSeqs(events);
+    return {
+      result: command?.result ?? null,
+      command,
+      events,
+      accepted: Boolean(command?.accepted),
+      duplicate,
+      reason: command?.reason ?? (command?.accepted ? null : 'unknown'),
+      eventSeqs,
+      firstSeq: command?.firstEventSeq ?? eventSeqs[0] ?? null,
+      lastSeq: command?.lastEventSeq ?? eventSeqs.at(-1) ?? null,
+      snapshotRequired: Boolean(command?.snapshotRequired)
+    };
+  }
+
   commitCommand(name, context, mutator) {
+    const duplicateCommand = this.findCommand(name, context);
+    if (duplicateCommand) return this.commandOutcome(duplicateCommand, [], { duplicate: true });
+
     const before = roomFacts(this.room);
     drainRoomEvents(this.room);
     const command = this.recordCommand(name, context);
@@ -194,19 +288,21 @@ export class RoomRuntime {
     const after = roomFacts(this.room);
     const changed = roomFactsKey(before) !== roomFactsKey(after);
     const accepted = result !== false && result !== null && !result?.full && (changed || ruleEvents.length > 0 || result === true);
+    const reason = accepted ? null : commandRejectionReason(result);
     const events = [this.appendEvent(accepted ? 'commandAccepted' : 'commandRejected', {
       commandSeq: command.seq,
       commandId: command.commandId,
       name,
       playerId: command.playerId,
-      reason: accepted ? null : 'no-op'
+      reason
     })];
     if (accepted && ruleEvents.length > 0) {
       events.push(...this.appendRuleEvents(ruleEvents, { cause: name, actorId: command.playerId }));
     } else if (accepted) {
       events.push(...this.eventsFromDiff(before, after, { cause: name, actorId: command.playerId, diagnostic: true }));
     }
-    return { result, command, events };
+    this.finalizeCommand(command, { result, accepted, reason, events });
+    return this.commandOutcome(command, events);
   }
 
   step(elapsedMs, simulationIntervalMs) {

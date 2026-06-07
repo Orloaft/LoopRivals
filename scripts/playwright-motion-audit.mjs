@@ -18,6 +18,28 @@ const boardPath = [
   top: ((y + 0.5) / 5) * 100
 }));
 
+function percentile(values, pct) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.max(0, Math.min(sorted.length - 1, Math.ceil(sorted.length * pct) - 1))];
+}
+
+function summarizeFrameGaps(values) {
+  if (values.length === 0) {
+    return { samples: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 };
+  }
+  const total = values.reduce((sum, value) => sum + value, 0);
+  const round = (value) => Number(value.toFixed(2));
+  return {
+    samples: values.length,
+    avg: round(total / values.length),
+    p50: round(percentile(values, 0.5)),
+    p95: round(percentile(values, 0.95)),
+    p99: round(percentile(values, 0.99)),
+    max: round(Math.max(...values))
+  };
+}
+
 function startServer() {
   const server = spawn(process.execPath, ['server/index.mjs'], {
     cwd: new URL('..', import.meta.url),
@@ -62,8 +84,11 @@ async function stopServer(server) {
 
 async function joinAndStart(page) {
   await page.goto(baseUrl);
-  await page.evaluate(() => localStorage.clear());
-  await page.evaluate(() => localStorage.setItem('loopduel.tutorialSeen', 'yes'));
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem('loopduel.tutorialSeen', 'yes');
+    localStorage.setItem('loopduel.smoothnessDebug', '1');
+  });
   await page.reload();
   await page.fill('#player-name', 'Motion');
   await page.fill('#room-code', roomCode);
@@ -128,7 +153,12 @@ async function sampleMotion(page, durationMs = 12_000) {
   return page.evaluate(({ durationMs }) => new Promise((resolve) => {
     const startedAt = performance.now();
     const samples = [];
+    const frameGaps = [];
+    let previousFrameAt = null;
     const sample = () => {
+      const now = performance.now();
+      if (previousFrameAt !== null) frameGaps.push(now - previousFrameAt);
+      previousFrameAt = now;
       const panel = document.querySelector('.player-panel.active.focused');
       const board = panel?.querySelector('.board');
       const runner = panel?.querySelector('.runner');
@@ -143,7 +173,7 @@ async function sampleMotion(page, durationMs = 12_000) {
         const spriteWrapStyle = spriteWrap ? window.getComputedStyle(spriteWrap) : null;
         const spriteStyle = sprite ? window.getComputedStyle(sprite) : null;
         samples.push({
-          t: performance.now() - startedAt,
+          t: now - startedAt,
           left: (runnerMatrix.x / runnerRect.width) * 100,
           top: (runnerMatrix.y / runnerRect.height) * 100,
           highlightLeft: (highlightMatrix.x / runnerRect.width) * 100,
@@ -164,9 +194,14 @@ async function sampleMotion(page, durationMs = 12_000) {
           spriteNaturalHeight: sprite?.naturalHeight ?? 0
         });
       }
-      if (performance.now() - startedAt >= durationMs) {
+      if (now - startedAt >= durationMs) {
         window.__loopduelMotionAudit?.observer?.disconnect();
-        resolve({ samples, audit: window.__loopduelMotionAudit });
+        resolve({
+          samples,
+          frameGaps,
+          smoothness: window.__loopduelSmoothness?.snapshot?.() ?? null,
+          audit: window.__loopduelMotionAudit
+        });
         return;
       }
       window.requestAnimationFrame(sample);
@@ -278,6 +313,19 @@ function assertMotionContract(trace) {
   assert.equal(backwardJumps.length, 0, `runner cursor jumped backward: ${JSON.stringify(backwardJumps.slice(0, 5))}`);
 }
 
+function printMotionReport(trace) {
+  console.log(JSON.stringify({
+    motionAudit: {
+      samples: trace.samples.length,
+      frameGapMs: summarizeFrameGaps(trace.frameGaps ?? []),
+      schedulerFrameGapMs: trace.smoothness?.rafFrameGapMs ?? null,
+      longTasks: trace.smoothness?.longTasks ?? null,
+      runnerRemounts: trace.audit.runnerRemounts,
+      spriteRemounts: trace.audit.spriteRemounts
+    }
+  }, null, 2));
+}
+
 const serverInfo = startServer();
 let browser;
 
@@ -302,6 +350,7 @@ try {
   assert.equal(placed, true, 'motion audit needs to place a terrain card during movement');
   const trace = await sampleMotion(page);
   assertMotionContract(trace);
+  printMotionReport(trace);
 } finally {
   if (browser) await browser.close();
   await stopServer(serverInfo.server);

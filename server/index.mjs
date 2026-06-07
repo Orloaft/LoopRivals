@@ -13,7 +13,6 @@ import {
   disconnectPlayer,
   equip,
   fillCpuOpponents,
-  hasRoomForPlayer,
   joinRoom,
   kickPlayer,
   playBonk,
@@ -28,7 +27,7 @@ import {
   startRoom,
   updateRoomSettings
 } from './rules.mjs';
-import { createRoomRuntime, eventsRequireSnapshot } from './runtime.mjs';
+import { createRoomRuntime, eventsRequireSnapshot, roomEventBroadcastPolicy } from './runtime.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
@@ -175,23 +174,114 @@ function getRuntime(room) {
 
 function emitRuntimeEvents(io, room, events) {
   if (!events || events.length === 0) return;
-  io.to(room.id).emit('room:delta', {
+  const delta = {
     roomId: room.id,
     events,
     firstSeq: events[0].seq,
     lastSeq: events.at(-1).seq
-  });
+  };
+  io.to(room.id).emit('room:delta', delta);
+  return delta;
 }
 
 function emitRoom(io, room, reason = 'recovery') {
   io.to(room.id).emit('state', getRuntime(room).snapshot(reason));
 }
 
-function commitRoomCommand(io, room, name, context, mutator) {
-  const { events, result } = getRuntime(room).commitCommand(name, context, mutator);
-  emitRuntimeEvents(io, room, events);
-  emitRoom(io, room, name);
-  return result;
+function broadcastRoomEvents(io, room, events, reason = 'events') {
+  const policy = roomEventBroadcastPolicy(events);
+  const delta = policy.delta ? emitRuntimeEvents(io, room, events) : null;
+  if (policy.snapshot) emitRoom(io, room, reason);
+  return {
+    ...policy,
+    deltaEmitted: Boolean(delta),
+    snapshotEmitted: Boolean(policy.snapshot)
+  };
+}
+
+function seqsFromEvents(events) {
+  return Array.isArray(events)
+    ? events.map((event) => Number(event?.seq)).filter(Number.isFinite)
+    : [];
+}
+
+function socketAckPayload(eventName, {
+  roomId = null,
+  playerId = null,
+  commandId = null,
+  commandSeq = null,
+  accepted = false,
+  duplicate = false,
+  reason = null,
+  eventSeqs = [],
+  snapshotRequired = false,
+  snapshotEmitted = false,
+  deltaEmitted = false
+} = {}) {
+  const seqs = eventSeqs.slice();
+  return {
+    eventName,
+    roomId,
+    playerId,
+    commandId: commandId ? String(commandId).slice(0, 80) : null,
+    commandSeq,
+    accepted: Boolean(accepted),
+    rejected: !accepted,
+    duplicate: Boolean(duplicate),
+    reason,
+    eventSeqs: seqs,
+    firstSeq: seqs[0] ?? null,
+    lastSeq: seqs.at(-1) ?? null,
+    snapshotRequired: Boolean(snapshotRequired),
+    snapshotEmitted: Boolean(snapshotEmitted),
+    deltaEmitted: Boolean(deltaEmitted)
+  };
+}
+
+function commandAckPayload(name, outcome, broadcast = {}) {
+  const eventSeqs = Array.isArray(outcome?.eventSeqs) && outcome.eventSeqs.length > 0
+    ? outcome.eventSeqs
+    : seqsFromEvents(outcome?.events);
+  return socketAckPayload(name, {
+    roomId: outcome?.command?.roomId ?? null,
+    playerId: outcome?.command?.playerId ?? null,
+    commandId: outcome?.command?.commandId ?? null,
+    commandSeq: outcome?.command?.seq ?? null,
+    accepted: Boolean(outcome?.accepted),
+    duplicate: Boolean(outcome?.duplicate),
+    reason: outcome?.reason ?? null,
+    eventSeqs,
+    snapshotRequired: Boolean(outcome?.snapshotRequired || broadcast.snapshotRequired),
+    snapshotEmitted: Boolean(broadcast.snapshotEmitted),
+    deltaEmitted: Boolean(broadcast.deltaEmitted)
+  });
+}
+
+function sendAck(ack, payload) {
+  if (typeof ack === 'function') ack({ serverTime: Date.now(), ...payload });
+}
+
+function rejectedActionAck(socket, eventName, reason, { commandId = null, roomId = null, playerId = null } = {}) {
+  return socketAckPayload(eventName, {
+    roomId: roomId ?? socket.data.roomId ?? null,
+    playerId: playerId ?? socket.data.playerId ?? null,
+    commandId,
+    accepted: false,
+    reason
+  });
+}
+
+function commitRoomCommand(io, room, name, context, mutator, ack = null) {
+  const outcome = getRuntime(room).commitCommand(name, context, mutator);
+  const broadcast = outcome.duplicate
+    ? {
+        snapshotRequired: outcome.snapshotRequired,
+        snapshotEmitted: false,
+        deltaEmitted: false
+      }
+    : broadcastRoomEvents(io, room, outcome.events, name);
+  sendAck(ack, commandAckPayload(name, outcome, broadcast));
+  return outcome;
 }
 
 function getSocketPlayer(socket) {
@@ -225,6 +315,18 @@ function requireHost(socket) {
   return { room, player, authorized: true };
 }
 
+function rejectUnauthorizedHost(socket, eventName, ack, { room, player, commandId = null } = {}) {
+  sendAck(ack, rejectedActionAck(socket, eventName, room && player ? 'not-host' : 'not-joined', {
+    roomId: room?.id ?? null,
+    playerId: player?.id ?? null,
+    commandId
+  }));
+}
+
+function rejectMissingPlayer(socket, eventName, ack, commandId = null) {
+  sendAck(ack, rejectedActionAck(socket, eventName, 'not-joined', { commandId }));
+}
+
 function allowSocketAction(socket, eventName) {
   const nowMs = Date.now();
   const windowStartedAt = socket.data.actionWindowStartedAt ?? nowMs;
@@ -252,9 +354,18 @@ function allowSocketAction(socket, eventName) {
 }
 
 function onPlayerAction(socket, eventName, handler) {
-  socket.on(eventName, (payload = {}) => {
-    if (!allowSocketAction(socket, eventName)) return;
-    handler(payload);
+  socket.on(eventName, (payloadOrAck = {}, maybeAck = null) => {
+    const ack = typeof payloadOrAck === 'function'
+      ? payloadOrAck
+      : typeof maybeAck === 'function'
+        ? maybeAck
+        : null;
+    const payload = typeof payloadOrAck === 'function' || payloadOrAck === null ? {} : payloadOrAck;
+    if (!allowSocketAction(socket, eventName)) {
+      sendAck(ack, rejectedActionAck(socket, eventName, 'rate-limited', { commandId: payload?.commandId ?? null }));
+      return;
+    }
+    handler(payload, ack);
   });
 }
 
@@ -325,7 +436,7 @@ async function startServer() {
     const mainRoom = getRoom('main');
     socket.emit('state', getRuntime(mainRoom).snapshot('connect'));
 
-    onPlayerAction(socket, 'spectate', ({ roomId } = {}) => {
+    onPlayerAction(socket, 'spectate', ({ roomId } = {}, ack) => {
       const room = getRoom(roomId);
       if (socket.data.roomId && socket.data.roomId !== room.id) socket.leave(socket.data.roomId);
       socket.join(room.id);
@@ -333,19 +444,43 @@ async function startServer() {
       socket.data.playerId = null;
       socket.emit('state', getRuntime(room).snapshot('spectate'));
       socket.emit('notice', `Watching room ${room.id}.`);
+      sendAck(ack, socketAckPayload('spectate', {
+        roomId: room.id,
+        accepted: true,
+        snapshotRequired: true,
+        snapshotEmitted: true
+      }));
     });
 
-    onPlayerAction(socket, 'room:resume', ({ roomId, fromSeq } = {}) => {
+    onPlayerAction(socket, 'room:resume', ({ roomId, fromSeq } = {}, ack) => {
       const room = findRoom(roomId ?? socket.data.roomId);
-      if (!room) return;
+      if (!room) {
+        sendAck(ack, rejectedActionAck(socket, 'room:resume', 'room-not-found', { roomId: roomId ?? socket.data.roomId ?? null }));
+        return;
+      }
       const runtime = getRuntime(room);
       const events = runtime.eventsSince(fromSeq);
       if (!events) {
         socket.emit('state', runtime.snapshot('resume-too-old'));
+        sendAck(ack, socketAckPayload('room:resume', {
+          roomId: room.id,
+          accepted: true,
+          reason: 'resume-too-old',
+          snapshotRequired: true,
+          snapshotEmitted: true
+        }));
         return;
       }
       if (eventsRequireSnapshot(events)) {
         socket.emit('state', runtime.snapshot('resume-snapshot-required'));
+        sendAck(ack, socketAckPayload('room:resume', {
+          roomId: room.id,
+          accepted: true,
+          reason: 'resume-snapshot-required',
+          eventSeqs: seqsFromEvents(events),
+          snapshotRequired: true,
+          snapshotEmitted: true
+        }));
         return;
       }
       socket.emit('room:delta', {
@@ -354,23 +489,29 @@ async function startServer() {
         firstSeq: events[0]?.seq ?? runtime.eventSeq + 1,
         lastSeq: events.at(-1)?.seq ?? runtime.eventSeq
       });
+      sendAck(ack, socketAckPayload('room:resume', {
+        roomId: room.id,
+        accepted: true,
+        eventSeqs: seqsFromEvents(events),
+        deltaEmitted: events.length > 0
+      }));
     });
 
-    onPlayerAction(socket, 'join', ({ name, heroId, roomId, playerToken, guidedRun = false, commandId = null } = {}) => {
+    onPlayerAction(socket, 'join', ({ name, heroId, roomId, playerToken, guidedRun = false, commandId = null } = {}, ack) => {
       const room = getRoom(roomId);
       const playerId = String(playerToken || crypto.randomUUID());
-      if (!room.players[playerId] && !hasRoomForPlayer(room)) {
-        socket.emit('notice', 'Room is full. Try another room code.');
-        return;
-      }
       const mutation = getRuntime(room).commitCommand('join', {
         playerId,
         commandId,
         payload: { name, heroId, guidedRun: Boolean(guidedRun) }
       }, () => joinRoom(room, { playerId, name, heroId, guidedRun: Boolean(guidedRun) }));
 
-      if (mutation.result.full) {
+      if (mutation.result?.full) {
         socket.emit('notice', 'Room is full. Try another room code.');
+        const broadcast = mutation.duplicate
+          ? { snapshotRequired: mutation.snapshotRequired, snapshotEmitted: false, deltaEmitted: false }
+          : broadcastRoomEvents(io, room, mutation.events, 'join');
+        sendAck(ack, commandAckPayload('join', mutation, broadcast));
         return;
       }
 
@@ -382,59 +523,86 @@ async function startServer() {
       socket.data.playerId = playerId;
       socket.emit('session', { playerToken: playerId, roomId: room.id });
       markPersistenceDirty();
-      emitRuntimeEvents(io, room, mutation.events);
-      emitRoom(io, room, 'join');
+      const broadcast = mutation.duplicate
+        ? { snapshotRequired: mutation.snapshotRequired, snapshotEmitted: false, deltaEmitted: false }
+        : broadcastRoomEvents(io, room, mutation.events, 'join');
+      if (!broadcast.snapshotEmitted) {
+        emitRoom(io, room, 'join');
+        broadcast.snapshotRequired = true;
+        broadcast.snapshotEmitted = true;
+      }
+      sendAck(ack, commandAckPayload('join', mutation, broadcast));
     });
 
-    onPlayerAction(socket, 'addBot', () => {
-      const { room, authorized } = requireHost(socket);
-      if (!authorized) return;
-      commitRoomCommand(io, room, 'addBot', { playerId: socket.data.playerId }, () => {
+    onPlayerAction(socket, 'addBot', ({ commandId = null } = {}, ack) => {
+      const { room, player, authorized } = requireHost(socket);
+      if (!authorized) {
+        rejectUnauthorizedHost(socket, 'addBot', ack, { room, player, commandId });
+        return;
+      }
+      commitRoomCommand(io, room, 'addBot', { playerId: player.id, commandId }, () => {
         const bot = addBot(room);
         if (bot) markPersistenceDirty();
         return Boolean(bot);
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'fillCpu', () => {
-      const { room, authorized } = requireHost(socket);
-      if (!authorized) return;
-      commitRoomCommand(io, room, 'fillCpu', { playerId: socket.data.playerId }, () => {
+    onPlayerAction(socket, 'fillCpu', ({ commandId = null } = {}, ack) => {
+      const { room, player, authorized } = requireHost(socket);
+      if (!authorized) {
+        rejectUnauthorizedHost(socket, 'fillCpu', ack, { room, player, commandId });
+        return;
+      }
+      commitRoomCommand(io, room, 'fillCpu', { playerId: player.id, commandId }, () => {
         const added = fillCpuOpponents(room);
         if (added.length > 0) markPersistenceDirty();
         return added.length > 0;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'startRoom', () => {
-      const { room, authorized } = requireHost(socket);
-      if (!authorized) return;
-      commitRoomCommand(io, room, 'startRoom', { playerId: socket.data.playerId }, () => {
+    onPlayerAction(socket, 'startRoom', ({ commandId = null } = {}, ack) => {
+      const { room, player, authorized } = requireHost(socket);
+      if (!authorized) {
+        rejectUnauthorizedHost(socket, 'startRoom', ack, { room, player, commandId });
+        return;
+      }
+      commitRoomCommand(io, room, 'startRoom', { playerId: player.id, commandId }, () => {
         const started = startRoom(room);
         if (started) markPersistenceDirty();
         return started;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'updateRoomSettings', (settings = {}) => {
-      const { room, authorized } = requireHost(socket);
-      if (!authorized) return;
+    onPlayerAction(socket, 'updateRoomSettings', (settings = {}, ack) => {
+      const { room, player, authorized } = requireHost(socket);
+      if (!authorized) {
+        rejectUnauthorizedHost(socket, 'updateRoomSettings', ack, { room, player, commandId: settings.commandId });
+        return;
+      }
       commitRoomCommand(io, room, 'updateRoomSettings', {
-        playerId: socket.data.playerId,
+        playerId: player.id,
         commandId: settings.commandId,
         payload: settings
       }, () => {
         const updated = updateRoomSettings(room, settings);
         if (updated) markPersistenceDirty();
         return updated;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'kickPlayer', ({ targetId, commandId = null } = {}) => {
+    onPlayerAction(socket, 'kickPlayer', ({ targetId, commandId = null } = {}, ack) => {
       const { room, player, authorized } = requireHost(socket);
-      if (!authorized) return;
+      if (!authorized) {
+        rejectUnauthorizedHost(socket, 'kickPlayer', ack, { room, player, commandId });
+        return;
+      }
       if (String(targetId) === player.id) {
         socket.emit('notice', 'The host cannot kick themselves.');
+        sendAck(ack, rejectedActionAck(socket, 'kickPlayer', 'cannot-kick-self', {
+          roomId: room.id,
+          playerId: player.id,
+          commandId
+        }));
         return;
       }
       commitRoomCommand(io, room, 'kickPlayer', {
@@ -445,12 +613,15 @@ async function startServer() {
         const kicked = kickPlayer(room, String(targetId));
         if (kicked) markPersistenceDirty();
         return kicked;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'placeCard', ({ cardId, tileIndex, commandId = null } = {}) => {
+    onPlayerAction(socket, 'placeCard', ({ cardId, tileIndex, commandId = null } = {}, ack) => {
       const { room, player } = getSocketPlayer(socket);
-      if (!player) return;
+      if (!player) {
+        rejectMissingPlayer(socket, 'placeCard', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'placeCard', {
         playerId: player.id,
         commandId,
@@ -459,12 +630,15 @@ async function startServer() {
         const played = playTerrain(room, player, cardId, Number(tileIndex));
         if (played) touchRoom(room);
         return played;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'playRivalCard', ({ cardId, targetId, tileIndex, commandId = null } = {}) => {
+    onPlayerAction(socket, 'playRivalCard', ({ cardId, targetId, tileIndex, commandId = null } = {}, ack) => {
       const { room, player } = getSocketPlayer(socket);
-      if (!player) return;
+      if (!player) {
+        rejectMissingPlayer(socket, 'playRivalCard', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'playRivalCard', {
         playerId: player.id,
         commandId,
@@ -473,12 +647,15 @@ async function startServer() {
         const played = playRival(room, player, cardId, targetId, Number.isFinite(Number(tileIndex)) ? Number(tileIndex) : null);
         if (played) touchRoom(room);
         return played;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'playBonkCard', ({ cardId, targetId, commandId = null } = {}) => {
+    onPlayerAction(socket, 'playBonkCard', ({ cardId, targetId, commandId = null } = {}, ack) => {
       const { room, player } = getSocketPlayer(socket);
-      if (!player) return;
+      if (!player) {
+        rejectMissingPlayer(socket, 'playBonkCard', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'playBonkCard', {
         playerId: player.id,
         commandId,
@@ -487,12 +664,15 @@ async function startServer() {
         const played = playBonk(room, player, cardId, targetId);
         if (played) touchRoom(room);
         return played;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'sellCard', ({ cardId, commandId = null } = {}) => {
+    onPlayerAction(socket, 'sellCard', ({ cardId, commandId = null } = {}, ack) => {
       const { room, player } = getSocketPlayer(socket);
-      if (!player) return;
+      if (!player) {
+        rejectMissingPlayer(socket, 'sellCard', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'sellCard', {
         playerId: player.id,
         commandId,
@@ -501,12 +681,15 @@ async function startServer() {
         const sold = sellCard(room, player, cardId);
         if (sold) touchRoom(room);
         return sold;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'sellLoot', ({ itemId, commandId = null } = {}) => {
+    onPlayerAction(socket, 'sellLoot', ({ itemId, commandId = null } = {}, ack) => {
       const { room, player } = getSocketPlayer(socket);
-      if (!player) return;
+      if (!player) {
+        rejectMissingPlayer(socket, 'sellLoot', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'sellLoot', {
         playerId: player.id,
         commandId,
@@ -515,12 +698,15 @@ async function startServer() {
         const sold = sellLoot(room, player, itemId);
         if (sold) touchRoom(room);
         return sold;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'buyShopOffer', ({ offerId, commandId = null } = {}) => {
+    onPlayerAction(socket, 'buyShopOffer', ({ offerId, commandId = null } = {}, ack) => {
       const { room, player } = getSocketPlayer(socket);
-      if (!player) return;
+      if (!player) {
+        rejectMissingPlayer(socket, 'buyShopOffer', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'buyShopOffer', {
         playerId: player.id,
         commandId,
@@ -529,12 +715,15 @@ async function startServer() {
         const bought = buyShopOffer(room, player, offerId);
         if (bought) touchRoom(room);
         return bought;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'activateHeroAbility', ({ commandId = null } = {}) => {
+    onPlayerAction(socket, 'activateHeroAbility', ({ commandId = null } = {}, ack) => {
       const { room, player } = getSocketPlayer(socket);
-      if (!player) return;
+      if (!player) {
+        rejectMissingPlayer(socket, 'activateHeroAbility', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'activateHeroAbility', {
         playerId: player.id,
         commandId,
@@ -543,12 +732,15 @@ async function startServer() {
         const activated = activateHeroAbility(room, player);
         if (activated) touchRoom(room);
         return activated;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'equip', ({ itemId, commandId = null } = {}) => {
+    onPlayerAction(socket, 'equip', ({ itemId, commandId = null } = {}, ack) => {
       const { room, player } = getSocketPlayer(socket);
-      if (!player) return;
+      if (!player) {
+        rejectMissingPlayer(socket, 'equip', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'equip', {
         playerId: player.id,
         commandId,
@@ -557,12 +749,15 @@ async function startServer() {
         const equipped = equip(player, itemId, room);
         if (equipped) touchRoom(room);
         return equipped;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'chooseTrait', ({ traitId, commandId = null } = {}) => {
+    onPlayerAction(socket, 'chooseTrait', ({ traitId, commandId = null } = {}, ack) => {
       const { room, player } = getSocketPlayer(socket);
-      if (!player) return;
+      if (!player) {
+        rejectMissingPlayer(socket, 'chooseTrait', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'chooseTrait', {
         playerId: player.id,
         commandId,
@@ -571,17 +766,20 @@ async function startServer() {
         const chosen = chooseTrait(player, traitId, room);
         if (chosen) touchRoom(room);
         return chosen;
-      });
+      }, ack);
     });
 
-    onPlayerAction(socket, 'resetRoom', () => {
-      const { room, authorized } = requireHost(socket);
-      if (!authorized) return;
-      commitRoomCommand(io, room, 'resetRoom', { playerId: socket.data.playerId }, () => {
+    onPlayerAction(socket, 'resetRoom', ({ commandId = null } = {}, ack) => {
+      const { room, player, authorized } = requireHost(socket);
+      if (!authorized) {
+        rejectUnauthorizedHost(socket, 'resetRoom', ack, { room, player, commandId });
+        return;
+      }
+      commitRoomCommand(io, room, 'resetRoom', { playerId: player.id, commandId }, () => {
         resetRoom(room);
         touchRoom(room);
         return true;
-      });
+      }, ack);
     });
 
     socket.on('disconnect', () => {
@@ -603,8 +801,7 @@ async function startServer() {
     lastSimulationAt = currentSimulationAt;
     for (const room of rooms.values()) {
       const events = getRuntime(room).step(elapsedMs, simulationIntervalMs);
-      emitRuntimeEvents(io, room, events);
-      if (events.length > 0) emitRoom(io, room, 'simulation');
+      broadcastRoomEvents(io, room, events, 'simulation');
     }
     if (rooms.size > 0) markPersistenceDirty();
   }, simulationIntervalMs);

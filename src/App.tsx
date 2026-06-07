@@ -4,9 +4,13 @@ import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield, ShoppingBag } from 'lucide-react';
 import { isAuthorityStateStale } from './authority-timeline';
+import { createRoomAuthorityBatcher } from './client-authority-batcher';
+import { createClientCommandTransport } from './client-command-transport';
 import { heroPortraitUrl, statLine } from './game-assets';
+import { gameplayRaf, type GameplayRafFrame } from './gameplay-raf';
 import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, playerMotionIsLocked, visualCursorForPlayer, visualFrameCursorForPlayer, visualSegmentDurationMs } from './movement';
 import { applyRoomDelta } from './room-projection';
+import { measureDeltaApply, recordSocketEvent } from './smoothness-metrics';
 import type { GameConfig, GameState, Loot, RoomDelta, RoomSettings, ShopOffer, Tile } from './types';
 import {
   DragCardGhost,
@@ -43,6 +47,19 @@ export type LocalProfile = {
 
 const emptyProfile: LocalProfile = { matches: 0, wins: 0, bestScore: 0, bestLevel: 1 };
 const authorityStaleMs = 1800;
+const commandAckEvents = new Set([
+  'updateRoomSettings',
+  'kickPlayer',
+  'placeCard',
+  'playRivalCard',
+  'playBonkCard',
+  'sellCard',
+  'sellLoot',
+  'buyShopOffer',
+  'activateHeroAbility',
+  'equip',
+  'chooseTrait'
+]);
 
 function GothicParallaxBackdrop({
   player,
@@ -93,9 +110,9 @@ function GothicParallaxBackdrop({
       if (!current.player.combat || authorityPaused || gameStatus !== 'running') return undefined;
     }
 
-    let frame = 0;
-    const tick = () => {
-      const frameAt = performance.now();
+    let unsubscribe: (() => void) | null = null;
+    const tick = (frame: GameplayRafFrame) => {
+      const frameAt = frame.now;
       const current = motionRef.current;
       if (!current.player) return;
       if (playerMotionIsLocked(current.player, current.authorityPaused)) {
@@ -103,8 +120,9 @@ function GothicParallaxBackdrop({
         cursorRef.current = cursor;
         lastFrameAtRef.current = null;
         backdrop.style.setProperty('--loop-progress', (cursor / Math.max(1, current.player.board.length)).toFixed(4));
-        if (combatEngageIsPending(current.player, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused)) {
-          frame = window.requestAnimationFrame(tick);
+        if (!combatEngageIsPending(current.player, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused)) {
+          unsubscribe?.();
+          unsubscribe = null;
         }
         return;
       }
@@ -119,10 +137,12 @@ function GothicParallaxBackdrop({
       lastFrameAtRef.current = frameAt;
       cursorRef.current = nextCursor;
       backdrop.style.setProperty('--loop-progress', (nextCursor / Math.max(1, current.player.board.length)).toFixed(4));
-      frame = window.requestAnimationFrame(tick);
     };
-    tick();
-    return () => window.cancelAnimationFrame(frame);
+    unsubscribe = gameplayRaf.subscribe(tick);
+    return () => {
+      unsubscribe?.();
+      unsubscribe = null;
+    };
   }, [authorityPaused, gameStatus, hasMotionPlayer, motionLocked]);
 
   return (
@@ -155,6 +175,10 @@ function App() {
   const [playerToken, setPlayerToken] = useState(() => shouldAutoReconnect ? savedPlayerToken() : '');
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
+  const gameRef = useRef<GameState | null>(null);
+  const playerTokenRef = useRef(playerToken);
+  const authorityPausedRef = useRef(false);
+  const lastRoomEventSeqRef = useRef(0);
   const [socketConnected, setSocketConnected] = useState(() => socket.connected);
   const authorityStateStaleRef = useRef(false);
   const [authorityStateStale, setAuthorityStateStale] = useState(false);
@@ -177,48 +201,113 @@ function App() {
   const [profile, setProfile] = useState(loadProfile);
   const [recordedFinishId, setRecordedFinishId] = useState<string | null>(null);
   const [mobileDrawer, setMobileDrawer] = useState<'loot' | 'talents' | 'log' | 'menu' | null>(null);
-  const lastRoomEventSeqRef = useRef(0);
+  const commandTransportRef = useRef<ReturnType<typeof createClientCommandTransport> | null>(null);
+  const roomAuthorityBatcherRef = useRef<ReturnType<typeof createRoomAuthorityBatcher> | null>(null);
+
+  useEffect(() => {
+    playerTokenRef.current = playerToken;
+  }, [playerToken]);
+
+  useEffect(() => {
+    gameRef.current = game;
+  }, [game]);
+
+  useEffect(() => {
+    const commandTransport = createClientCommandTransport({
+      emit: (eventName, payload, ack) => {
+        recordSocketEvent(eventName, payload, 'outbound');
+        if (ack) socket.emit(eventName, payload, ack);
+        else socket.emit(eventName, payload);
+      },
+      getPlayerId: () => playerTokenRef.current || null,
+      onNotice: setNotice,
+      shouldRetry: () => !authorityPausedRef.current
+    });
+    const roomAuthorityBatcher = createRoomAuthorityBatcher({
+      getState: () => gameRef.current,
+      commitState: (nextGame) => {
+        gameRef.current = nextGame;
+        setGame(nextGame);
+      },
+      applyDelta: (currentState, delta, receivedAt) => measureDeltaApply(() => applyRoomDelta(currentState, delta, receivedAt)),
+      onAcceptedSeq: (seq) => {
+        lastRoomEventSeqRef.current = Math.max(lastRoomEventSeqRef.current, seq);
+      },
+      onRecovery: ({ roomId: recoveryRoomId, fromSeq }) => {
+        const payload = { roomId: recoveryRoomId, fromSeq };
+        recordSocketEvent('room:resume', payload, 'outbound');
+        socket.emit('room:resume', payload);
+      }
+    });
+
+    commandTransportRef.current = commandTransport;
+    roomAuthorityBatcherRef.current = roomAuthorityBatcher;
+
+    return () => {
+      commandTransport.dispose();
+      roomAuthorityBatcher.dispose();
+      if (commandTransportRef.current === commandTransport) commandTransportRef.current = null;
+      if (roomAuthorityBatcherRef.current === roomAuthorityBatcher) roomAuthorityBatcherRef.current = null;
+    };
+  }, [socket]);
 
   useEffect(() => {
     socket.on('connect', () => {
       setSocketConnected(true);
       const savedRoom = localStorage.getItem('loopduel.roomId') ?? 'main';
       if (lastRoomEventSeqRef.current > 0) {
-        socket.emit('room:resume', { roomId: savedRoom, fromSeq: lastRoomEventSeqRef.current });
+        const payload = { roomId: savedRoom, fromSeq: lastRoomEventSeqRef.current };
+        recordSocketEvent('room:resume', payload, 'outbound');
+        socket.emit('room:resume', payload);
       }
       if (!shouldAutoReconnect) return;
       const savedToken = savedPlayerToken();
-      if (savedToken) socket.emit('join', { name, heroId, roomId: savedRoom, playerToken: savedToken });
+      if (savedToken) {
+        const payload = { name, heroId, roomId: savedRoom, playerToken: savedToken };
+        const sent = commandTransportRef.current?.send('join', payload, { retry: false, trackAck: false });
+        if (!sent) {
+          recordSocketEvent('join', payload, 'outbound');
+          socket.emit('join', payload);
+        }
+      }
     });
     socket.on('config', (payload: GameConfig) => {
       setConfig(payload);
       setHeroId(payload.heroes[0]?.id ?? 'ember-knight');
     });
     socket.on('state', (payload: GameState) => {
-      lastRoomEventSeqRef.current = Math.max(lastRoomEventSeqRef.current, payload.runtime?.eventSeq ?? 0);
-      setGame({ ...payload, receivedAt: Date.now() });
+      recordSocketEvent('state', payload, 'inbound');
+      const batcher = roomAuthorityBatcherRef.current;
+      if (batcher) batcher.enqueueState(payload);
+      else setGame({ ...payload, receivedAt: Date.now() });
     });
     socket.on('room:delta', (payload: RoomDelta) => {
+      recordSocketEvent('room:delta', payload, 'inbound');
+      commandTransportRef.current?.observeRoomDelta(payload);
+      const batcher = roomAuthorityBatcherRef.current;
+      if (batcher) {
+        batcher.enqueueDelta(payload);
+        return;
+      }
       setGame((current) => {
-        if (!current) {
-          return current;
-        }
-        const projection = applyRoomDelta(current, payload);
+        if (!current) return current;
+        const projection = measureDeltaApply(() => applyRoomDelta(current, payload));
         lastRoomEventSeqRef.current = Math.max(lastRoomEventSeqRef.current, projection.acceptedSeq);
-        if (projection.needsRecovery) {
-          socket.emit('room:resume', { roomId: current.id, fromSeq: projection.acceptedSeq });
-        }
         return projection.state;
       });
     });
     socket.on('session', ({ playerToken: nextToken, roomId: nextRoomId }: { playerToken: string; roomId: string }) => {
       localStorage.setItem('loopduel.playerToken', nextToken);
       localStorage.setItem('loopduel.roomId', nextRoomId);
+      playerTokenRef.current = nextToken;
       setPlayerToken(nextToken);
       setRoomId(nextRoomId);
       setSpectatorRoomId(null);
     });
-    socket.on('notice', (message: string) => setNotice(message));
+    socket.on('notice', (message: string) => {
+      recordSocketEvent('notice', message, 'inbound');
+      setNotice(message);
+    });
     socket.on('disconnect', () => setSocketConnected(false));
     socket.on('connect_error', () => setSocketConnected(false));
     return () => {
@@ -285,12 +374,23 @@ function App() {
     ? 'Movement is paused until the authoritative room connection returns.'
     : 'Movement is paused until a fresh authoritative snapshot arrives.';
 
+  useEffect(() => {
+    authorityPausedRef.current = authorityPaused;
+  }, [authorityPaused]);
+
   function emitAuthoritative(eventName: string, payload?: unknown) {
     if (authorityPaused) {
       setNotice(`${authorityPauseTitle}. Actions are paused for sync.`);
       return false;
     }
-    socket.emit(eventName, payload);
+    const sent = commandTransportRef.current?.send(eventName, payload, {
+      retry: commandAckEvents.has(eventName),
+      trackAck: commandAckEvents.has(eventName)
+    });
+    if (!sent) {
+      recordSocketEvent(eventName, payload, 'outbound');
+      socket.emit(eventName, payload);
+    }
     return true;
   }
 
@@ -366,7 +466,15 @@ function App() {
   }, [draggedCard, draggedLoot]);
 
   function join() {
-    socket.emit('join', { name, heroId, roomId, playerToken: shouldAutoReconnect ? playerToken || undefined : undefined });
+    const payload = { name, heroId, roomId, playerToken: shouldAutoReconnect ? playerToken || undefined : undefined };
+    const sent = commandTransportRef.current?.send('join', payload, {
+      retry: false,
+      trackAck: false
+    });
+    if (!sent) {
+      recordSocketEvent('join', payload, 'outbound');
+      socket.emit('join', payload);
+    }
     setSpectatorRoomId(null);
     setSelectedCardId(null);
   }
@@ -375,19 +483,29 @@ function App() {
     const nextRoomId = guidedRoomId();
     setRoomId(nextRoomId);
     setHeroId('ember-knight');
-    socket.emit('join', {
+    const payload = {
       name,
       heroId: 'ember-knight',
       roomId: nextRoomId,
       guidedRun: true
+    };
+    const sent = commandTransportRef.current?.send('join', payload, {
+      retry: false,
+      trackAck: false
     });
+    if (!sent) {
+      recordSocketEvent('join', payload, 'outbound');
+      socket.emit('join', payload);
+    }
     setSpectatorRoomId(null);
     setSelectedCardId(null);
     setShowTutorial(false);
   }
 
   function spectate() {
-    socket.emit('spectate', { roomId });
+    const payload = { roomId };
+    recordSocketEvent('spectate', payload, 'outbound');
+    socket.emit('spectate', payload);
     setSpectatorRoomId(roomId);
     localStorage.setItem('loopduel.roomId', roomId);
   }

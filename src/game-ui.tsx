@@ -10,8 +10,12 @@ import {
   talentArtUrl,
   talentIconUrl
 } from './game-assets';
+import { configureGameplayRafMetrics, gameplayRaf, type GameplayRafFrame } from './gameplay-raf';
 import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, pendingCombatStopCursor, playerMotionIsLocked, pointAlongBoard, serverPresentationClock, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, visualSegmentDurationMs, type RunnerPoint } from './movement';
+import { loopduelSmoothnessMetrics } from './smoothness-metrics';
 import type { Card, Combat, CombatBeat, EquipmentSlot, GameConfig, GameState, Loot, Player, RoomSettings, ShopOffer, Tile, Trait } from './types';
+
+configureGameplayRafMetrics(loopduelSmoothnessMetrics);
 
 type LocalProfile = {
   matches: number;
@@ -343,9 +347,9 @@ function useRunnerMotion(
       return undefined;
     }
 
-    let frame = 0;
-    const tick = () => {
-      const frameAt = performance.now();
+    let unsubscribe: (() => void) | null = null;
+    const tick = (frame: GameplayRafFrame) => {
+      const frameAt = frame.now;
       const clock = clockRef.current;
       const currentPlayer = playerRef.current;
       if (playerMotionIsLocked(currentPlayer, authorityPaused)) {
@@ -353,8 +357,9 @@ function useRunnerMotion(
         cursorRef.current = cursor;
         lastFrameAtRef.current = null;
         setRunnerMotionTransform(runnerRef.current, highlightRef.current, pointAlongBoard(currentPlayer.board, cursor));
-        if (combatEngageIsPending(currentPlayer, clock.serverNow, clock.receivedAt, authorityPaused)) {
-          frame = window.requestAnimationFrame(tick);
+        if (!combatEngageIsPending(currentPlayer, clock.serverNow, clock.receivedAt, authorityPaused)) {
+          unsubscribe?.();
+          unsubscribe = null;
         }
         return;
       }
@@ -369,10 +374,12 @@ function useRunnerMotion(
       lastFrameAtRef.current = frameAt;
       cursorRef.current = nextCursor;
       setRunnerMotionTransform(runnerRef.current, highlightRef.current, pointAlongBoard(currentPlayer.board, nextCursor));
-      frame = window.requestAnimationFrame(tick);
     };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
+    unsubscribe = gameplayRaf.subscribe(tick);
+    return () => {
+      unsubscribe?.();
+      unsubscribe = null;
+    };
   }, [authorityPaused, boardGeometryKey, combatMotionKey, gameStatus, highlightRef, moving, runnerRef]);
 }
 
