@@ -1,10 +1,12 @@
 import type { CSSProperties } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield } from 'lucide-react';
+import { isAuthorityStateStale } from './authority-timeline';
 import { heroPortraitUrl, statLine } from './game-assets';
-import { authoritativeCursor, clampCursorAtMovementStop, reconcileVisualCursor, visualCursorForPlayer } from './movement';
+import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, playerMotionIsLocked, visualCursorForPlayer, visualFrameCursorForPlayer } from './movement';
+import { applyRoomDelta } from './room-projection';
 import type { GameConfig, GameState, Loot, RoomDelta, RoomSettings, ShopOffer, Tile } from './types';
 import {
   DragCardGhost,
@@ -59,12 +61,17 @@ function GothicParallaxBackdrop({
   const lastFrameAtRef = useRef<number | null>(null);
   const motionRef = useRef({ player, serverNow, receivedAt, authorityPaused });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     motionRef.current = { player, serverNow, receivedAt, authorityPaused };
   }, [authorityPaused, player, receivedAt, serverNow]);
   const hasMotionPlayer = Boolean(player);
+  const motionLocked = Boolean(
+    player?.combat ||
+    player?.stunRemainingMs ||
+    (player as NonNullable<typeof player> & { guidedDormant?: boolean } | null | undefined)?.guidedDormant
+  );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const backdrop = backdropRef.current;
     if (!backdrop) return undefined;
     const current = motionRef.current;
@@ -77,12 +84,12 @@ function GothicParallaxBackdrop({
     }
 
     const boardLength = Math.max(1, current.player.board.length);
-    if (gameStatus !== 'running' || authorityPaused) {
-      const cursor = authoritativeCursor(current.player);
+    if (gameStatus !== 'running' || authorityPaused || current.player.combat || current.player.stunRemainingMs || (current.player as typeof current.player & { guidedDormant?: boolean }).guidedDormant) {
+      const cursor = visualCursorForPlayer(current.player, current.serverNow ?? Date.now(), current.receivedAt, authorityPaused);
       cursorRef.current = cursor;
       lastFrameAtRef.current = null;
       backdrop.style.setProperty('--loop-progress', (cursor / boardLength).toFixed(3));
-      return undefined;
+      if (!current.player.combat || authorityPaused || gameStatus !== 'running') return undefined;
     }
 
     let frame = 0;
@@ -90,15 +97,24 @@ function GothicParallaxBackdrop({
       const frameAt = Date.now();
       const current = motionRef.current;
       if (!current.player) return;
-      const targetCursor = visualCursorForPlayer(current.player, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused);
+      if (playerMotionIsLocked(current.player, current.authorityPaused)) {
+        const cursor = visualCursorForPlayer(current.player, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused);
+        cursorRef.current = cursor;
+        lastFrameAtRef.current = null;
+        backdrop.style.setProperty('--loop-progress', (cursor / Math.max(1, current.player.board.length)).toFixed(3));
+        if (combatEngageIsPending(current.player, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused)) {
+          frame = window.requestAnimationFrame(tick);
+        }
+        return;
+      }
       const previousCursor = cursorRef.current;
       const elapsedMs = lastFrameAtRef.current === null ? 0 : frameAt - lastFrameAtRef.current;
       const segment = current.player.nextMovement ?? current.player.arrivalMovement;
       const segmentDurationMs = Math.max(1, (segment?.arriveAt ?? 0) - (segment?.departAt ?? 0)) || 800;
       const localStepCursor = previousCursor === null
-        ? targetCursor
+        ? visualFrameCursorForPlayer(current.player, previousCursor, authoritativeCursor(current.player), current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused)
         : clampCursorAtMovementStop(current.player.board, previousCursor, previousCursor + elapsedMs / segmentDurationMs);
-      const nextCursor = reconcileVisualCursor(current.player.board, previousCursor, targetCursor, localStepCursor);
+      const nextCursor = visualFrameCursorForPlayer(current.player, previousCursor, localStepCursor, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused);
       lastFrameAtRef.current = frameAt;
       cursorRef.current = nextCursor;
       backdrop.style.setProperty('--loop-progress', (nextCursor / Math.max(1, current.player.board.length)).toFixed(3));
@@ -106,7 +122,7 @@ function GothicParallaxBackdrop({
     };
     tick();
     return () => window.cancelAnimationFrame(frame);
-  }, [authorityPaused, gameStatus, hasMotionPlayer]);
+  }, [authorityPaused, gameStatus, hasMotionPlayer, motionLocked]);
 
   return (
     <div ref={backdropRef} className="gothic-parallax" style={{ '--loop-progress': '0.000' } as CSSProperties} aria-hidden="true">
@@ -180,7 +196,17 @@ function App() {
       setGame({ ...payload, receivedAt: Date.now() });
     });
     socket.on('room:delta', (payload: RoomDelta) => {
-      lastRoomEventSeqRef.current = Math.max(lastRoomEventSeqRef.current, payload.lastSeq ?? 0);
+      setGame((current) => {
+        if (!current) {
+          return current;
+        }
+        const projection = applyRoomDelta(current, payload);
+        lastRoomEventSeqRef.current = Math.max(lastRoomEventSeqRef.current, projection.acceptedSeq);
+        if (projection.needsRecovery) {
+          socket.emit('room:resume', { roomId: current.id, fromSeq: projection.acceptedSeq });
+        }
+        return projection.state;
+      });
     });
     socket.on('session', ({ playerToken: nextToken, roomId: nextRoomId }: { playerToken: string; roomId: string }) => {
       localStorage.setItem('loopduel.playerToken', nextToken);
@@ -230,11 +256,11 @@ function App() {
   const draggedLoot = me?.loot.find((item) => item.id === dragLootId) ?? null;
   const activeCard = draggedCard ?? selectedCard;
   const isHost = Boolean(me && game?.hostId === me.id);
-  const stateAgeMs = game?.receivedAt ? networkNow - game.receivedAt : Number.POSITIVE_INFINITY;
+  const authorityStateStale = isAuthorityStateStale(game, networkNow, authorityStaleMs);
   const hostPlayer = game?.players.find((player) => player.id === game.hostId) ?? null;
   const hostMissing = Boolean(hostPlayer && !hostPlayer.connected);
   const serverAuthorityPaused = Boolean(game?.authority?.paused);
-  const authorityPaused = Boolean(game && game.status === 'running' && (!socketConnected || serverAuthorityPaused || hostMissing || stateAgeMs > authorityStaleMs));
+  const authorityPaused = Boolean(game && game.status === 'running' && (!socketConnected || serverAuthorityPaused || hostMissing || authorityStateStale));
   const authorityPauseTitle = !socketConnected
     ? 'Reconnecting to server'
     : serverAuthorityPaused || hostMissing
@@ -441,6 +467,37 @@ function App() {
   function handleSellDrop(kind: 'card' | 'loot', id: string) {
     if (kind === 'card') sellCard(id);
     else sellLoot(id);
+  }
+
+  function handleCardPointerDrop(cardId: string, point: { x: number; y: number }) {
+    const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
+    if (!card) return;
+    const target = document.elementFromPoint(point.x, point.y) as HTMLElement | null;
+    const dropTarget = target?.closest<HTMLElement>('[data-loopduel-drop]');
+    const dropKind = dropTarget?.dataset.loopduelDrop;
+    if (!dropKind) return;
+    if (dropKind === 'sell-zone') {
+      sellCard(card.instanceId);
+      return;
+    }
+    if (dropKind === 'terrain-tile' && card.kind === 'terrain') {
+      const tileIndex = Number(dropTarget.dataset.tileIndex);
+      const tile = me?.board.find((item) => item.index === tileIndex);
+      if (tile) placeCard(tile, card.instanceId);
+      return;
+    }
+    if (dropKind === 'rival-target') {
+      const targetId = dropTarget.dataset.playerId;
+      if (!targetId) return;
+      if (card.kind === 'bonk') playBonk(targetId, card.instanceId);
+      if (card.kind === 'rival') playRival(targetId, card.instanceId);
+      return;
+    }
+    if (dropKind === 'rival-tile' && card.kind === 'rival') {
+      const targetId = dropTarget.dataset.playerId;
+      const tileIndex = Number(dropTarget.dataset.tileIndex);
+      if (targetId && Number.isFinite(tileIndex)) playRivalOnTile(targetId, tileIndex, card.instanceId);
+    }
   }
 
   function resetRoom() {
@@ -757,6 +814,8 @@ function App() {
               setDragCardId(id);
               setDragPoint(point);
             }}
+            onDragMove={setDragPoint}
+            onDropAt={handleCardPointerDrop}
             onDragEnd={() => setDragCardId(null)}
           />
           <div className={`action-hint ${activeCard ? activeCard.kind : 'empty'}`} aria-hidden={!activeCard}>
@@ -770,6 +829,8 @@ function App() {
                 <button
                   key={target.id}
                   className="target-chip"
+                  data-loopduel-drop="rival-target"
+                  data-player-id={target.id}
                   style={{ '--hero-color': target.color } as CSSProperties}
                   onClick={() => bonkTargetCard ? playBonk(target.id) : playRival(target.id)}
                   onDragOver={(event) => {

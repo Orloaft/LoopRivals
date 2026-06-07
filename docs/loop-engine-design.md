@@ -70,7 +70,7 @@ Live rooms now run through `server/runtime.mjs`, which is the boundary between S
 }
 ```
 
-The current browser still consumes full `state` snapshots for compatibility, but it also tracks sequenced `room:delta` packets. Those live packets are the migration path for movement/combat/loot animation without making every visual moment depend on a whole-room snapshot.
+The current browser still consumes full `state` snapshots for compatibility, but it also projects ordered `room:delta` packets through `src/room-projection.ts`. That projection applies the first live movement/combat/tile/player updates from sequenced events, ignores stale duplicates, and asks for `room:resume` when it sees a sequence gap. Snapshots remain reconciliation checkpoints while the projection surface grows.
 
 The server emits domain events such as `commandAccepted`, `commandRejected`, `playerJoined`, `cardPlayed`, `cardDrawn`, `tileChanged`, `movementSegment`, `tileResolved`, `combatStarted`, `combatEnded`, `lootGranted`, `lapCompleted`, `tierChanged`, `roomAuthorityPaused`, `roomAuthorityResumed`, and `matchFinished`. These are emitted where the rules mutate state, then sequenced by the runtime. Diff-derived events remain only a fallback diagnostic for mutations that do not yet emit semantic events.
 
@@ -80,4 +80,4 @@ Persistence now stores both room state and the bounded runtime journal. That is 
 
 The visual bridge remains the same: live rooms expose `moveStartedAt`, `nextMoveAt`, and per-tile `movementStopKind`. The runner renders behind server time by more than one server tick and uses the actual segment duration as its visual speed. If the server snapshot is late, the client can continue through known pass-through tiles instead of stopping at every tile boundary. Combat pushes the next `moveStartedAt` forward, so resolving combat does not produce a catch-up sprint.
 
-Simulated balance rooms keep their old compact timing so tests and CPU economics remain comparable while the live presentation model changes. The next engine step is teaching the client to project movement/combat directly from sequenced events, then reducing routine snapshot cadence once reconnect/recovery coverage is strong.
+Simulated balance rooms keep their old compact timing so tests and CPU economics remain comparable while the live presentation model changes. The next engine step is expanding projection coverage beyond the narrow movement/combat/player slice, then reducing routine command and simulation snapshots once reconnect/recovery coverage is strong.

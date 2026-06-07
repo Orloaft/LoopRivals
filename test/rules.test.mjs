@@ -422,7 +422,7 @@ test('danger terrain can stack multiple enemies into one longer combat lock', ()
   assert.ok(player.combat.beats.every((beat) => beat.text));
   assert.ok(player.combat.beats.every((beat) => Number.isInteger(beat.enemyIndex)));
   assert.ok(player.combat.beats.every((beat) => beat.enemyIndex >= 0 && beat.enemyIndex < player.combat.enemyCount));
-  assert.equal(player.combat.durationMs, 500 + 650 + player.combat.beats.length * 440);
+  assert.equal(player.combat.durationMs, 1120 + player.combat.beats.length * 860);
   assert.equal(player.combat.enemyName, 'Bone Host');
   assert.equal(player.combat.enemyId, 'bone-host');
   assert.equal(player.combat.enemyIds.length, player.combat.enemyCount);
@@ -580,6 +580,149 @@ test('lobby setup blocks match actions until the host starts', () => {
   testApi.playTerrain(room, player, card.instanceId, 2);
   assert.equal(player.hand.some((item) => item.instanceId === card.instanceId), false);
   assert.equal(player.board[2].type, card.tile);
+});
+
+test('placing combat terrain on the authoritative current tile resolves combat immediately', () => {
+  const { player } = testApi.joinRoom(room, { playerId: 'host', name: 'Host', heroId: 'ember-knight' });
+  testApi.startRoom(room);
+  const grove = {
+    id: 'grove',
+    instanceId: 'grove-current',
+    name: 'Grove',
+    kind: 'terrain',
+    tile: 'grove',
+    icon: '♣',
+    text: 'Reliable XP fight.'
+  };
+  player.hand = [grove];
+  player.position = 2;
+  player.laps = 0;
+  player.moveStartedAt = Date.now() - 400;
+  player.nextMoveAt = Date.now() + 500;
+  player.nextMovement = {
+    fromCursor: 2,
+    toCursor: 3,
+    departAt: player.moveStartedAt,
+    arriveAt: player.nextMoveAt
+  };
+
+  assert.equal(testApi.playTerrain(room, player, grove.instanceId, 2), true);
+
+  assert.equal(player.board[2].type, 'grove');
+  assert.ok(player.combat);
+  assert.equal(player.position, 2);
+  assert.equal(player.nextMovement.fromCursor, 2);
+  assert.equal(player.nextMovement.departAt >= player.combat.expiresAt, true);
+  assert.equal(testApi.roomSnapshot(room).players.find((item) => item.id === player.id).nextMovement, null);
+});
+
+test('combat terrain cannot be placed on the authoritative next tile', () => {
+  const { player } = testApi.joinRoom(room, { playerId: 'host', name: 'Host', heroId: 'ember-knight' });
+  testApi.startRoom(room);
+  const grove = {
+    id: 'grove',
+    instanceId: 'grove-next',
+    name: 'Grove',
+    kind: 'terrain',
+    tile: 'grove',
+    icon: '♣',
+    text: 'Reliable XP fight.'
+  };
+  player.hand = [grove];
+  player.position = 2;
+
+  assert.equal(testApi.playTerrain(room, player, grove.instanceId, 3), false);
+
+  assert.equal(player.board[3].type, 'road');
+  assert.equal(player.hand.some((item) => item.instanceId === grove.instanceId), true);
+  assert.equal(player.combat, null);
+});
+
+test('combat terrain can be placed two authoritative steps ahead', () => {
+  const { player } = testApi.joinRoom(room, { playerId: 'host', name: 'Host', heroId: 'ember-knight' });
+  testApi.startRoom(room);
+  const grove = {
+    id: 'grove',
+    instanceId: 'grove-two-ahead',
+    name: 'Grove',
+    kind: 'terrain',
+    tile: 'grove',
+    icon: '♣',
+    text: 'Reliable XP fight.'
+  };
+  player.hand = [grove];
+  player.position = 2;
+
+  assert.equal(testApi.playTerrain(room, player, grove.instanceId, 4), true);
+
+  assert.equal(player.board[4].type, 'grove');
+  assert.equal(player.hand.some((item) => item.instanceId === grove.instanceId), false);
+  assert.equal(player.combat, null);
+});
+
+test('terrain placement settles due movement before checking combat lead time', () => {
+  const { player } = testApi.joinRoom(room, { playerId: 'host', name: 'Host', heroId: 'ember-knight' });
+  testApi.startRoom(room);
+  const grove = {
+    id: 'grove',
+    instanceId: 'grove-stale-position',
+    name: 'Grove',
+    kind: 'terrain',
+    tile: 'grove',
+    icon: '♣',
+    text: 'Reliable XP fight.'
+  };
+  player.hand = [grove];
+  player.position = 2;
+  player.laps = 0;
+  player.moveStartedAt = Date.now() - 1200;
+  player.nextMoveAt = Date.now() - 1;
+  player.nextMovement = {
+    fromCursor: 2,
+    toCursor: 3,
+    departAt: player.moveStartedAt,
+    arriveAt: player.nextMoveAt
+  };
+
+  assert.equal(testApi.playTerrain(room, player, grove.instanceId, 4), false);
+
+  assert.equal(player.position, 3);
+  assert.equal(player.board[4].type, 'road');
+  assert.equal(player.hand.some((item) => item.instanceId === grove.instanceId), true);
+  assert.equal(player.combat, null);
+});
+
+test('terrain placement on a newly reached combat tile resolves immediately after catch-up', () => {
+  const { player } = testApi.joinRoom(room, { playerId: 'host', name: 'Host', heroId: 'ember-knight' });
+  testApi.startRoom(room);
+  const grove = {
+    id: 'grove',
+    instanceId: 'grove-stale-current',
+    name: 'Grove',
+    kind: 'terrain',
+    tile: 'grove',
+    icon: '♣',
+    text: 'Reliable XP fight.'
+  };
+  player.hand = [grove];
+  player.position = 2;
+  player.laps = 0;
+  player.moveStartedAt = Date.now() - 1200;
+  player.nextMoveAt = Date.now() - 1;
+  player.nextMovement = {
+    fromCursor: 2,
+    toCursor: 3,
+    departAt: player.moveStartedAt,
+    arriveAt: player.nextMoveAt
+  };
+
+  assert.equal(testApi.playTerrain(room, player, grove.instanceId, 3), true);
+
+  assert.equal(player.position, 3);
+  assert.equal(player.board[3].type, 'grove');
+  assert.ok(player.combat);
+  assert.equal(player.hand.some((item) => item.instanceId === grove.instanceId), false);
+  assert.equal(testApi.roomSnapshot(room).players.find((item) => item.id === player.id).nextMovement, null);
 });
 
 test('room settings are lobby-only and constrain seats and boss score', () => {

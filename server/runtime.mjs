@@ -7,6 +7,23 @@ import {
 } from './rules.mjs';
 
 const defaultJournalLimit = 256;
+const snapshotRequiredEventTypes = new Set([
+  'cardDrawn',
+  'cardPlayed',
+  'cardSold',
+  'levelReached',
+  'lootEquipped',
+  'lootSold',
+  'playerJoined',
+  'playerTierChanged',
+  'roomClockDriftAbsorbed',
+  'roomReset',
+  'roomSettingsChanged',
+  'shopOfferBought',
+  'stunQueued',
+  'tierChanged',
+  'traitChosen'
+]);
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
@@ -71,6 +88,14 @@ function roomFactsKey(facts) {
     winnerId: facts.winnerId,
     players: [...facts.players.values()]
   });
+}
+
+export function eventRequiresSnapshot(event) {
+  return snapshotRequiredEventTypes.has(event?.type);
+}
+
+export function eventsRequireSnapshot(events) {
+  return Array.isArray(events) && events.some((event) => eventRequiresSnapshot(event));
 }
 
 export class RoomRuntime {
@@ -222,17 +247,22 @@ export class RoomRuntime {
       }
 
       if (previous.nextMovement !== current.nextMovement || previous.arrivalMovement !== current.arrivalMovement) {
+        const player = this.room.players[playerId];
         events.push(this.appendEvent('movementSegment', {
           ...base,
           playerId,
-          nextMovement: this.room.players[playerId]?.nextMovement ?? null,
-          arrivalMovement: this.room.players[playerId]?.arrivalMovement ?? null
+          nextMovement: player?.combat ? null : player?.nextMovement ?? null,
+          arrivalMovement: player?.arrivalMovement ?? null
         }));
       }
       if (previous.combat !== current.combat) {
         events.push(this.appendEvent(current.combat ? 'combatStarted' : 'combatEnded', {
           ...base,
           playerId,
+          tileIndex: current.position,
+          position: current.position,
+          laps: current.laps,
+          tileType: this.room.players[playerId]?.board[current.position]?.type ?? null,
           combat: this.room.players[playerId]?.combat ?? null
         }));
       }
@@ -255,12 +285,24 @@ export class RoomRuntime {
           playerId,
           from: previous.position,
           to: current.position,
+          tileIndex: current.position,
+          position: current.position,
+          laps: current.laps,
+          hp: current.hp,
+          score: current.score,
+          level: current.level,
+          deaths: current.deaths,
+          tileType: this.room.players[playerId]?.board[current.position]?.type ?? null,
           event: current.event,
           message: current.message
         }));
       }
       if (previous.tileTypes.join('|') !== current.tileTypes.join('|')) {
-        events.push(this.appendEvent('boardChanged', { ...base, playerId }));
+        events.push(this.appendEvent('boardChanged', {
+          ...base,
+          playerId,
+          board: cloneJson(this.room.players[playerId]?.board ?? [])
+        }));
       }
       if (previous.score !== current.score || previous.hp !== current.hp || previous.level !== current.level) {
         events.push(this.appendEvent('playerProjectionChanged', {

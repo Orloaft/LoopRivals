@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { ArrowLeft, Bot, Coins, Crown, Footprints, Gem, GitBranch, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, Sparkles, Swords, UserX, Users, Volume2, VolumeX } from 'lucide-react';
 import {
@@ -9,7 +9,7 @@ import {
   itemSpriteUrl,
   talentIconUrl
 } from './game-assets';
-import { authoritativeCursor, clampCursorAtMovementStop, pointAlongBoard, reconcileVisualCursor, tileCenter, visualCursorForPlayer, type RunnerPoint } from './movement';
+import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, playerMotionIsLocked, pointAlongBoard, serverPresentationClock, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, type RunnerPoint } from './movement';
 import type { Card, Combat, CombatBeat, EquipmentSlot, GameConfig, GameState, Loot, Player, RoomSettings, ShopOffer, Tile, Trait } from './types';
 
 type LocalProfile = {
@@ -120,8 +120,48 @@ function tileDescription(tile: Tile) {
 }
 
 const dangerousTileTypes = new Set(['grove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'ambush', 'scorch']);
+const combatPlacementTileTypes = new Set(['grove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'ambush']);
 const stabilizerTileTypes = new Set(['camp', 'meadow', 'village', 'forge', 'shrine', 'mire']);
 const payoffTileTypes = new Set(['crypt', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'forge', 'watchtower']);
+
+function boardStepsAhead(player: Player, tile: Tile) {
+  if (player.board.length === 0) return null;
+  return (tile.index - player.position + player.board.length) % player.board.length;
+}
+
+function boardStepsAheadOfCursor(player: Player, tile: Tile, cursor: number) {
+  if (player.board.length === 0) return null;
+  const visualPosition = Math.floor(cursor + 0.0001) % player.board.length;
+  return (tile.index - visualPosition + player.board.length) % player.board.length;
+}
+
+function combatPlacementBlocked(
+  player: Player,
+  tile: Tile,
+  card: Card | null,
+  serverNow: number,
+  receivedAt?: number,
+  authorityPaused = false
+) {
+  if (card?.kind !== 'terrain' || !combatPlacementTileTypes.has(card.tile ?? '')) return false;
+  if (boardStepsAhead(player, tile) === 1) return true;
+  const visualCursor = visualCursorForPlayer(player, serverNow, receivedAt, authorityPaused);
+  const visualStepsAhead = boardStepsAheadOfCursor(player, tile, visualCursor);
+  return visualStepsAhead !== null && visualStepsAhead <= 1;
+}
+
+function terrainPlacementHint(
+  player: Player,
+  tile: Tile,
+  card: Card | null,
+  serverNow: number,
+  receivedAt?: number,
+  authorityPaused = false
+) {
+  if (combatPlacementBlocked(player, tile, card, serverNow, receivedAt, authorityPaused)) return 'Combat tiles need two visual steps of lead time.';
+  if (card?.kind === 'terrain') return `Drop ${card.name} here`;
+  return undefined;
+}
 
 function upcomingTiles(player: Player, count = 5) {
   return Array.from({ length: Math.min(count, player.board.length) }, (_, index) => {
@@ -252,29 +292,30 @@ function useRunnerMotion(
   const clockRef = useRef({ serverNow, receivedAt });
   const playerRef = useRef(player);
   const guidedDormant = Boolean((player as Player & { guidedDormant?: boolean }).guidedDormant);
-  const moving = gameStatus === 'running' && !player.combat && !player.stunRemainingMs && !guidedDormant;
+  const moving = gameStatus === 'running' && !player.stunRemainingMs && !guidedDormant;
   const boardGeometryKey = useMemo(
     () => player.board.map((tile) => `${tile.index}:${tile.coord[0]},${tile.coord[1]}`).join('|'),
     [player.board]
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     clockRef.current = { serverNow, receivedAt };
   }, [receivedAt, serverNow]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     playerRef.current = player;
   }, [player]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!moving || authorityPaused) {
-      cursorRef.current = authoritativeCursor(player);
+      const cursor = visualCursorForPlayer(player, serverNow, receivedAt, authorityPaused);
+      cursorRef.current = cursor;
       lastFrameAtRef.current = null;
-      setRunnerMotionTransform(runnerRef.current, highlightRef.current, tileCenter(player.board[player.position] ?? player.board[0]));
+      setRunnerMotionTransform(runnerRef.current, highlightRef.current, pointAlongBoard(player.board, cursor));
     }
-  }, [authorityPaused, highlightRef, moving, player, runnerRef]);
+  }, [authorityPaused, highlightRef, moving, player, receivedAt, runnerRef, serverNow]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const currentPlayer = playerRef.current;
     const currentTile = currentPlayer.board[currentPlayer.position] ?? currentPlayer.board[0];
     if (authorityPaused) return undefined;
@@ -290,15 +331,24 @@ function useRunnerMotion(
       const frameAt = Date.now();
       const clock = clockRef.current;
       const currentPlayer = playerRef.current;
-      const targetCursor = visualCursorForPlayer(currentPlayer, clock.serverNow, clock.receivedAt, authorityPaused);
+      if (playerMotionIsLocked(currentPlayer, authorityPaused)) {
+        const cursor = visualCursorForPlayer(currentPlayer, clock.serverNow, clock.receivedAt, authorityPaused);
+        cursorRef.current = cursor;
+        lastFrameAtRef.current = null;
+        setRunnerMotionTransform(runnerRef.current, highlightRef.current, pointAlongBoard(currentPlayer.board, cursor));
+        if (combatEngageIsPending(currentPlayer, clock.serverNow, clock.receivedAt, authorityPaused)) {
+          frame = window.requestAnimationFrame(tick);
+        }
+        return;
+      }
       const previousCursor = cursorRef.current;
       const elapsedMs = lastFrameAtRef.current === null ? 0 : frameAt - lastFrameAtRef.current;
       const segment = currentPlayer.nextMovement ?? currentPlayer.arrivalMovement;
       const segmentDurationMs = Math.max(1, (segment?.arriveAt ?? 0) - (segment?.departAt ?? 0)) || 800;
       const localStepCursor = previousCursor === null
-        ? targetCursor
+        ? visualFrameCursorForPlayer(currentPlayer, previousCursor, authoritativeCursor(currentPlayer), clock.serverNow, clock.receivedAt, authorityPaused)
         : clampCursorAtMovementStop(currentPlayer.board, previousCursor, previousCursor + elapsedMs / segmentDurationMs);
-      const nextCursor = reconcileVisualCursor(currentPlayer.board, previousCursor, targetCursor, localStepCursor);
+      const nextCursor = visualFrameCursorForPlayer(currentPlayer, previousCursor, localStepCursor, clock.serverNow, clock.receivedAt, authorityPaused);
       lastFrameAtRef.current = frameAt;
       cursorRef.current = nextCursor;
       setRunnerMotionTransform(runnerRef.current, highlightRef.current, pointAlongBoard(currentPlayer.board, nextCursor));
@@ -603,6 +653,8 @@ function HandBar({
   draggingId,
   onSelect,
   onDragStart,
+  onDragMove,
+  onDropAt,
   onDragEnd
 }: {
   hand: Card[];
@@ -610,15 +662,20 @@ function HandBar({
   draggingId: string | null;
   onSelect: (id: string) => void;
   onDragStart: (id: string, point: { x: number; y: number }) => void;
+  onDragMove: (point: { x: number; y: number }) => void;
+  onDropAt: (id: string, point: { x: number; y: number }) => void;
   onDragEnd: () => void;
 }) {
+  const pointerDragRef = useRef<{ id: string; pointerId: number; start: { x: number; y: number }; dragging: boolean } | null>(null);
+  const suppressClickRef = useRef<string | null>(null);
+
   return (
     <div className="hand-bar" style={{ '--hand-count': Math.max(hand.length, 1) } as CSSProperties}>
       <div className="hand-card-stack">
         {hand.map((card, index) => (
           <button
             key={card.instanceId}
-            draggable
+            draggable={false}
             aria-label={`${card.name}: ${card.text}`}
             className={`hand-card ${cardFaceClass(card)} ${selectedId === card.instanceId ? 'selected' : ''} ${draggingId === card.instanceId ? 'dragging' : ''}`}
             style={{
@@ -626,19 +683,54 @@ function HandBar({
               '--card-tilt': `${(index - (hand.length - 1) / 2) * 4.5}deg`,
               '--card-lift': `${Math.abs(index - (hand.length - 1) / 2) * 2}px`
             } as CSSProperties}
-            onClick={() => onSelect(card.instanceId)}
-            onDragStart={(event) => {
-              const transparentDragImage = document.createElement('canvas');
-              transparentDragImage.width = 1;
-              transparentDragImage.height = 1;
-              event.dataTransfer.setDragImage(transparentDragImage, 0, 0);
-              event.dataTransfer.effectAllowed = card.kind === 'terrain' ? 'move' : 'link';
-              event.dataTransfer.setData('application/x-loopduel-kind', 'card');
-              event.dataTransfer.setData('application/x-loopduel-card-id', card.instanceId);
-              event.dataTransfer.setData('text/plain', card.instanceId);
-              onDragStart(card.instanceId, { x: event.clientX, y: event.clientY });
+            onClick={(event) => {
+              if (suppressClickRef.current === card.instanceId) {
+                suppressClickRef.current = null;
+                event.preventDefault();
+                return;
+              }
+              onSelect(card.instanceId);
             }}
-            onDragEnd={onDragEnd}
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              pointerDragRef.current = {
+                id: card.instanceId,
+                pointerId: event.pointerId,
+                start: { x: event.clientX, y: event.clientY },
+                dragging: false
+              };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              const drag = pointerDragRef.current;
+              if (!drag || drag.id !== card.instanceId || drag.pointerId !== event.pointerId) return;
+              const point = { x: event.clientX, y: event.clientY };
+              const distance = Math.hypot(point.x - drag.start.x, point.y - drag.start.y);
+              if (!drag.dragging && distance < 5) return;
+              event.preventDefault();
+              if (!drag.dragging) {
+                drag.dragging = true;
+                onDragStart(card.instanceId, point);
+              } else {
+                onDragMove(point);
+              }
+            }}
+            onPointerUp={(event) => {
+              const drag = pointerDragRef.current;
+              if (!drag || drag.id !== card.instanceId || drag.pointerId !== event.pointerId) return;
+              pointerDragRef.current = null;
+              if (!drag.dragging) return;
+              event.preventDefault();
+              suppressClickRef.current = card.instanceId;
+              onDropAt(card.instanceId, { x: event.clientX, y: event.clientY });
+              onDragEnd();
+            }}
+            onPointerCancel={(event) => {
+              const drag = pointerDragRef.current;
+              if (!drag || drag.id !== card.instanceId || drag.pointerId !== event.pointerId) return;
+              pointerDragRef.current = null;
+              if (drag.dragging) onDragEnd();
+            }}
           >
             <CardFace card={card} />
           </button>
@@ -1262,6 +1354,7 @@ function SellZone({
   return (
     <div
       className={`sell-zone ${active ? 'active' : ''}`}
+      data-loopduel-drop={active ? 'sell-zone' : undefined}
       onDragOver={(event) => {
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
@@ -1392,11 +1485,13 @@ function RivalIntel({
 
 type BoardTileButtonProps = {
   tile: Tile;
+  playerId: string;
   board: Tile[];
   canPlaceTerrain: boolean;
   canPlaceRivalTile: boolean;
+  placementHint?: string;
+  placementBlocked: boolean;
   recommended: boolean;
-  selectedCard: Card | null;
   draggingCard: Card | null;
   rivalTargetCard: Card | null;
   onTile?: (tile: Tile, cardId?: string) => void;
@@ -1405,11 +1500,13 @@ type BoardTileButtonProps = {
 
 const BoardTileButton = memo(function BoardTileButton({
   tile,
+  playerId,
   board,
   canPlaceTerrain,
   canPlaceRivalTile,
+  placementHint,
+  placementBlocked,
   recommended,
-  selectedCard,
   draggingCard,
   rivalTargetCard,
   onTile,
@@ -1417,7 +1514,10 @@ const BoardTileButton = memo(function BoardTileButton({
 }: BoardTileButtonProps) {
   return (
     <button
-      className={`tile ${tile.type} ${canPlaceRivalTile ? 'rival-tile-target' : ''} ${recommended ? 'coach-recommended' : ''}`}
+      className={`tile ${tile.type} ${canPlaceTerrain ? 'placement-available' : ''} ${canPlaceRivalTile ? 'rival-tile-target' : ''} ${placementBlocked ? 'placement-blocked' : ''} ${recommended ? 'coach-recommended' : ''}`}
+      data-loopduel-drop={canPlaceTerrain ? 'terrain-tile' : canPlaceRivalTile ? 'rival-tile' : undefined}
+      data-player-id={canPlaceTerrain || canPlaceRivalTile ? playerId : undefined}
+      data-tile-index={canPlaceTerrain || canPlaceRivalTile ? tile.index : undefined}
       style={{
         gridColumn: tile.coord[0] + 1,
         gridRow: tile.coord[1] + 1
@@ -1457,7 +1557,7 @@ const BoardTileButton = memo(function BoardTileButton({
           tile.charges > 0 ? `${tile.charges} charge${tile.charges === 1 ? '' : 's'} left` : tile.expiresOnLap ? `Expires on lap ${tile.expiresOnLap}` : 'Permanent tile',
           'Loop path'
         ]}
-        hint={canPlaceTerrain ? `Drop ${selectedCard?.name} here` : canPlaceRivalTile ? `Arm ${rivalTargetCard?.name} here` : undefined}
+        hint={placementHint ?? (canPlaceRivalTile ? `Arm ${rivalTargetCard?.name} here` : undefined)}
         className="tile-pop"
       />
     </button>
@@ -1476,8 +1576,9 @@ const BoardTileButton = memo(function BoardTileButton({
   return sameTile &&
     previous.canPlaceTerrain === next.canPlaceTerrain &&
     previous.canPlaceRivalTile === next.canPlaceRivalTile &&
+    previous.placementHint === next.placementHint &&
+    previous.placementBlocked === next.placementBlocked &&
     previous.recommended === next.recommended &&
-    previous.selectedCard?.instanceId === next.selectedCard?.instanceId &&
     previous.draggingCard?.instanceId === next.draggingCard?.instanceId &&
     previous.rivalTargetCard?.instanceId === next.rivalTargetCard?.instanceId;
 });
@@ -1527,18 +1628,33 @@ function PlayerPanel({
   const boardRef = useRef<HTMLDivElement | null>(null);
   const runnerRef = useRef<HTMLSpanElement | null>(null);
   const runnerHighlightRef = useRef<HTMLSpanElement | null>(null);
-  const runnerPoint = tileCenter(player.board[player.position] ?? player.board[0]);
-  const runnerTransform = `translate3d(${runnerPoint.left}%, ${runnerPoint.top}%, 0)`;
+  const motionSeedKey = useMemo(
+    () => `${player.id}:${player.board.map((tile) => `${tile.index}:${tile.coord[0]},${tile.coord[1]}`).join('|')}`,
+    [player.board, player.id]
+  );
+  useLayoutEffect(() => {
+    setRunnerMotionTransform(
+      runnerRef.current,
+      runnerHighlightRef.current,
+      tileCenter(player.board[player.position] ?? player.board[0])
+    );
+    // React must not reseed this on ordinary tile changes; the RAF motion loop owns the transform.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motionSeedKey]);
   useRunnerMotion(runnerRef, runnerHighlightRef, player, gameStatus, serverNow, receivedAt, authorityPaused);
   const stunSeconds = Math.ceil((player.stunRemainingMs ?? 0) / 1000);
   const compactRival = !active && !focused;
   const impact = eventImpact(player.event);
   const lobbyStart = active && gameStatus === 'lobby';
+  const runnerPoint = tileCenter(player.board[player.position] ?? player.board[0]);
   const combatCuePoint = player.combat ? tileCenter(player.board[player.position] ?? player.board[0]) : runnerPoint;
+  const combatCueKey = player.combat ? `combat-cue-${player.combat.startedAt}` : null;
 
   return (
     <article
       className={`player-panel ${active ? 'active' : ''} ${focused ? 'focused' : 'dimmed'} ${compactRival ? 'compact-rival' : ''} ${canRivalTarget ? 'rival-drop-target' : ''} ${player.combat ? 'combat-locked' : ''} ${stunSeconds > 0 ? 'stunned' : ''} ${impact ? `event-${impact.tone}` : ''}`}
+      data-loopduel-drop={canRivalTarget ? 'rival-target' : undefined}
+      data-player-id={canRivalTarget ? player.id : undefined}
       style={{ '--hero-color': player.color } as CSSProperties}
       onClick={() => {
         if (canRivalTarget) {
@@ -1563,18 +1679,22 @@ function PlayerPanel({
         className="board"
       >
         {player.board.map((tile) => {
-          const canPlaceTerrain = Boolean(onTile && selectedCard?.kind === 'terrain' && tile.type !== 'camp');
+          const placementBlocked = combatPlacementBlocked(player, tile, selectedCard, serverNow, receivedAt, authorityPaused);
+          const placementHint = terrainPlacementHint(player, tile, selectedCard, serverNow, receivedAt, authorityPaused);
+          const canPlaceTerrain = Boolean(onTile && selectedCard?.kind === 'terrain' && tile.type !== 'camp' && !placementBlocked);
           const canPlaceRivalTile = Boolean(onRivalTile && rivalTargetCard && tile.type === 'road' && player.position !== tile.index);
           const recommended = recommendedTileIndexes.includes(tile.index);
           return (
             <BoardTileButton
               key={tile.index}
               tile={tile}
+              playerId={player.id}
               board={player.board}
               canPlaceTerrain={canPlaceTerrain}
               canPlaceRivalTile={canPlaceRivalTile}
+              placementHint={placementHint}
+              placementBlocked={placementBlocked}
               recommended={recommended}
-              selectedCard={selectedCard}
               draggingCard={draggingCard}
               rivalTargetCard={rivalTargetCard}
               onTile={onTile}
@@ -1582,8 +1702,8 @@ function PlayerPanel({
             />
           );
         })}
-        <span ref={runnerHighlightRef} className="runner-tile-highlight" style={{ transform: runnerTransform }} aria-hidden="true" />
-        <span ref={runnerRef} className="runner" style={{ transform: runnerTransform }}>
+        <span ref={runnerHighlightRef} className="runner-tile-highlight" aria-hidden="true" />
+        <span ref={runnerRef} className="runner">
           <span className="runner-sprite">
             <img src={heroSpriteUrl(player.heroId)} alt="" />
           </span>
@@ -1649,10 +1769,10 @@ function PlayerPanel({
           </div>
         )}
         {player.event.includes('entered tier') && <div className="tier-surge"><strong>Tier {player.loopTier}</strong><span>loop collapsed</span></div>}
-        {player.combat && (
+        {combatCueKey && (
           <div
-            key={`combat-cue-${player.combat.startedAt}`}
-            className="combat-entry-cue"
+            key={combatCueKey}
+            className="combat-entry-cue active"
             style={{
               '--cue-left': `${combatCuePoint.left}%`,
               '--cue-top': `${combatCuePoint.top}%`
@@ -1660,26 +1780,30 @@ function PlayerPanel({
             aria-hidden="true"
           />
         )}
-        {player.combat && <CombatOverlay key={player.combat.startedAt} player={player} />}
+        {player.combat && <CombatOverlay key={player.combat.startedAt} player={player} serverNow={serverNow} receivedAt={receivedAt} />}
       </div>
     </article>
   );
 }
 
-function CombatOverlay({ player }: { player: Player }) {
+function CombatOverlay({ player, serverNow, receivedAt }: { player: Player; serverNow: number; receivedAt?: number }) {
   const combat = player.combat;
   if (!combat) return null;
-  return <CombatOverlayGate player={player} combat={combat} />;
+  return <CombatOverlayGate player={player} combat={combat} serverNow={serverNow} receivedAt={receivedAt} />;
 }
 
-function CombatOverlayGate({ player, combat }: { player: Player; combat: Combat }) {
-  const presentationDelayMs = 500;
-  const [ready, setReady] = useState(false);
+function CombatOverlayGate({ player, combat, serverNow, receivedAt }: { player: Player; combat: Combat; serverNow: number; receivedAt?: number }) {
+  const [, setClockPulse] = useState(0);
+  const arrivalPending = Boolean(player.arrivalMovement && serverPresentationClock(serverNow, receivedAt) < combat.startedAt);
+  const ready = !arrivalPending;
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setReady(true), presentationDelayMs);
+    const delayMs = player.arrivalMovement
+      ? Math.max(0, combat.startedAt - serverPresentationClock(serverNow, receivedAt))
+      : 0;
+    const timer = window.setTimeout(() => setClockPulse((pulse) => pulse + 1), delayMs);
     return () => window.clearTimeout(timer);
-  }, [combat.startedAt]);
+  }, [combat.startedAt, player.arrivalMovement, receivedAt, serverNow]);
 
   if (!ready) return null;
   return <CombatOverlayBody player={player} combat={combat} />;

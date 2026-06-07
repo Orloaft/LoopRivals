@@ -286,11 +286,35 @@ function tileMovementStop(tile) {
   };
 }
 
+function boardStepsAhead(player, tileIndex) {
+  const boardLength = player.board.length;
+  if (!boardLength || !Number.isInteger(tileIndex)) return null;
+  return (tileIndex - player.position + boardLength) % boardLength;
+}
+
+function isCombatTerrainCard(card) {
+  return card?.kind === 'terrain' && combatBlockingTileTypes.has(card.tile);
+}
+
+function isBlockedCombatTerrainPlacement(player, card, tile) {
+  if (player.isBot) return false;
+  if (!isCombatTerrainCard(card) || !tile) return false;
+  const stepsAhead = boardStepsAhead(player, tile.index);
+  return stepsAhead === 1;
+}
+
 function visibleBoard(player) {
   return player.board.map((tile) => ({
     ...tile,
     ...tileMovementStop(tile)
   }));
+}
+
+function visibleTile(tile) {
+  return {
+    ...tile,
+    ...tileMovementStop(tile)
+  };
 }
 
 export const bonkCards = [
@@ -359,10 +383,13 @@ export const shopRotationMs = 60 * 1000;
 const combatWindupMs = 400;
 const combatBeatMs = 440;
 const combatTailMs = 650;
-const combatEntryLeadMs = 500;
 const simulatedCombatWindupMs = 180;
 const simulatedCombatBeatMs = 203;
 const simulatedCombatTailMs = 360;
+
+function scaledCombatMs(baseMs, scale, minMs, maxMs) {
+  return Math.round(Math.max(minMs, Math.min(maxMs, baseMs * scale)));
+}
 
 function combatTiming(room) {
   if (room?.simulated) {
@@ -373,11 +400,12 @@ function combatTiming(room) {
       entryLeadMs: 0
     };
   }
+  const scale = roomTimeScale(room);
   return {
-    windupMs: combatWindupMs,
-    beatMs: combatBeatMs,
-    tailMs: combatTailMs,
-    entryLeadMs: combatEntryLeadMs
+    windupMs: scaledCombatMs(combatWindupMs, scale, 240, 760),
+    beatMs: scaledCombatMs(combatBeatMs, scale, 260, 860),
+    tailMs: scaledCombatMs(combatTailMs, scale, 360, 1120),
+    entryLeadMs: 0
   };
 }
 
@@ -650,6 +678,10 @@ export const roomSnapshotVersion = 1;
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function movementKey(value) {
+  return value ? JSON.stringify(value) : null;
 }
 
 export function serializeRoom(room, options = {}) {
@@ -935,6 +967,7 @@ export function roomSnapshot(room) {
   const scoredPlayers = Object.values(room.players).map((player) => ({
     ...player,
     board: visibleBoard(player),
+    nextMovement: player.combat ? null : player.nextMovement,
     signature: heroSignature(player),
     shop: player.shop ? {
       ...player.shop,
@@ -1187,10 +1220,13 @@ export function fillCpuOpponents(room, targetCount = roomMaxPlayers(room)) {
 export function playTerrain(room, player, cardInstanceId, tileIndex) {
   if (room.status !== 'running') return false;
   if (isStunned(room, player)) return false;
+  settleDueMovementBeforeTerrainPlacement(room, player);
+  if (isStunned(room, player) || isCombatLocked(room, player)) return false;
   const card = player.hand.find((item) => item.instanceId === cardInstanceId);
   if (!card || card.kind !== 'terrain') return false;
   const tile = player.board[tileIndex];
   if (!tile || tile.type === 'camp') return false;
+  if (isBlockedCombatTerrainPlacement(player, card, tile)) return false;
   tile.type = card.tile;
   tile.charges = card.tile === 'mire' ? 5 : 0;
   tile.expiresOnLap = player.laps + tileLoopLife(player);
@@ -1199,7 +1235,7 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
     const neighbors = [
       player.board[(tile.index - 1 + player.board.length) % player.board.length],
       player.board[(tile.index + 1) % player.board.length]
-    ].filter((candidate) => candidate?.type === 'road');
+    ].filter((candidate) => candidate?.type === 'road' && !isBlockedCombatTerrainPlacement(player, { kind: 'terrain', tile: 'grove' }, candidate));
     overgrown = neighbors[0] ?? null;
     if (overgrown) {
       overgrown.type = 'grove';
@@ -1225,17 +1261,19 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
   emitRuleEvent(room, 'tileChanged', {
     playerId: player.id,
     tileIndex: tile.index,
-    tile: cloneJson(tile),
+    tile: cloneJson(visibleTile(tile)),
     cause: 'terrainCard'
   });
   if (overgrown) {
     emitRuleEvent(room, 'tileChanged', {
       playerId: player.id,
       tileIndex: overgrown.index,
-      tile: cloneJson(overgrown),
+      tile: cloneJson(visibleTile(overgrown)),
       cause: 'mossWardenOvergrowth'
     });
   }
+  resolveCurrentCombatTileIfArmed(room, player, tile);
+  if (overgrown) resolveCurrentCombatTileIfArmed(room, player, overgrown);
   if (isGuidedHuman(room, player)) {
     pushGuidedRecap(room, overgrown
       ? `${card.name} changed two future stops: the placed tile and a free Grove from Moss Warden.`
@@ -1243,6 +1281,70 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
     updateGuidedRun(room);
   }
   checkWinner(room);
+  return true;
+}
+
+function settleDueMovementBeforeTerrainPlacement(room, player) {
+  if (player.isBot) return;
+  if (player.guidedDormant) return;
+  let transitions = 0;
+  while (
+    now(room) >= player.nextMoveAt &&
+    !player.combat &&
+    !isStunned(room, player) &&
+    transitions < boardPath.length
+  ) {
+    advancePlayer(room, player);
+    transitions += 1;
+  }
+}
+
+function scheduleNextMovementFromCurrentTile(room, player, options = {}) {
+  const boardLength = boardPath.length;
+  const resumeAt = player.combat
+    ? player.combat.expiresAt + Math.round(320 * roomTimeScale(room))
+    : options.preserveResumeAt
+      ? Math.max(now(room), player.moveStartedAt ?? now(room))
+      : now(room);
+  const delay = movementDelay(room, player);
+  player.moveStartedAt = resumeAt;
+  player.nextMoveAt = room.simulated ? Math.max(now(room) + delay, resumeAt) : resumeAt + delay;
+  const fromCursor = player.laps * boardLength + player.position;
+  player.nextMovement = {
+    fromCursor,
+    toCursor: fromCursor + 1,
+    departAt: player.moveStartedAt,
+    arriveAt: player.nextMoveAt
+  };
+  emitRuleEvent(room, 'movementSegment', {
+    playerId: player.id,
+    nextMovement: player.combat ? null : player.nextMovement,
+    arrivalMovement: player.arrivalMovement
+  });
+}
+
+function resolveCurrentCombatTileIfArmed(room, player, tile) {
+  if (player.isBot) return false;
+  if (!tile || tile.index !== player.position) return false;
+  if (!combatBlockingTileTypes.has(tile.type)) return false;
+  if (isCombatLocked(room, player) || isStunned(room, player)) return false;
+
+  triggerTile(room, player, tile);
+  emitRuleEvent(room, 'tileResolved', {
+    playerId: player.id,
+    tileIndex: player.position,
+    tileType: player.board[player.position]?.type ?? null,
+    position: player.position,
+    laps: player.laps,
+    hp: player.hp,
+    score: score(player),
+    level: player.level,
+    deaths: player.deaths,
+    event: player.event,
+    message: player.message,
+    cause: 'armedCurrentCombatTile'
+  });
+  scheduleNextMovementFromCurrentTile(room, player);
   return true;
 }
 
@@ -1256,6 +1358,7 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
   const targetedTile = hasTileTarget ? target.board[tileIndex] : null;
   if (hasTileTarget && (!targetedTile || targetedTile.type !== 'road' || targetedTile.index === target.position)) return false;
   player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
+  const targetMovementBefore = movementKey(target.nextMovement);
   const markedBonus = target.marked ? 3 : 0;
   const runeBonus = player.heroId === 'rune-archer' ? 2 : 0;
   const bonus = player.sabotage + markedBonus + runeBonus;
@@ -1330,7 +1433,8 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
     if (room.claim?.playerId === target.id) room.claim.expiresAt -= 2600;
   }
   room.lastActivityAt = now(room);
-  resolveDefeat(room, target);
+  const defeated = resolveDefeat(room, target);
+  const targetMovementChanged = targetMovementBefore !== movementKey(target.nextMovement);
   addXp(room, player, 7);
   player.event = targetedTile ? `armed ${card.name} on ${target.name}'s road` : `hit ${target.name} with ${card.name}`;
   if (player.heroId === 'rune-archer') player.event += '; rune mark pinned';
@@ -1345,11 +1449,18 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
     targetPlayerId: target.id,
     tileIndex: targetedTile?.index ?? null
   });
+  if (targetMovementChanged && !defeated) {
+    emitRuleEvent(room, 'movementSegment', {
+      playerId: target.id,
+      nextMovement: target.nextMovement,
+      arrivalMovement: target.arrivalMovement
+    });
+  }
   if (targetedTile) {
     emitRuleEvent(room, 'tileChanged', {
       playerId: target.id,
       tileIndex: targetedTile.index,
-      tile: cloneJson(targetedTile),
+      tile: cloneJson(visibleTile(targetedTile)),
       cause: 'rivalCard',
       actorId: player.id
     });
@@ -1543,7 +1654,7 @@ export function runRoomStep(room, options = {}) {
     let transitions = 0;
     while (
       now(room) >= player.nextMoveAt &&
-      !isCombatLocked(room, player) &&
+      !player.combat &&
       !isStunned(room, player) &&
       transitions < boardPath.length
     ) {
@@ -1633,11 +1744,12 @@ function resetTile(tile) {
   delete tile.expiresOnLap;
 }
 
-function resetPlayerBoard(player) {
+function resetPlayerBoard(room, player) {
   for (const tile of player.board) resetTile(tile);
   player.position = 0;
-  player.lastMoveAt = null;
-  player.moveStartedAt = null;
+  player.lastMoveAt = now(room);
+  player.moveStartedAt = now(room);
+  player.nextMoveAt = now(room) + movementDelay(room, player);
   player.arrivalMovement = null;
   player.nextMovement = movementSegmentForPlayer(player);
 }
@@ -1653,7 +1765,7 @@ function promotePlayerIfReady(room, player) {
   player.tierStartScore = score(player);
   player.tierStartLap = player.laps;
   player.deathsThisTier = 0;
-  resetPlayerBoard(player);
+  resetPlayerBoard(room, player);
   player.hp = player.maxHp;
   player.armor = Math.max(player.armor, player.loopTier);
   player.combat = null;
@@ -1662,7 +1774,18 @@ function promotePlayerIfReady(room, player) {
   }
   player.event = player.loopTier >= 3 ? `entered tier ${player.loopTier}; Tyrant wakes in ${bossLoopRequirement} loops` : `entered tier ${player.loopTier}`;
   addLog(room, `${player.name} entered tier ${player.loopTier}; their loop collapsed into fresh road.`);
-  emitRuleEvent(room, 'playerTierChanged', { playerId: player.id, from: currentTier, to: player.loopTier });
+  emitRuleEvent(room, 'playerTierChanged', {
+    playerId: player.id,
+    from: currentTier,
+    to: player.loopTier,
+    position: player.position,
+    laps: player.laps,
+    hp: player.hp,
+    loopTier: player.loopTier,
+    board: cloneJson(visibleBoard(player)),
+    nextMovement: player.nextMovement,
+    arrivalMovement: player.arrivalMovement
+  });
   if (player.loopTier >= 3) addLog(room, `The Loop Tyrant is stirring. ${player.name} must survive ${bossLoopRequirement} tier III loops.`);
   if (loopTierForLaps(player.laps ?? 0) > player.loopTier) return promotePlayerIfReady(room, player);
   return true;
@@ -1782,7 +1905,15 @@ function clearExpiredCombat(room, player) {
   const combat = player.combat;
   player.combat = null;
   emitRuleEvent(room, 'combatEnded', { playerId: player.id, combat: cloneJson(combat) });
+  const defeated = resolveDefeat(room, player);
   applyPendingBonks(room, player);
+  if (!defeated && !player.combat && !isStunned(room, player)) {
+    emitRuleEvent(room, 'movementSegment', {
+      playerId: player.id,
+      nextMovement: player.nextMovement,
+      arrivalMovement: player.arrivalMovement
+    });
+  }
 }
 
 function isCombatLocked(room, player) {
@@ -1816,7 +1947,11 @@ function applyBonkStun(room, player, bonk) {
     playerId: player.id,
     actorId: bonk.by,
     durationMs: bonk.durationMs,
-    stunnedUntil: player.stunnedUntil
+    stunnedUntil: player.stunnedUntil,
+    position: player.position,
+    laps: player.laps,
+    nextMovement: player.nextMovement,
+    arrivalMovement: player.arrivalMovement
   });
 }
 
@@ -2186,6 +2321,10 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   };
   emitRuleEvent(room, 'combatStarted', {
     playerId: player.id,
+    tileIndex: player.position,
+    position: player.position,
+    laps: player.laps,
+    tileType: player.board[player.position]?.type ?? null,
     label,
     enemyCount,
     damage,
@@ -2277,7 +2416,7 @@ function revivePlayer(room, player) {
   const solo = isSoloPlayer(room, player);
   player.hp = Math.ceil(player.maxHp * 0.58);
   if (!solo) player.power += player.revivePower;
-  resetPlayerBoard(player);
+  resetPlayerBoard(room, player);
   player.tierStartLap = player.laps;
   player.combat = null;
   player.hand = player.hand.slice(0, 3);
@@ -2289,7 +2428,12 @@ function revivePlayer(room, player) {
     playerId: player.id,
     deaths: player.deaths,
     loopTier: player.loopTier ?? 1,
-    hp: player.hp
+    hp: player.hp,
+    position: player.position,
+    laps: player.laps,
+    board: cloneJson(visibleBoard(player)),
+    nextMovement: player.nextMovement,
+    arrivalMovement: player.arrivalMovement
   });
   if (isGuidedHuman(room, player)) {
     pushGuidedRecap(room, `You fell because the danger chain beat your recovery. Next time, place safety before the stack, not after it.`);
@@ -2467,6 +2611,12 @@ function advancePlayer(room, player) {
     playerId: player.id,
     tileIndex: player.position,
     tileType: player.board[player.position]?.type ?? null,
+    position: player.position,
+    laps: player.laps,
+    hp: player.hp,
+    score: score(player),
+    level: player.level,
+    deaths: player.deaths,
     event: player.event,
     message: player.message
   });
@@ -2483,7 +2633,7 @@ function advancePlayer(room, player) {
   };
   emitRuleEvent(room, 'movementSegment', {
     playerId: player.id,
-    nextMovement: player.nextMovement,
+    nextMovement: player.combat ? null : player.nextMovement,
     arrivalMovement: player.arrivalMovement
   });
 }
@@ -2534,7 +2684,7 @@ function chooseBotTrait(player) {
 }
 
 function chooseBotTerrainTile(room, player, card) {
-  const candidates = player.board.filter((tile) => tile.type !== 'camp');
+  const candidates = player.board.filter((tile) => tile.type !== 'camp' && !isBlockedCombatTerrainPlacement(player, card, tile));
   const emptyRoads = candidates.filter((tile) => tile.type === 'road');
   const ahead = emptyRoads.find((tile) => tile.index > player.position) ?? emptyRoads[0] ?? candidates[rand(room, candidates.length)];
   if (card.tile === 'crypt' && player.hp < player.maxHp * 0.55) {

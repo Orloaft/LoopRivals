@@ -1,4 +1,4 @@
-/* global DataTransfer, document, DragEvent, window */
+/* global document, window */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -59,7 +59,7 @@ function rectFitsViewport(metrics, label) {
 }
 
 function assertCustomCursor(cursor, label) {
-  assert.match(cursor, /cursor-hand-v1\.png/, `${label} should keep the bespoke cursor`);
+  assert.match(cursor, /cursor-hand(?:-large)?-v1\.png/, `${label} should keep the bespoke cursor`);
 }
 
 async function travelState(page) {
@@ -119,41 +119,35 @@ try {
   });
   assert.ok(dragStability.boardTop !== null, 'focused board should render before drag');
   assert.ok(dragStability.card, 'hand card should render before drag');
-  await page.evaluate(({ x, y }) => {
-    const card = document.querySelector('.hand-card');
-    const dataTransfer = new DataTransfer();
-    card?.dispatchEvent(new DragEvent('dragstart', {
-      bubbles: true,
-      cancelable: true,
-      clientX: x,
-      clientY: y,
-      dataTransfer
-    }));
-    window.dispatchEvent(new DragEvent('dragover', {
-      bubbles: true,
-      cancelable: true,
-      clientX: x,
-      clientY: y - 120,
-      dataTransfer
-    }));
-  }, dragStability.card);
+  await page.mouse.move(dragStability.card.x, dragStability.card.y);
+  await page.mouse.down();
+  await page.mouse.move(dragStability.card.x, dragStability.card.y - 120, { steps: 8 });
   await page.waitForTimeout(100);
+  assert.equal(await page.locator('.drag-card-ghost').count(), 1, 'hand card should render a custom drag ghost');
+  const ghostBox = await page.locator('.drag-card-ghost').first().boundingBox();
+  assert.ok(ghostBox, 'custom drag ghost should have a visible box');
+  assert.ok(ghostBox.width >= 96 && ghostBox.height >= 96, `custom drag ghost should keep card dimensions, got ${JSON.stringify(ghostBox)}`);
   const boardTopDuringDrag = await page.locator('.player-panel.active.focused .board').evaluate((element) => element.getBoundingClientRect().top);
-  await page.evaluate(() => {
-    document.querySelector('.hand-card')?.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true }));
-  });
+  await page.mouse.up();
   assert.ok(Math.abs(boardTopDuringDrag - dragStability.boardTop) <= 1.5, 'focused board should not shift vertically while dragging a hand card');
 
   if (await page.locator('.hand-card.selected').count() === 0) {
     await page.locator('.hand-card.terrain').first().click();
   }
-  const armedTileStyles = await page.locator('.player-panel.active.focused .tile.road:not(.occupied)').first().evaluate((element) => {
+  const armedTileStyles = await page.locator('.player-panel.active.focused .tile.placement-available').first().evaluate((element) => {
     const styles = window.getComputedStyle(element);
     return { cursor: styles.cursor, outlineStyle: styles.outlineStyle };
   });
   assertCustomCursor(armedTileStyles.cursor, 'armed board tiles');
   assert.equal(armedTileStyles.outlineStyle, 'none', 'armed board tiles should not use bright outline styling');
-  await page.locator('.player-panel.active.focused .tile.road:not(.occupied)').first().click();
+  const dropTarget = await page.locator('.player-panel.active.focused .tile.placement-available').first().boundingBox();
+  const selectedCardBox = await page.locator('.hand-card.selected').first().boundingBox();
+  assert.ok(dropTarget, 'available tile should have a drop target box');
+  assert.ok(selectedCardBox, 'selected hand card should have a drag source box');
+  await page.mouse.move(selectedCardBox.x + selectedCardBox.width / 2, selectedCardBox.y + selectedCardBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(dropTarget.x + dropTarget.width / 2, dropTarget.y + dropTarget.height / 2, { steps: 12 });
+  await page.mouse.up();
   await page.waitForFunction((count) => document.querySelectorAll('.hand-card').length < count, beforeCardCount);
 
   const metrics = await page.evaluate(() => {

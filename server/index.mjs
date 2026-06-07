@@ -27,7 +27,7 @@ import {
   startRoom,
   updateRoomSettings
 } from './rules.mjs';
-import { createRoomRuntime } from './runtime.mjs';
+import { createRoomRuntime, eventsRequireSnapshot } from './runtime.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
@@ -341,6 +341,10 @@ async function startServer() {
       const events = runtime.eventsSince(fromSeq);
       if (!events) {
         socket.emit('state', runtime.snapshot('resume-too-old'));
+        return;
+      }
+      if (eventsRequireSnapshot(events)) {
+        socket.emit('state', runtime.snapshot('resume-snapshot-required'));
         return;
       }
       socket.emit('room:delta', {

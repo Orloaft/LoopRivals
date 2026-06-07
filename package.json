@@ -11,9 +11,10 @@
     "lint": "eslint .",
     "test": "NODE_ENV=test node --test",
     "test:e2e": "node scripts/playwright-smoke.mjs",
+    "test:motion": "node scripts/playwright-motion-audit.mjs",
     "test:balance": "node scripts/balance-sim.mjs",
     "test:ws-load": "node scripts/ws-load.mjs",
-    "verify": "npm run lint && npm run test && npm run build && npm run test:e2e && npm run test:balance -- 80 && npm run test:ws-load -- --rooms=4 --players=4 --duration-ms=8000"
+    "verify": "npm run lint && npm run test && npm run build && npm run test:e2e && npm run test:motion && npm run test:balance -- 80 && npm run test:ws-load -- --rooms=4 --players=4 --duration-ms=8000"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
