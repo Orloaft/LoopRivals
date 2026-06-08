@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', '.openclaw-artifacts', 'coverage', 'playwright-report', 'test-results'] },
+  { ignores: ['dist', '.openclaw-artifacts', 'coverage', 'playwright-report', 'test-results', 'tmp'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

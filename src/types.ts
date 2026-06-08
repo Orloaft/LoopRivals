@@ -44,6 +44,7 @@ export type Trait = {
   name: string;
   text: string;
   tier: number;
+  maxRanks: number;
   x: number;
   y: number;
   prereqs: string[];
@@ -91,6 +92,14 @@ export type ShopOffer = {
   kind: 'loot';
   loot: Loot;
   price: number;
+} | {
+  id: string;
+  kind: 'potion';
+  name: string;
+  icon: string;
+  heal: number;
+  text: string;
+  price: number;
 };
 
 export type Shop = {
@@ -105,6 +114,8 @@ export type Tile = {
   type: string;
   charges: number;
   expiresOnLap?: number | null;
+  bossPhaseId?: string;
+  bossChunkIndex?: number;
   movementStopKind?: 'none' | 'combat';
   movementStopReason?: string | null;
 };
@@ -250,6 +261,38 @@ export type Player = {
   tierStartScore: number;
   tierStartLap: number;
   bossAttempts: number;
+  bossPhase?: {
+    id: string;
+    kind: 'act' | 'loop';
+    tier: number;
+    nextTier: number | null;
+    label: string;
+    tileTypes: string[];
+    threat: number;
+    reward: number;
+    enemyCount: number;
+    armor: number;
+    totalChunks: number;
+    remainingChunks: number;
+    defeatedChunks: number[];
+    tileIndexes: number[];
+    spawnedLap: number;
+  } | null;
+  pendingBossOutcome?: {
+    kind: 'act';
+    tier: number;
+    nextTier: number;
+    label: string;
+    tileIndex?: number;
+    bossPhaseId?: string;
+  } | {
+    kind: 'loop';
+    label: string;
+    tier?: number;
+    nextTier?: number | null;
+    tileIndex?: number;
+    bossPhaseId?: string;
+  } | null;
   soloGatesCleared: number[];
   soloCorruption: number;
   soloGateAttempts: number;

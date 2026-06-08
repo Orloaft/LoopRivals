@@ -348,6 +348,7 @@ try {
   await delay(1200);
   const placed = await placeTerrainDuringMotion(page);
   assert.equal(placed, true, 'motion audit needs to place a terrain card during movement');
+  await page.evaluate(() => window.__loopduelSmoothness?.reset?.());
   const trace = await sampleMotion(page);
   assertMotionContract(trace);
   printMotionReport(trace);

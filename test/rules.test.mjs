@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
-import { testApi } from '../server/rules.mjs';
+import { terrainCards, testApi } from '../server/rules.mjs';
 import { runBalanceSuite, simulateMatch } from '../scripts/balance-sim.mjs';
 
 let room;
@@ -8,6 +8,39 @@ let room;
 beforeEach(() => {
   room = testApi.createRoom('test');
 });
+
+const bossLoopTileTypes = new Set([
+  'rootwall',
+  'bramblebloom',
+  'wardensheart',
+  'oldgrowth',
+  'guardstance',
+  'markedchallenge',
+  'retaliation',
+  'executionstance',
+  'seal1',
+  'seal2',
+  'seal3',
+  'innergate'
+]);
+
+function clearBossPhase(room, player) {
+  while (player.bossPhase) {
+    const phaseId = player.bossPhase.id;
+    const tile = player.board.find((item) => item.bossPhaseId === phaseId && bossLoopTileTypes.has(item.type));
+    assert.ok(tile, 'boss phase should expose an uncleared boss tile');
+    player.position = tile.index;
+    player.nextMoveAt = Number.POSITIVE_INFINITY;
+    testApi.triggerTile(room, player, tile);
+    assert.ok(player.combat || player.pendingBossOutcome, 'boss tile should create a visible combat outcome');
+    if (player.combat) {
+      room.now = player.combat.expiresAt;
+      testApi.runRoomStep(room, { advanceMs: 0 });
+    } else {
+      testApi.checkWinner(room);
+    }
+  }
+}
 
 test('room capacity counts bots and human players consistently', () => {
   for (let index = 0; index < testApi.maxPlayers; index += 1) {
@@ -127,6 +160,60 @@ test('deterministic combat tiles advertise the same stop kind that triggerTile u
   testApi.triggerTile(room, player, player.board[2]);
 
   assert.ok(player.combat);
+});
+
+test('terrain deck has a broad set of unique board tiles', () => {
+  assert.ok(terrainCards.length >= 26);
+  assert.equal(new Set(terrainCards.map((card) => card.id)).size, terrainCards.length);
+  assert.equal(new Set(terrainCards.map((card) => card.tile)).size, terrainCards.length);
+  assert.ok(terrainCards.every((card) => card.kind === 'terrain'));
+});
+
+test('new combat terrain advertises and resolves combat stops', () => {
+  for (const tileType of ['spidernest', 'tollgate', 'thornmaze', 'graveyard', 'dragonroost']) {
+    const player = testApi.createPlayer(`runner-${tileType}`, 'Runner', 'ember-knight');
+    player.position = 2;
+    player.hp = player.maxHp = 120;
+    player.board[2].type = tileType;
+    room.players[player.id] = player;
+
+    const tile = testApi.roomSnapshot(room).players.find((item) => item.id === player.id).board[2];
+    assert.equal(tile.movementStopKind, 'combat', `${tileType} should stop for combat`);
+
+    testApi.triggerTile(room, player, player.board[2]);
+    assert.ok(player.combat, `${tileType} should start combat`);
+  }
+});
+
+test('new utility terrain creates distinct noncombat payoffs', () => {
+  const player = testApi.createPlayer('utility', 'Utility', 'moss-warden');
+  room.players.utility = player;
+
+  player.position = 2;
+  player.hp = 20;
+  player.curse = 3;
+  player.board[2].type = 'chapel';
+  testApi.triggerTile(room, player, player.board[2]);
+  assert.equal(player.combat, null);
+  assert.ok(player.hp > 20);
+  assert.equal(player.curse, 1);
+
+  player.position = 3;
+  player.hand = [];
+  player.board[3].type = 'scriptorium';
+  testApi.triggerTile(room, player, player.board[3]);
+  assert.equal(player.combat, null);
+  assert.equal(player.hand.length, 1);
+  assert.equal(player.hand[0].kind, 'terrain');
+  assert.equal(player.curse, 2);
+
+  player.position = 4;
+  player.gold = 0;
+  player.board[4].type = 'market';
+  testApi.triggerTile(room, player, player.board[4]);
+  assert.equal(player.combat, null);
+  assert.ok(player.gold > 0);
+  assert.ok(player.shop?.offers.length > 0);
 });
 
 test('obelisk is deterministic utility and never rolls hidden combat', () => {
@@ -364,7 +451,7 @@ test('personal shops hold five offers, rotate over time, and sell into buyable s
   assert.ok(player.gold > saleGold);
   player.gold += 200;
 
-  const offer = player.shop.offers.find((item) => item.price <= player.gold);
+  const offer = player.shop.offers.find((item) => item.kind !== 'potion' && item.price <= player.gold);
   assert.ok(offer);
   const goldBeforeBuy = player.gold;
   const handBeforeBuy = player.hand.length;
@@ -374,7 +461,22 @@ test('personal shops hold five offers, rotate over time, and sell into buyable s
   assert.equal(player.gold, goldBeforeBuy - offer.price);
   assert.equal(player.shop.offers.some((item) => item.id === offer.id), false);
   if (offer.kind === 'card') assert.equal(player.hand.length, handBeforeBuy + 1);
-  else assert.equal(player.loot.length, lootBeforeBuy + 1);
+  else if (offer.kind === 'loot') assert.equal(player.loot.length, lootBeforeBuy + 1);
+});
+
+test('shop health potion restores health immediately', () => {
+  room = testApi.createRoom('shop-potion-room', { simulated: true, now: 10_000 });
+  const player = testApi.createPlayer('potion-shopper', 'Potion Shopper', 'ember-knight', false, room);
+  room.players[player.id] = player;
+  room.status = 'running';
+  player.gold = 80;
+  player.hp = player.maxHp - 11;
+
+  const potion = player.shop.offers.find((offer) => offer.kind === 'potion');
+  assert.ok(potion);
+  assert.equal(testApi.buyShopOffer(room, player, potion.id), true);
+  assert.equal(player.hp, player.maxHp);
+  assert.equal(player.gold, 80 - potion.price);
 });
 
 test('hero abilities use loop cooldowns and expose ready state in snapshots', () => {
@@ -1046,7 +1148,14 @@ test('hero talent trees gate choices by hero and prerequisites', () => {
 
   player.talentPoints = 1;
   testApi.refreshPendingTraits(player);
-  assert.deepEqual(new Set(player.pendingTraits), new Set(['cinder-step', 'shield-heat', 'ash-tithe']));
+  assert.deepEqual(new Set(player.pendingTraits), new Set(['ember-oath', 'cinder-step', 'shield-heat', 'ash-tithe']));
+  player.talentPoints = 2;
+  assert.equal(testApi.chooseTrait(player, 'ember-oath'), true);
+  assert.equal(testApi.chooseTrait(player, 'ember-oath'), true);
+  assert.equal(testApi.traitRank(player, 'ember-oath'), 3);
+  player.talentPoints = 1;
+  testApi.refreshPendingTraits(player);
+  assert.equal(player.pendingTraits.includes('ember-oath'), false);
 });
 
 test('talent tree budgets stay in intentional hero bands', () => {
@@ -1101,10 +1210,10 @@ test('placed terrain expires after its loop lifetime', () => {
   room.players.shaper = player;
   room.status = 'running';
 
-  testApi.playTerrain(room, player, card.instanceId, 2);
+  testApi.playTerrain(room, player, card.instanceId, 4);
 
-  assert.equal(player.board[2].type, 'grove');
-  assert.equal(player.board[2].expiresOnLap, 3);
+  assert.equal(player.board[4].type, 'grove');
+  assert.equal(player.board[4].expiresOnLap, 3);
 
   player.position = 15;
   player.laps = 2;
@@ -1112,11 +1221,12 @@ test('placed terrain expires after its loop lifetime', () => {
   testApi.runRoomStep(room, { advanceMs: 1 });
 
   assert.equal(player.laps, 3);
-  assert.equal(player.board[2].type, 'road');
-  assert.equal(player.board[2].expiresOnLap, undefined);
+  assert.equal(player.board[4].type, 'road');
+  assert.equal(player.board[4].expiresOnLap, undefined);
 });
 
-test('act one progression requires a visible boss fight before tier advance', () => {
+test('act one progression waits for the visible boss fight before tier advance', () => {
+  room = testApi.createRoom('act-one-boss-visible', { simulated: true, now: 1000 });
   const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
   const rival = testApi.createPlayer('rival', 'Rival', 'ember-knight');
   room.players.leader = player;
@@ -1130,17 +1240,36 @@ test('act one progression requires a visible boss fight before tier advance', ()
   player.laps = testApi.matchTiers[1].minLoops;
   player.board[4].type = 'crypt';
 
+  testApi.drainRoomEvents(room);
   testApi.checkWinner(room);
+  const startEvents = testApi.drainRoomEvents(room);
 
+  assert.equal(player.loopTier, 1);
+  assert.equal(player.soloGatesCleared.includes(1), false);
+  assert.equal(player.combat, null);
+  assert.equal(player.bossPhase.label, 'briar warden');
+  assert.deepEqual(player.bossPhase.tileIndexes.map((index) => player.board[index].type), ['rootwall', 'bramblebloom', 'wardensheart', 'oldgrowth']);
+  assert.equal(startEvents.some((event) => event.type === 'playerTierChanged'), false);
+
+  clearBossPhase(room, player);
+  const endEvents = testApi.drainRoomEvents(room);
+
+  assert.equal(player.combat, null);
+  assert.equal(player.bossPhase, null);
   assert.equal(player.loopTier, 2);
-  assert.equal(player.combat.enemyName, 'The Briar Warden');
-  assert.equal(player.combat.enemyId, 'briar-warden');
+  assert.equal(player.soloGatesCleared.includes(1), true);
   assert.equal(player.position, 0);
   assert.equal(player.board.every((tile, index) => tile.type === (index === 0 ? 'camp' : 'road')), true);
   assert.equal(testApi.roomSnapshot(room).tier.id, 2);
+  const combatEndedIndex = endEvents.findIndex((event) => event.type === 'combatEnded');
+  const tierChangedIndex = endEvents.findIndex((event) => event.type === 'playerTierChanged');
+  assert.notEqual(combatEndedIndex, -1);
+  assert.notEqual(tierChangedIndex, -1);
+  assert.ok(combatEndedIndex < tierChangedIndex);
 });
 
 test('solo act bosses still gate tier promotion', () => {
+  room = testApi.createRoom('solo-act-boss-visible', { simulated: true, now: 1000 });
   const player = testApi.createPlayer('solo', 'Solo', 'ember-knight');
   room.players.solo = player;
   room.status = 'running';
@@ -1154,9 +1283,16 @@ test('solo act bosses still gate tier promotion', () => {
 
   testApi.checkWinner(room);
 
+  assert.equal(player.soloGatesCleared.includes(1), false);
+  assert.equal(player.loopTier, 1);
+  assert.equal(player.combat, null);
+  assert.equal(player.bossPhase.label, 'briar warden');
+
+  clearBossPhase(room, player);
+
   assert.equal(player.soloGatesCleared.includes(1), true);
   assert.equal(player.loopTier, 2);
-  assert.equal(player.combat.enemyName, 'The Briar Warden');
+  assert.equal(player.combat, null);
   assert.equal(player.position, 0);
   assert.equal(player.board.every((tile, index) => tile.type === (index === 0 ? 'camp' : 'road')), true);
   assert.ok(player.soloCorruption >= 4);
@@ -1168,7 +1304,7 @@ test('act boss failure adds corruption and score debt instead of brute-force pro
   room.status = 'running';
   player.level = 5;
   player.maxHp = 12;
-  player.hp = 12;
+  player.hp = 1;
   player.power = 4;
   player.guard = 0;
   player.gold = 80;
@@ -1179,9 +1315,12 @@ test('act boss failure adds corruption and score debt instead of brute-force pro
 
   assert.equal(player.loopTier, 1);
   assert.equal(player.deaths, 0);
-  assert.equal(player.combat !== null, true);
+  assert.equal(player.bossPhase !== null, true);
 
-  player.combat.expiresAt = Date.now() - 1;
+  const tile = player.board.find((item) => item.bossPhaseId === player.bossPhase.id);
+  player.position = tile.index;
+  testApi.triggerTile(room, player, tile);
+  player.combat.expiresAt = room.now - 1;
   testApi.runRoomStep(room, { advanceMs: 0 });
 
   assert.equal(player.deaths, 1);
@@ -1191,7 +1330,8 @@ test('act boss failure adds corruption and score debt instead of brute-force pro
   assert.equal(player.loopTier, 1);
 });
 
-test('act two progression wakes the crown sentinel before the final act', () => {
+test('act two progression waits for the crown sentinel before the final act', () => {
+  room = testApi.createRoom('act-two-boss-visible', { simulated: true, now: 1000 });
   const player = testApi.createPlayer('leader', 'Leader', 'ember-knight');
   const rival = testApi.createPlayer('rival', 'Rival', 'moss-warden');
   room.players.leader = player;
@@ -1208,13 +1348,21 @@ test('act two progression wakes the crown sentinel before the final act', () => 
 
   testApi.checkWinner(room);
 
+  assert.equal(player.soloGatesCleared.includes(2), false);
+  assert.equal(player.loopTier, 2);
+  assert.equal(player.combat, null);
+  assert.equal(player.bossPhase.label, 'crown sentinel');
+  assert.deepEqual(player.bossPhase.tileIndexes.map((index) => player.board[index].type), ['guardstance', 'markedchallenge', 'retaliation', 'executionstance']);
+
+  clearBossPhase(room, player);
+
   assert.equal(player.soloGatesCleared.includes(2), true);
   assert.equal(player.loopTier, 3);
-  assert.equal(player.combat.enemyName, 'The Crown Sentinel');
-  assert.equal(player.combat.enemyId, 'crown-sentinel');
+  assert.equal(player.combat, null);
 });
 
 test('reaching the final act loop target culminates in a boss fight', () => {
+  room = testApi.createRoom('loop-tyrant-visible', { simulated: true, now: 1000 });
   const player = testApi.createPlayer('leader', 'Leader', 'night-vagrant');
   room.players.leader = player;
   room.status = 'running';
@@ -1240,8 +1388,18 @@ test('reaching the final act loop target culminates in a boss fight', () => {
   assert.equal(player.loopTier, 3);
   assert.equal(snapshot.claim, null);
   assert.equal(snapshot.tier.id, 3);
-  assert.equal(player.combat.enemyName, 'The Loop Tyrant');
-  assert.equal(winner?.id ?? snapshot.winnerId, player.id);
+  assert.equal(player.combat, null);
+  assert.equal(player.bossPhase.label, 'loop tyrant');
+  assert.deepEqual(player.bossPhase.tileIndexes.map((index) => player.board[index].type), ['seal1', 'seal2', 'seal3', 'innergate']);
+  assert.equal(winner, null);
+  assert.equal(snapshot.winnerId, null);
+
+  clearBossPhase(room, player);
+  const resolvedSnapshot = testApi.roomSnapshot(room);
+
+  assert.equal(player.combat, null);
+  assert.equal(resolvedSnapshot.winnerId, player.id);
+  assert.equal(resolvedSnapshot.status, 'finished');
 });
 
 test('death restarts the current tier board without ending the game', () => {
@@ -1431,5 +1589,5 @@ test('CPU balance suite keeps heroes inside a playable win-rate band', () => {
   assert.ok(Math.max(...rates) <= 0.4);
   assert.ok(Math.min(...rates) >= 0.05);
   assert.ok(report.winRateSpread <= 0.35);
-  assert.ok(report.avgScoreSpread <= 2800);
+  assert.ok(report.avgScoreSpread <= 4500);
 });

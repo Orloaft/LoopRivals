@@ -15,6 +15,23 @@ const combatBlockingTileTypes = new Set([
   'ruinedkeep',
   'bloodmoon',
   'wyrmgate',
+  'spidernest',
+  'tollgate',
+  'thornmaze',
+  'graveyard',
+  'dragonroost',
+  'rootwall',
+  'bramblebloom',
+  'wardensheart',
+  'oldgrowth',
+  'guardstance',
+  'markedchallenge',
+  'retaliation',
+  'executionstance',
+  'seal1',
+  'seal2',
+  'seal3',
+  'innergate',
   'ambush'
 ]);
 function numberValue(value: unknown): number | null {
@@ -60,6 +77,8 @@ function tileValue(value: unknown): Tile | null {
     type: tile.type,
     charges,
     expiresOnLap: numberValue(tile.expiresOnLap) ?? null,
+    ...(stringValue(tile.bossPhaseId) ? { bossPhaseId: stringValue(tile.bossPhaseId) as string } : {}),
+    ...(numberValue(tile.bossChunkIndex) !== null ? { bossChunkIndex: numberValue(tile.bossChunkIndex) as number } : {}),
     movementStopKind: tile.movementStopKind === 'combat' || tile.movementStopKind === 'none'
       ? tile.movementStopKind
       : combatBlockingTileTypes.has(tile.type)
@@ -79,9 +98,47 @@ function boardValue(value: unknown): Tile[] | null {
   return board.every((tile): tile is Tile => Boolean(tile)) ? board : null;
 }
 
-function resetTile(tile: Tile): Tile {
+function bossPhaseValue(value: unknown): Player['bossPhase'] | null {
+  const phase = objectValue(value);
+  if (!phase) return null;
+  const id = stringValue(phase.id);
+  const label = stringValue(phase.label);
+  const tier = numberValue(phase.tier);
+  if (!id || !label || tier === null || (phase.kind !== 'act' && phase.kind !== 'loop')) return null;
+  const tileTypes = Array.isArray(phase.tileTypes)
+    ? phase.tileTypes.filter((tileType): tileType is string => typeof tileType === 'string')
+    : [];
+  const tileIndexes = Array.isArray(phase.tileIndexes)
+    ? phase.tileIndexes.map(numberValue).filter((index): index is number => index !== null)
+    : [];
+  const defeatedChunks = Array.isArray(phase.defeatedChunks)
+    ? phase.defeatedChunks.map(numberValue).filter((index): index is number => index !== null)
+    : [];
   return {
-    ...tile,
+    id,
+    kind: phase.kind,
+    tier,
+    nextTier: numberValue(phase.nextTier),
+    label,
+    tileTypes,
+    threat: numberValue(phase.threat) ?? 0,
+    reward: numberValue(phase.reward) ?? 0,
+    enemyCount: numberValue(phase.enemyCount) ?? 1,
+    armor: numberValue(phase.armor) ?? 0,
+    totalChunks: numberValue(phase.totalChunks) ?? tileIndexes.length,
+    remainingChunks: numberValue(phase.remainingChunks) ?? tileIndexes.length,
+    defeatedChunks,
+    tileIndexes,
+    spawnedLap: numberValue(phase.spawnedLap) ?? 0
+  };
+}
+
+function resetTile(tile: Tile): Tile {
+  const { bossPhaseId, bossChunkIndex, ...rest } = tile;
+  void bossPhaseId;
+  void bossChunkIndex;
+  return {
+    ...rest,
     type: tile.index === 0 ? 'camp' : 'road',
     charges: 0,
     expiresOnLap: null,
@@ -101,19 +158,31 @@ function refreshLeaderboard(state: GameState) {
     return a.seatIndex - b.seatIndex;
   });
   const rankById = new Map(ranked.map((player, index) => [player.id, index + 1]));
-  state.players = state.players.map((player) => ({ ...player, rank: rankById.get(player.id) ?? player.rank }));
-  state.leaderboard = ranked.map((player, index): LeaderboardEntry => ({
-    id: player.id,
-    name: player.name,
-    heroId: player.heroId,
-    color: player.color,
-    score: player.score,
-    rank: index + 1,
-    hp: player.hp,
-    maxHp: player.maxHp,
-    level: player.level,
-    laps: player.laps
-  }));
+  let rankChanged = false;
+  const nextPlayers = state.players.map((player) => {
+    const rank = rankById.get(player.id) ?? player.rank;
+    if (player.rank === rank) return player;
+    rankChanged = true;
+    return { ...player, rank };
+  });
+  if (rankChanged) state.players = nextPlayers;
+
+  const playersById = new Map(state.players.map((player) => [player.id, player]));
+  state.leaderboard = ranked.map((player, index): LeaderboardEntry => {
+    const rankedPlayer = playersById.get(player.id) ?? player;
+    return {
+      id: rankedPlayer.id,
+      name: rankedPlayer.name,
+      heroId: rankedPlayer.heroId,
+      color: rankedPlayer.color,
+      score: rankedPlayer.score,
+      rank: index + 1,
+      hp: rankedPlayer.hp,
+      maxHp: rankedPlayer.maxHp,
+      level: rankedPlayer.level,
+      laps: rankedPlayer.laps
+    };
+  });
   state.winner = state.winnerId ? state.players.find((player) => player.id === state.winnerId) ?? null : null;
 }
 
@@ -123,13 +192,21 @@ function applyPlayerProjection(player: Player, payload: Record<string, unknown>)
   const level = numberValue(payload.level);
   const deaths = numberValue(payload.deaths);
   const laps = numberValue(payload.laps);
+  const xp = numberValue(payload.xp);
+  const gold = numberValue(payload.gold);
+  const armor = numberValue(payload.armor);
+  const curse = numberValue(payload.curse);
   return {
     ...player,
     hp: hp ?? player.hp,
     score: score ?? player.score,
     level: level ?? player.level,
     deaths: deaths ?? player.deaths,
-    laps: laps ?? player.laps
+    laps: laps ?? player.laps,
+    xp: xp ?? player.xp,
+    gold: gold ?? player.gold,
+    armor: armor ?? player.armor,
+    curse: curse ?? player.curse
   };
 }
 
@@ -344,21 +421,35 @@ function applyRoomEvent(state: GameState, event: RoomEvent) {
     const board = boardValue(payload.board);
     const hasNextMovement = hasOwn(payload, 'nextMovement');
     const hasArrivalMovement = hasOwn(payload, 'arrivalMovement');
-    replacePlayer(state, playerId, (player) => ({
-      ...applyPlayerProjection(player, payload),
-      position: numberValue(payload.position) ?? numberValue(payload.tileIndex) ?? player.position,
-      laps: numberValue(payload.laps) ?? player.laps,
-      loopTier: numberValue(payload.loopTier) ?? numberValue(payload.to) ?? player.loopTier,
-      board: board ?? player.board,
-      nextMovement: hasNextMovement ? movementValue(payload.nextMovement) : player.nextMovement,
-      arrivalMovement: hasArrivalMovement ? movementValue(payload.arrivalMovement) : player.arrivalMovement,
-      combat: null
-    }));
+    const hasCombat = hasOwn(payload, 'combat');
+    replacePlayer(state, playerId, (player) => {
+      const combat = hasCombat ? (objectValue(payload.combat) as Combat | null) : player.combat;
+      return {
+        ...applyPlayerProjection(player, payload),
+        position: numberValue(payload.position) ?? numberValue(payload.tileIndex) ?? player.position,
+        laps: numberValue(payload.laps) ?? player.laps,
+        loopTier: numberValue(payload.loopTier) ?? numberValue(payload.to) ?? player.loopTier,
+        board: board ?? player.board,
+        nextMovement: combat ? null : hasNextMovement ? movementValue(payload.nextMovement) : player.nextMovement,
+        arrivalMovement: combat ? null : hasArrivalMovement ? movementValue(payload.arrivalMovement) : player.arrivalMovement,
+        combat
+      };
+    });
     return;
   }
 
   if (event.type === 'playerProjectionChanged') {
     replacePlayer(state, playerId, (player) => applyPlayerProjection(player, payload));
+    return;
+  }
+
+  if (event.type === 'bossPhaseStarted' || event.type === 'bossPhaseChanged') {
+    const bossPhase = bossPhaseValue(payload.bossPhase);
+    if (!bossPhase) return;
+    replacePlayer(state, playerId, (player) => ({
+      ...player,
+      bossPhase: bossPhase.remainingChunks > 0 ? bossPhase : null
+    }));
     return;
   }
 
@@ -436,15 +527,9 @@ export function applyRoomDelta(state: GameState, delta: RoomDelta, receivedAt = 
 
   const nextState: GameState = {
     ...state,
-    players: state.players.map((player) => ({
-      ...player,
-      board: player.board.map((tile) => ({ ...tile })),
-      hand: player.hand.slice(),
-      loot: player.loot.slice(),
-      loadout: { ...player.loadout }
-    })),
-    leaderboard: state.leaderboard.slice(),
-    log: state.log.slice(),
+    players: state.players,
+    leaderboard: state.leaderboard,
+    log: state.log,
     runtime: {
       protocol: state.runtime?.protocol ?? 1,
       reason: 'delta',

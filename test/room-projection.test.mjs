@@ -151,6 +151,10 @@ test('client projection applies ordered movement and tile events', () => {
         hp: 20,
         score: 42,
         level: 2,
+        xp: 9,
+        gold: 17,
+        armor: 3,
+        curse: 1,
         event: 'quiet road',
         message: 'kept pace'
       }),
@@ -168,11 +172,37 @@ test('client projection applies ordered movement and tile events', () => {
   assert.equal(host.hp, 20);
   assert.equal(host.score, 42);
   assert.equal(host.level, 2);
+  assert.equal(host.xp, 9);
+  assert.equal(host.gold, 17);
+  assert.equal(host.armor, 3);
+  assert.equal(host.curse, 1);
   assert.deepEqual(host.nextMovement, nextMovement);
   assert.equal(result.state.leaderboard[0].id, 'host');
   assert.equal(result.state.now, 1200);
   assert.equal(result.state.tick, 2);
   assert.equal(result.state.receivedAt, 5000);
+});
+
+test('client projection preserves unchanged player references across sparse deltas', () => {
+  const initial = state();
+  const nextMovement = { fromCursor: 1, toCursor: 2, departAt: 2000, arriveAt: 3000 };
+  const result = applyRoomDelta(initial, {
+    roomId: 'projection-room',
+    firstSeq: 1,
+    lastSeq: 1,
+    events: [
+      event(1, 'movementSegment', {
+        playerId: 'host',
+        nextMovement
+      })
+    ]
+  }, 5000);
+
+  assert.notEqual(result.state, initial);
+  assert.notEqual(result.state.players[0], initial.players[0]);
+  assert.equal(result.state.players[1], initial.players[1]);
+  assert.equal(result.state.players[0].board, initial.players[0].board);
+  assert.equal(result.state.log, initial.log);
 });
 
 test('client projection anchors resolved tiles while waiting for the next movement segment', () => {
@@ -355,6 +385,44 @@ test('client projection applies resumed movement carried by combat end events', 
   assert.ok(visualCursorForPlayer(host, 4100, result.state.receivedAt) > 2);
 });
 
+test('client projection does not clear visible combat from a tier-change projection alone', () => {
+  const initial = state();
+  initial.players[0] = {
+    ...initial.players[0],
+    position: 0,
+    laps: 3,
+    combat: {
+      startedAt: 2000,
+      expiresAt: 4200,
+      enemyName: 'The Briar Warden'
+    },
+    arrivalMovement: null,
+    nextMovement: null
+  };
+
+  const result = applyRoomDelta(initial, {
+    roomId: 'projection-room',
+    firstSeq: 1,
+    lastSeq: 1,
+    events: [
+      event(1, 'playerTierChanged', {
+        playerId: 'host',
+        from: 1,
+        to: 2,
+        position: 0,
+        laps: 3,
+        nextMovement: { fromCursor: 0, toCursor: 1, departAt: 5000, arriveAt: 5800 },
+        arrivalMovement: null
+      })
+    ]
+  }, Date.now());
+
+  const host = result.state.players.find((item) => item.id === 'host');
+  assert.equal(host.loopTier, 2);
+  assert.equal(host.combat.enemyName, 'The Briar Warden');
+  assert.equal(host.nextMovement, null);
+});
+
 test('client projection infers combat start from arrival movement before queued next movement', () => {
   const initial = state();
   initial.receivedAt = Date.now();
@@ -481,6 +549,72 @@ test('client projection derives combat stops from sparse live tile changes', () 
   assert.equal(host.board[2].movementStopKind, 'combat');
   assert.equal(host.board[2].movementStopReason, 'combat');
   assertNear(visualCursorForPlayer(host, 5000, receivedAt), 2);
+});
+
+test('client projection derives boss combat stops from raw board payloads', () => {
+  const rawBossTile = {
+    index: 1,
+    coord: [1, 0],
+    type: 'rootwall',
+    charges: 1,
+    bossPhaseId: 'act-1-4',
+    bossChunkIndex: 0
+  };
+  const result = applyRoomDelta(state(), {
+    roomId: 'projection-room',
+    firstSeq: 1,
+    lastSeq: 1,
+    events: [
+      event(1, 'boardChanged', {
+        playerId: 'host',
+        board: [tile(0, 'camp'), rawBossTile, tile(2)]
+      })
+    ]
+  });
+
+  const host = result.state.players.find((item) => item.id === 'host');
+  assert.equal(host.board[1].movementStopKind, 'combat');
+  assert.equal(host.board[1].movementStopReason, 'combat');
+  assert.equal(host.board[1].bossPhaseId, 'act-1-4');
+  assert.equal(host.board[1].bossChunkIndex, 0);
+});
+
+test('client projection tracks boss phase events without waiting for recovery', () => {
+  const bossPhase = {
+    id: 'act-1-4',
+    kind: 'act',
+    tier: 1,
+    nextTier: 2,
+    label: 'briar warden',
+    tileTypes: ['rootwall', 'bramblebloom', 'wardensheart', 'oldgrowth'],
+    threat: 26,
+    reward: 74,
+    enemyCount: 1,
+    armor: 2,
+    totalChunks: 4,
+    remainingChunks: 4,
+    defeatedChunks: [],
+    tileIndexes: [2, 6, 10, 14],
+    spawnedLap: 4
+  };
+  const result = applyRoomDelta(state(), {
+    roomId: 'projection-room',
+    firstSeq: 1,
+    lastSeq: 2,
+    events: [
+      event(1, 'bossPhaseStarted', {
+        playerId: 'host',
+        bossPhase
+      }),
+      event(2, 'bossPhaseChanged', {
+        playerId: 'host',
+        bossPhase: { ...bossPhase, remainingChunks: 0, defeatedChunks: [2, 6, 10, 14] }
+      })
+    ]
+  });
+
+  const host = result.state.players.find((item) => item.id === 'host');
+  assert.equal(host.bossPhase, null);
 });
 
 test('client projection applies stun events so motion pauses before a recovery snapshot', () => {

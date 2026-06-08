@@ -1,9 +1,11 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { ArrowLeft, Bot, Coins, Crown, Footprints, Gem, GitBranch, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, ShoppingBag, Sparkles, Swords, UserX, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import {
   combatBackgroundUrl,
+  combatEnemySize,
   combatEnemyUrl,
+  healthPotionSpriteUrl,
   heroPortraitUrl,
   heroSpriteUrl,
   itemSpriteUrl,
@@ -60,8 +62,36 @@ const tileNames: Record<string, string> = {
   village: 'Village',
   obelisk: 'Obelisk',
   watchtower: 'Watchtower',
+  orchard: 'Orchard',
+  chapel: 'Chapel',
+  market: 'Black Market',
+  armory: 'Armory',
+  waystone: 'Waystone',
+  scriptorium: 'Scriptorium',
+  spidernest: 'Spider Nest',
+  tollgate: 'Tollgate',
+  thornmaze: 'Thorn Maze',
+  graveyard: 'Graveyard',
+  reliquary: 'Reliquary',
+  dragonroost: 'Dragon Roost',
   ambush: 'Ambush',
-  scorch: 'Scorch'
+  scorch: 'Scorch',
+  rootwall: 'Root Wall',
+  bramblebloom: 'Bramble Bloom',
+  wardensheart: "Warden's Heart",
+  oldgrowth: 'Old Growth',
+  wyrmhead: 'Wyrm Head',
+  wyrmclaw: 'Wyrm Claw',
+  wyrmcoil: 'Wyrm Coil',
+  wyrmtail: 'Wyrm Tail',
+  guardstance: 'Guard Stance',
+  markedchallenge: 'Marked Challenge',
+  retaliation: 'Retaliation',
+  executionstance: 'Execution Stance',
+  seal1: 'Seal I',
+  seal2: 'Seal II',
+  seal3: 'Seal III',
+  innergate: 'Inner Gate'
 };
 
 const tileGlyphs: Record<string, string> = {
@@ -81,8 +111,36 @@ const tileGlyphs: Record<string, string> = {
   village: '⌂',
   obelisk: '◆',
   watchtower: '◈',
+  orchard: '✿',
+  chapel: '✚',
+  market: '$',
+  armory: '▣',
+  waystone: '◇',
+  scriptorium: '✧',
+  spidernest: '♣',
+  tollgate: '$',
+  thornmaze: '✣',
+  graveyard: '☗',
+  reliquary: '◆',
+  dragonroost: '▲',
   ambush: '⚔',
-  scorch: '☄'
+  scorch: '☄',
+  rootwall: '✣',
+  bramblebloom: '✿',
+  wardensheart: '♥',
+  oldgrowth: '◎',
+  wyrmhead: '▲',
+  wyrmclaw: '〳',
+  wyrmcoil: '◎',
+  wyrmtail: '⌁',
+  guardstance: '▣',
+  markedchallenge: '◈',
+  retaliation: '⚔',
+  executionstance: '†',
+  seal1: 'I',
+  seal2: 'II',
+  seal3: 'III',
+  innergate: '▥'
 };
 
 function combatFxClass(effect: Combat['effect']) {
@@ -124,16 +182,41 @@ function tileDescription(tile: Tile) {
     village: 'Safe heal, small XP, and supply chance.',
     obelisk: 'XP spike that may wake a hard encounter.',
     watchtower: 'Draws rival cards and enables control play.',
+    orchard: 'Recovery tile with a strong chance to draw terrain.',
+    chapel: 'Cleanses curse while healing and granting XP.',
+    market: 'Gold and shop tempo without a combat stop.',
+    armory: 'Armor prep with a small loot roll.',
+    waystone: 'Accelerates the next draw window and grants XP.',
+    scriptorium: 'Terrain draw and XP with curse pressure.',
+    spidernest: 'Pack fight that can refill your hand.',
+    tollgate: 'Bandit fight with a gold payout.',
+    thornmaze: 'High-pressure grove fight that stacks hard.',
+    graveyard: 'Medium undead fight with Grave Singer upside.',
+    reliquary: 'Guaranteed loot and XP, with curse risk while healthy.',
+    dragonroost: 'Boss-class fight with hoard rewards.',
     ambush: 'Temporary rival trap that creates a hard fight.',
     scorch: 'Temporary hazard left by a meteor strike.'
   };
   return descriptions[tile.type] ?? 'Unknown loop tile.';
 }
 
-const dangerousTileTypes = new Set(['grove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'ambush', 'scorch']);
-const combatPlacementTileTypes = new Set(['grove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'ambush']);
-const stabilizerTileTypes = new Set(['camp', 'meadow', 'village', 'forge', 'shrine', 'mire']);
-const payoffTileTypes = new Set(['crypt', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'forge', 'watchtower']);
+const dangerousTileTypes = new Set(['grove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'spidernest', 'tollgate', 'thornmaze', 'graveyard', 'reliquary', 'dragonroost', 'ambush', 'scorch']);
+const combatPlacementTileTypes = new Set(['grove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'spidernest', 'tollgate', 'thornmaze', 'graveyard', 'dragonroost', 'ambush']);
+const stabilizerTileTypes = new Set(['camp', 'meadow', 'village', 'forge', 'shrine', 'mire', 'orchard', 'chapel', 'armory', 'waystone']);
+const payoffTileTypes = new Set(['crypt', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'forge', 'watchtower', 'market', 'armory', 'waystone', 'scriptorium', 'tollgate', 'reliquary', 'dragonroost']);
+const defaultTalentMaxRanks = 3;
+
+function traitMaxRanks(trait: Trait) {
+  return Math.max(1, trait.maxRanks ?? defaultTalentMaxRanks);
+}
+
+function traitRank(player: Player, traitId: string) {
+  return player.traits.filter((id) => id === traitId).length;
+}
+
+function totalTalentRanks(tree: Trait[]) {
+  return tree.reduce((total, trait) => total + traitMaxRanks(trait), 0);
+}
 
 function boardStepsAhead(player: Player, tile: Tile) {
   if (player.board.length === 0) return null;
@@ -185,10 +268,10 @@ function upcomingTiles(player: Player, count = 5) {
 }
 
 function tileRisk(tile: Tile) {
-  if (tile.type === 'wyrmgate') return 5;
-  if (tile.type === 'bloodmoon' || tile.type === 'ruinedkeep' || tile.type === 'bonepit') return 4;
-  if (tile.type === 'crypt' || tile.type === 'wolfden' || tile.type === 'ambush' || tile.type === 'scorch') return 3;
-  if (tile.type === 'obelisk' || tile.type === 'grove') return 2;
+  if (tile.type === 'wyrmgate' || tile.type === 'dragonroost') return 5;
+  if (tile.type === 'bloodmoon' || tile.type === 'ruinedkeep' || tile.type === 'bonepit' || tile.type === 'thornmaze') return 4;
+  if (tile.type === 'crypt' || tile.type === 'wolfden' || tile.type === 'spidernest' || tile.type === 'tollgate' || tile.type === 'graveyard' || tile.type === 'ambush' || tile.type === 'scorch') return 3;
+  if (tile.type === 'obelisk' || tile.type === 'reliquary' || tile.type === 'grove') return 2;
   if (stabilizerTileTypes.has(tile.type)) return -1;
   return 0;
 }
@@ -230,10 +313,15 @@ function comboHint(card: Card) {
   if (card.kind === 'rival') return 'Best when a rival is near a danger tile or marked as leader.';
   if (card.kind === 'bonk') return card.targetMode === 'chosen' ? 'Save for a gate push or a rival about to cash out.' : 'Tempo answer when the leader is about to spike.';
   if (card.tile === 'bloodmoon') return 'Place within two tiles of Crypt, Wolf Den, or Bone Pit to grow enemy stacks.';
-  if (card.tile === 'meadow' || card.tile === 'village') return 'Place before danger so the next lap has a recovery window.';
-  if (card.tile === 'forge' || card.tile === 'shrine') return 'Place just before a gate push for armor, XP, or trait tempo.';
+  if (card.tile === 'meadow' || card.tile === 'village' || card.tile === 'orchard' || card.tile === 'chapel') return 'Place before danger so the next lap has a recovery window.';
+  if (card.tile === 'forge' || card.tile === 'shrine' || card.tile === 'armory') return 'Place just before a gate push for armor, XP, or trait tempo.';
   if (card.tile === 'mire') return 'Place before a hard fight when you need one more card first.';
   if (card.tile === 'watchtower') return 'Use when the leader is close to a payoff tile.';
+  if (card.tile === 'market') return 'Use when shop offers matter or you need gold before dying costs bite.';
+  if (card.tile === 'waystone' || card.tile === 'scriptorium') return 'Use when your hand needs more options before the next route decision.';
+  if (card.tile === 'spidernest' || card.tile === 'tollgate' || card.tile === 'graveyard') return 'Medium danger with an extra payoff; safer after armor or healing.';
+  if (card.tile === 'thornmaze' || card.tile === 'dragonroost') return 'Treat as a serious fight and build a recovery tile nearby first.';
+  if (card.tile === 'reliquary') return 'Cash out when you can absorb curse pressure or need guaranteed loot.';
   if (payoffTileTypes.has(card.tile ?? '')) return 'Pair with safe terrain nearby before stacking more danger.';
   return 'Road shaping card.';
 }
@@ -241,9 +329,9 @@ function comboHint(card: Card) {
 function cardSuit(card: Card) {
   if (card.kind === 'bonk') return card.rarity === 'rare' ? 'Rare control' : 'Common control';
   if (card.kind === 'rival') return 'Doom';
-  if (card.tile === 'meadow' || card.tile === 'village') return 'Haven';
-  if (card.tile === 'crypt' || card.tile === 'obelisk' || card.tile === 'wolfden' || card.tile === 'bonepit' || card.tile === 'ruinedkeep' || card.tile === 'bloodmoon' || card.tile === 'wyrmgate') return 'Peril';
-  if (card.tile === 'forge' || card.tile === 'watchtower') return 'Engine';
+  if (card.tile === 'meadow' || card.tile === 'village' || card.tile === 'orchard' || card.tile === 'chapel') return 'Haven';
+  if (card.tile === 'crypt' || card.tile === 'obelisk' || card.tile === 'wolfden' || card.tile === 'bonepit' || card.tile === 'ruinedkeep' || card.tile === 'bloodmoon' || card.tile === 'wyrmgate' || card.tile === 'spidernest' || card.tile === 'tollgate' || card.tile === 'thornmaze' || card.tile === 'graveyard' || card.tile === 'reliquary' || card.tile === 'dragonroost') return 'Peril';
+  if (card.tile === 'forge' || card.tile === 'watchtower' || card.tile === 'market' || card.tile === 'armory' || card.tile === 'waystone' || card.tile === 'scriptorium') return 'Engine';
   return 'Path';
 }
 
@@ -305,7 +393,8 @@ function useRunnerMotion(
   gameStatus: GameState['status'],
   serverNow: number,
   receivedAt?: number,
-  authorityPaused = false
+  authorityPaused = false,
+  onCombatStopReached?: (cursor: number | null) => void
 ) {
   const cursorRef = useRef<number | null>(null);
   const lastFrameAtRef = useRef<number | null>(null);
@@ -333,8 +422,9 @@ function useRunnerMotion(
       cursorRef.current = cursor;
       lastFrameAtRef.current = null;
       setRunnerMotionTransform(runnerRef.current, highlightRef.current, pointAlongBoard(player.board, cursor));
+      onCombatStopReached?.(null);
     }
-  }, [authorityPaused, highlightRef, moving, player, receivedAt, runnerRef, serverNow]);
+  }, [authorityPaused, highlightRef, moving, onCombatStopReached, player, receivedAt, runnerRef, serverNow]);
 
   useLayoutEffect(() => {
     const currentPlayer = playerRef.current;
@@ -374,13 +464,16 @@ function useRunnerMotion(
       lastFrameAtRef.current = frameAt;
       cursorRef.current = nextCursor;
       setRunnerMotionTransform(runnerRef.current, highlightRef.current, pointAlongBoard(currentPlayer.board, nextCursor));
+
+      const pendingCursor = pendingCombatStopCursor(currentPlayer, clock.serverNow, clock.receivedAt, authorityPaused);
+      onCombatStopReached?.(pendingCursor !== null && nextCursor >= pendingCursor - 0.001 ? pendingCursor : null);
     };
     unsubscribe = gameplayRaf.subscribe(tick);
     return () => {
       unsubscribe?.();
       unsubscribe = null;
     };
-  }, [authorityPaused, boardGeometryKey, combatMotionKey, gameStatus, highlightRef, moving, runnerRef]);
+  }, [authorityPaused, boardGeometryKey, combatMotionKey, gameStatus, highlightRef, moving, onCombatStopReached, runnerRef]);
 }
 
 function PhaseStrip({ game, player, config }: { game: GameState; player?: Player; config?: GameConfig }) {
@@ -785,6 +878,8 @@ function CardFace({ card, popover = true }: { card: Card; popover?: boolean }) {
       </span>
       <span className="card-corner bottom">{card.icon}</span>
       <span className="card-grab"><Hand size={14} /></span>
+      <span className="card-title">{card.name}</span>
+      <span className="card-kind">{card.kind === 'terrain' ? tileNames[card.tile ?? 'road'] ?? 'Terrain' : cardSuit(card)}</span>
       {popover && (
         <InfoPopover
           title={card.name}
@@ -838,7 +933,6 @@ function PlayerSideDock({
   onAddBot,
   onFillCpu,
   onStartRoom,
-  onActivateAbility,
   isHost,
   onSettings,
   profile,
@@ -858,7 +952,6 @@ function PlayerSideDock({
   onAddBot: () => void;
   onFillCpu: () => void;
   onStartRoom: () => void;
-  onActivateAbility: () => void;
   isHost: boolean;
   onSettings: (settings: Partial<RoomSettings>) => void;
   profile: LocalProfile;
@@ -869,7 +962,10 @@ function PlayerSideDock({
   const hero = config.heroes.find((item) => item.id === player.heroId);
   const tree = config.talentTrees[player.heroId] ?? [];
   const pending = tree.filter((trait) => player.pendingTraits.includes(trait.id));
-  const learned = tree.filter((trait) => player.traits.includes(trait.id));
+  const learned = tree.filter((trait) => traitRank(player, trait.id) > 0);
+  const talentStrip = [...pending, ...learned.filter((trait) => !player.pendingTraits.includes(trait.id))];
+  const learnedRankCount = player.traits.length;
+  const totalRankCount = totalTalentRanks(tree);
   const equippedIds = new Set(Object.values(player.loadout).filter(Boolean).map((item) => item?.id));
   const looseLoot = player.loot.filter((item) => !equippedIds.has(item.id));
   const draggingLoot = draggingLootId ? player.loot.find((item) => item.id === draggingLootId) ?? null : null;
@@ -879,13 +975,12 @@ function PlayerSideDock({
   const loopStart = player.loopTier >= 3 ? (player.tierStartLap ?? 0) : (config.matchTiers.find((tier) => tier.id === player.loopTier)?.minLoops ?? 0);
   const loopPipCount = Math.max(1, Math.min(5, loopTarget.target - loopStart));
   const loopsSinceActStart = Math.max(0, player.laps - loopStart);
-  const abilityUnavailable = Boolean(
-    player.ability &&
-    (!player.ability.ready || game.status !== 'running' || player.combat || player.stunRemainingMs)
-  );
 
   return (
-    <aside className="player-side-dock" style={{ '--hero-color': player.color } as CSSProperties}>
+    <aside
+      className={`player-side-dock ${dockMode === 'talents' ? 'talent-mode-open' : ''}`}
+      style={{ '--hero-color': player.color } as CSSProperties}
+    >
       {dockMode === 'talents' ? (
         <TalentTreeDock
           player={player}
@@ -940,32 +1035,6 @@ function PlayerSideDock({
             <span className="loop-tier-meter"><i /></span>
           </section>
 
-          {player.ability && (
-            <button
-              type="button"
-              className={`hero-ability-button ${player.ability.ready ? 'ready' : 'cooling'}`}
-              onClick={() => {
-                if (abilityUnavailable) return;
-                onActivateAbility();
-              }}
-              aria-disabled={abilityUnavailable}
-              aria-label={player.ability.name}
-            >
-              <span className="ability-glyph">{player.ability.icon}</span>
-              <span>
-                <strong>{player.ability.name}</strong>
-                <small>{player.ability.ready ? 'Ready' : `${player.ability.remainingLoops} loop${player.ability.remainingLoops === 1 ? '' : 's'}`}</small>
-              </span>
-              <Zap size={15} />
-              <InfoPopover
-                title={player.ability.name}
-                eyebrow={player.ability.ready ? 'Activated ability ready' : 'Loop cooldown'}
-                body={player.ability.text}
-                hint={player.ability.ready ? 'click to use' : `ready after ${player.ability.remainingLoops} more loop${player.ability.remainingLoops === 1 ? '' : 's'}`}
-              />
-            </button>
-          )}
-
           <div className={`paperdoll ${draggingLoot ? 'loot-dragging' : ''}`}>
             <div className="paperdoll-body">
               <img src={heroSpriteUrl(player.heroId)} alt="" />
@@ -1006,21 +1075,21 @@ function PlayerSideDock({
           <section className={`dock-section side-talents ${pending.length > 0 ? 'has-pending' : ''}`} aria-label="Talents">
             <div className="side-section-title icon-title">
               <GitBranch size={15} />
-              <span>{learned.length}/{tree.length}</span>
+              <span>{learnedRankCount}/{totalRankCount}</span>
             </div>
             <button className={`talent-tree-entry ${pending.length > 0 ? 'pending' : ''}`} onClick={() => setDockMode('talents')}>
               <span className="talent-tree-medallion" style={{ '--talent-icon': `url(${talentIconUrl(player.heroId)})` } as CSSProperties} />
               <span className="talent-rune-strip">
-                {[...pending, ...learned].slice(0, 6).map((trait) => (
+                {talentStrip.slice(0, 6).map((trait) => (
                   <i key={trait.id} className={pending.some((item) => item.id === trait.id) ? 'pending' : 'learned'}>{traitGlyph(trait.name)}</i>
                 ))}
-                {[...Array(Math.max(0, Math.min(6, tree.length || 6) - Math.min(6, pending.length + learned.length)))].map((_, index) => <i key={`empty-${index}`} />)}
+                {[...Array(Math.max(0, Math.min(6, tree.length || 6) - Math.min(6, talentStrip.length)))].map((_, index) => <i key={`empty-${index}`} />)}
               </span>
               <strong>{pending.length > 0 ? pending.length : player.talentPoints}</strong>
               <InfoPopover
                 title={`${hero?.name ?? 'Hero'} talent tree`}
                 eyebrow={pending.length > 0 ? 'Unlock ready' : 'Hero growth'}
-                body={pending.length > 0 ? 'Open the tree and choose one highlighted node.' : learned.length > 0 ? `${learned[learned.length - 1].name} learned most recently.` : 'Level up to awaken the first node.'}
+                body={pending.length > 0 ? 'Open the tree and choose one highlighted node or rank up a learned one.' : learned.length > 0 ? `${learned[learned.length - 1].name} learned most recently.` : 'Level up to awaken the first node.'}
               />
             </button>
           </section>
@@ -1234,16 +1303,18 @@ function MobileDrawer({
         <div className="mobile-drawer-body mobile-talent-list">
           {tree.map((trait) => {
             const ready = player.pendingTraits.includes(trait.id);
-            const isLearned = player.traits.includes(trait.id);
+            const rank = traitRank(player, trait.id);
+            const maxRanks = traitMaxRanks(trait);
+            const isLearned = rank > 0;
             return (
               <button
                 key={trait.id}
-                className={`mobile-talent-item ${ready ? 'ready' : isLearned ? 'learned' : 'locked'}`}
+                className={`mobile-talent-item ${ready ? 'ready' : isLearned ? 'learned' : 'locked'} ${rank >= maxRanks ? 'maxed' : ''}`}
                 disabled={!ready}
                 onClick={() => onChoose(trait.id)}
               >
                 <span className="mobile-talent-icon" style={{ '--talent-art': `url(${talentArtUrl(trait.id)})` } as CSSProperties} />
-                <b>{trait.name}</b>
+                <b>{trait.name} <em>{rank}/{maxRanks}</em></b>
                 <small>{trait.text}</small>
               </button>
             );
@@ -1316,17 +1387,19 @@ function TalentTreeDock({
   const learnedIds = new Set(learned.map((trait) => trait.id));
   const pendingIds = new Set(pending.map((trait) => trait.id));
   const byId = new Map(tree.map((trait) => [trait.id, trait]));
+  const learnedRankCount = player.traits.length;
+  const totalRankCount = totalTalentRanks(tree);
 
   return (
     <section className="talent-tree-mode">
       <div className="talent-mode-head">
-        <button className="talent-back-button" onClick={onBack}>
+        <button className="talent-back-button shared-back-button" onClick={onBack}>
           <ArrowLeft size={16} />
           <span>Back</span>
         </button>
         <div>
           <strong>Talent Tree</strong>
-          <span>{player.talentPoints > 0 ? `${player.talentPoints} point${player.talentPoints === 1 ? '' : 's'} ready` : `${learned.length}/${tree.length} learned`}</span>
+          <span>{player.talentPoints > 0 ? `${player.talentPoints} point${player.talentPoints === 1 ? '' : 's'} ready` : `${learnedRankCount}/${totalRankCount} ranks learned`}</span>
         </div>
       </div>
 
@@ -1350,13 +1423,15 @@ function TalentTreeDock({
           }))}
         </svg>
         {tree.map((trait) => {
-          const learnedNode = learnedIds.has(trait.id);
+          const rank = traitRank(player, trait.id);
+          const maxRanks = traitMaxRanks(trait);
+          const learnedNode = rank > 0;
           const availableNode = pendingIds.has(trait.id);
           const state = learnedNode ? 'learned' : availableNode ? 'available' : 'locked';
           return (
             <button
               key={trait.id}
-              className={`talent-node ${state}`}
+              className={`talent-node ${state} ${availableNode ? 'available' : ''} ${rank > 0 && rank < maxRanks ? 'rankable' : ''} ${rank >= maxRanks ? 'maxed' : ''}`}
               style={{ left: `${trait.x}%`, top: `${trait.y}%`, '--talent-art': `url(${talentArtUrl(trait.id)})` } as CSSProperties}
               aria-disabled={!availableNode}
               onClick={() => {
@@ -1364,12 +1439,15 @@ function TalentTreeDock({
               }}
             >
               <span className="talent-art" aria-hidden="true" />
+              <span className="talent-rank-pips" aria-hidden="true">
+                {Array.from({ length: maxRanks }, (_, index) => <i key={index} className={index < rank ? 'filled' : ''} />)}
+              </span>
               <strong className="talent-node-label">{trait.name}</strong>
               <InfoPopover
                 title={trait.name}
-                eyebrow={state === 'available' ? 'Available talent' : state === 'learned' ? 'Learned talent' : `Tier ${trait.tier}`}
+                eyebrow={rank > 0 ? `Rank ${rank}/${maxRanks}` : state === 'available' ? 'Available talent' : `Tier ${trait.tier}`}
                 body={trait.text}
-                hint={availableNode ? 'click to learn' : trait.prereqs.length > 0 ? `requires ${trait.prereqs.map((id) => byId.get(id)?.name ?? id).join(', ')}` : undefined}
+                hint={availableNode ? (rank > 0 ? 'click to rank up' : 'click to learn') : trait.prereqs.length > 0 ? `requires ${trait.prereqs.map((id) => byId.get(id)?.name ?? id).join(', ')}` : undefined}
               />
             </button>
           );
@@ -1394,19 +1472,22 @@ function SellZone({
   const remainingSeconds = Math.max(0, Math.ceil((player.shop?.remainingMs ?? 0) / 1000));
 
   function offerTitle(offer: ShopOffer) {
-    return offer.kind === 'card' ? offer.card.name : offer.loot.name;
+    if (offer.kind === 'card') return offer.card.name;
+    if (offer.kind === 'loot') return offer.loot.name;
+    return offer.name;
   }
 
   function offerMeta(offer: ShopOffer) {
-    return offer.kind === 'card'
-      ? `${cardSuit(offer.card)} card`
-      : `${offer.loot.rarity} ${offer.loot.role ?? equipmentLabels[offer.loot.slot]}`;
+    if (offer.kind === 'card') return `${cardSuit(offer.card)} card`;
+    if (offer.kind === 'loot') return `${offer.loot.rarity} ${offer.loot.role ?? equipmentLabels[offer.loot.slot]}`;
+    return `heals ${offer.heal} HP`;
   }
 
   function canBuy(offer: ShopOffer) {
     if ((player.gold ?? 0) < offer.price) return false;
     if (offer.kind === 'card') return player.hand.length < 7;
-    return player.loot.length < 10;
+    if (offer.kind === 'loot') return player.loot.length < 10;
+    return player.hp < player.maxHp;
   }
 
   return (
@@ -1459,9 +1540,13 @@ function SellZone({
               }}
             >
               {offer.kind === 'card' ? (
-                <span className={`shop-card-glyph ${cardFaceClass(offer.card)}`}>{offer.card.icon}</span>
-              ) : (
+                <span className={`shop-card-glyph ${cardFaceClass(offer.card)}`}>
+                  <span className={`shop-card-art ${cardFaceClass(offer.card)}`} aria-hidden="true">{offer.card.icon}</span>
+                </span>
+              ) : offer.kind === 'loot' ? (
                 <span className={`shop-loot-glyph ${offer.loot.slot} ${offer.loot.rarity}`}><ItemSprite item={offer.loot} /></span>
+              ) : (
+                <span className="shop-potion-glyph"><img className="potion-sprite" src={healthPotionSpriteUrl()} alt="" /></span>
               )}
               <span>
                 <strong>{offerTitle(offer)}</strong>
@@ -1470,8 +1555,8 @@ function SellZone({
               <InfoPopover
                 title={offerTitle(offer)}
                 eyebrow={offerMeta(offer)}
-                lines={offer.kind === 'card' ? [offer.card.text] : itemPopoverLines(offer.loot, player.loadout[offer.loot.slot])}
-                hint={affordable ? 'drag out or click to buy' : (player.gold ?? 0) < offer.price ? 'not enough gold' : offer.kind === 'card' ? 'hand is full' : 'loot bag is full'}
+                lines={offer.kind === 'card' ? [offer.card.text] : offer.kind === 'loot' ? itemPopoverLines(offer.loot, player.loadout[offer.loot.slot]) : [offer.text, `${Math.ceil(player.hp)}/${player.maxHp} HP now`]}
+                hint={affordable ? 'drag out or click to buy' : (player.gold ?? 0) < offer.price ? 'not enough gold' : offer.kind === 'card' ? 'hand is full' : offer.kind === 'loot' ? 'loot bag is full' : 'already full health'}
               />
             </button>
           );
@@ -1503,19 +1588,22 @@ export function ShopDrawer({
   const remainingSeconds = Math.max(0, Math.ceil((player.shop?.remainingMs ?? 0) / 1000));
 
   function offerTitle(offer: ShopOffer) {
-    return offer.kind === 'card' ? offer.card.name : offer.loot.name;
+    if (offer.kind === 'card') return offer.card.name;
+    if (offer.kind === 'loot') return offer.loot.name;
+    return offer.name;
   }
 
   function offerMeta(offer: ShopOffer) {
-    return offer.kind === 'card'
-      ? `${cardSuit(offer.card)} card`
-      : `${offer.loot.rarity} ${offer.loot.role ?? equipmentLabels[offer.loot.slot]}`;
+    if (offer.kind === 'card') return `${cardSuit(offer.card)} card`;
+    if (offer.kind === 'loot') return `${offer.loot.rarity} ${offer.loot.role ?? equipmentLabels[offer.loot.slot]}`;
+    return `heals ${offer.heal} HP`;
   }
 
   function canBuy(offer: ShopOffer) {
     if ((player.gold ?? 0) < offer.price) return false;
     if (offer.kind === 'card') return player.hand.length < 7;
-    return player.loot.length < 10;
+    if (offer.kind === 'loot') return player.loot.length < 10;
+    return player.hp < player.maxHp;
   }
 
   return (
@@ -1545,8 +1633,9 @@ export function ShopDrawer({
           <strong>Loop Market</strong>
           <small>{player.gold ?? 0} gold · refresh {remainingSeconds}s</small>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close shop">
+        <button type="button" className="shared-back-button shop-back-button" onClick={onClose} aria-label="Close shop">
           <ArrowLeft size={17} />
+          <span>Back</span>
         </button>
       </div>
       <div className="shop-drawer-offers">
@@ -1562,9 +1651,13 @@ export function ShopDrawer({
               }}
             >
               {offer.kind === 'card' ? (
-                <span className={`shop-drawer-glyph card ${cardFaceClass(offer.card)}`}>{offer.card.icon}</span>
-              ) : (
+                <span className={`shop-drawer-glyph card ${cardFaceClass(offer.card)}`}>
+                  <span className={`shop-card-art ${cardFaceClass(offer.card)}`} aria-hidden="true">{offer.card.icon}</span>
+                </span>
+              ) : offer.kind === 'loot' ? (
                 <span className={`shop-drawer-glyph loot ${offer.loot.slot} ${offer.loot.rarity}`}><ItemSprite item={offer.loot} /></span>
+              ) : (
+                <span className="shop-drawer-glyph potion"><img className="potion-sprite" src={healthPotionSpriteUrl()} alt="" /></span>
               )}
               <span>
                 <strong>{offerTitle(offer)}</strong>
@@ -1574,8 +1667,8 @@ export function ShopDrawer({
               <InfoPopover
                 title={offerTitle(offer)}
                 eyebrow={offerMeta(offer)}
-                lines={offer.kind === 'card' ? [offer.card.text] : itemPopoverLines(offer.loot, player.loadout[offer.loot.slot])}
-                hint={affordable ? 'click to buy' : (player.gold ?? 0) < offer.price ? 'not enough gold' : offer.kind === 'card' ? 'hand is full' : 'loot bag is full'}
+                lines={offer.kind === 'card' ? [offer.card.text] : offer.kind === 'loot' ? itemPopoverLines(offer.loot, player.loadout[offer.loot.slot]) : [offer.text, `${Math.ceil(player.hp)}/${player.maxHp} HP now`]}
+                hint={affordable ? 'click to buy' : (player.gold ?? 0) < offer.price ? 'not enough gold' : offer.kind === 'card' ? 'hand is full' : offer.kind === 'loot' ? 'loot bag is full' : 'already full health'}
               />
             </button>
           );
@@ -1586,6 +1679,120 @@ export function ShopDrawer({
         <span>Drop cards or loose gear here to sell.</span>
       </div>
     </section>
+  );
+}
+
+function heroPassiveLines(player: Player, config: GameConfig) {
+  const hero = config.heroes.find((item) => item.id === player.heroId);
+  if (!hero) return [];
+  return [
+    hero.sabotage ? `Sabotage +${hero.sabotage}` : null,
+    hero.lootLuck ? `Loot luck +${hero.lootLuck}` : null,
+    hero.lapHeal ? `Lap heal +${hero.lapHeal}` : null,
+    hero.terrainScore ? `Terrain score +${hero.terrainScore}` : null,
+    hero.revivePower ? `Revive power +${hero.revivePower}` : null
+  ].filter(Boolean) as string[];
+}
+
+export function HeroStatsDrawer({
+  open,
+  player,
+  config,
+  onClose
+}: {
+  open: boolean;
+  player: Player;
+  config: GameConfig;
+  onClose: () => void;
+}) {
+  const hero = config.heroes.find((item) => item.id === player.heroId);
+  const hpRatio = Math.max(0, Math.min(100, (player.hp / Math.max(1, player.maxHp)) * 100));
+  const passiveLines = heroPassiveLines(player, config);
+  const statRows = [
+    ['HP', `${Math.ceil(player.hp)}/${player.maxHp}`],
+    ['Power', player.power],
+    ['Guard', player.guard],
+    ['Speed', player.speed],
+    ['Draw', player.drawRate],
+    ['Sabotage', player.sabotage],
+    ['Loot luck', player.lootLuck],
+    ['Lap heal', player.lapHeal],
+    ['Terrain score', player.terrainScore],
+    ['Revive', player.revivePower]
+  ];
+  const runRows = [
+    ['Score', player.score],
+    ['Gold', player.gold],
+    ['Level', player.level],
+    ['XP', player.xp],
+    ['Lap', player.laps],
+    ['KOs', player.kos],
+    ['Deaths', player.deaths],
+    ['Cards', player.cardsPlayed],
+    ['Tiles', player.tilesPlaced],
+    ['Rival hits', player.rivalHits]
+  ];
+
+  return (
+    <aside
+      className={`hero-stats-drawer ${open ? 'open' : ''}`}
+      style={{ '--hero-color': player.color, '--hp-ratio': `${hpRatio}%` } as CSSProperties}
+      aria-hidden={!open}
+    >
+      <div className="hero-stats-head">
+        <span className="hero-stats-portrait">
+          <img src={heroPortraitUrl(player.heroId)} alt="" />
+        </span>
+        <div>
+          <small>{hero?.title ?? 'Runner'}</small>
+          <strong>{hero?.name ?? player.name}</strong>
+          <span>{player.name}</span>
+        </div>
+        <button type="button" className="shared-back-button hero-stats-close" onClick={onClose} aria-label="Close hero stats">
+          <ArrowLeft size={16} />
+        </button>
+      </div>
+
+      <div className="hero-stats-hp">
+        <span>Health</span>
+        <b>{Math.ceil(player.hp)}/{player.maxHp}</b>
+        <i aria-hidden="true" />
+      </div>
+
+      <div className="hero-stats-grid">
+        {statRows.map(([label, value]) => (
+          <span key={label}>
+            <small>{label}</small>
+            <strong>{value}</strong>
+          </span>
+        ))}
+      </div>
+
+      {player.ability && (
+        <section className="hero-stats-section">
+          <small>Ability</small>
+          <strong>{player.ability.icon} {player.ability.name}</strong>
+          <span>{player.ability.text}</span>
+          <b>{player.ability.ready ? 'Ready now' : `${player.ability.remainingLoops} loop${player.ability.remainingLoops === 1 ? '' : 's'} until ready`}</b>
+        </section>
+      )}
+
+      {passiveLines.length > 0 && (
+        <section className="hero-stats-section">
+          <small>Hero traits</small>
+          {passiveLines.map((line) => <span key={line}>{line}</span>)}
+        </section>
+      )}
+
+      <div className="hero-run-grid">
+        {runRows.map(([label, value]) => (
+          <span key={label}>
+            <small>{label}</small>
+            <strong>{value}</strong>
+          </span>
+        ))}
+      </div>
+    </aside>
   );
 }
 
@@ -1744,26 +1951,7 @@ const BoardTileButton = memo(function BoardTileButton({
     previous.rivalTargetCard?.instanceId === next.rivalTargetCard?.instanceId;
 });
 
-function PlayerPanel({
-  player,
-  gameStatus,
-  serverNow,
-  receivedAt,
-  authorityPaused = false,
-  rank,
-  active,
-  isHost,
-  focused,
-  selectedCard,
-  draggingCard,
-  rivalTargetCard,
-  recommendedTileIndexes = [],
-  onTile,
-  onRivalTarget,
-  onRivalTile,
-  onStartRoom,
-  onFocus
-}: {
+type PlayerPanelProps = {
   player: Player;
   gameStatus: GameState['status'];
   serverNow: number;
@@ -1781,8 +1969,61 @@ function PlayerPanel({
   onRivalTarget?: (cardId?: string) => void;
   onRivalTile?: (tileIndex: number, cardId?: string) => void;
   onStartRoom?: () => void;
+  onActivateAbility?: () => void;
   onFocus: () => void;
-}) {
+};
+
+function cardRenderKey(card: Card | null) {
+  return card ? `${card.instanceId}:${card.kind}:${card.tile ?? ''}:${card.targetMode ?? ''}` : '';
+}
+
+function sameNumberList(previous: readonly number[] | undefined, next: readonly number[] | undefined) {
+  if (previous === next) return true;
+  const previousList = previous ?? [];
+  const nextList = next ?? [];
+  return previousList.length === nextList.length && previousList.every((value, index) => value === nextList[index]);
+}
+
+function playerPanelPropsEqual(previous: PlayerPanelProps, next: PlayerPanelProps) {
+  return previous.player === next.player &&
+    previous.gameStatus === next.gameStatus &&
+    previous.authorityPaused === next.authorityPaused &&
+    previous.rank === next.rank &&
+    previous.active === next.active &&
+    previous.isHost === next.isHost &&
+    previous.focused === next.focused &&
+    cardRenderKey(previous.selectedCard) === cardRenderKey(next.selectedCard) &&
+    cardRenderKey(previous.draggingCard) === cardRenderKey(next.draggingCard) &&
+    cardRenderKey(previous.rivalTargetCard) === cardRenderKey(next.rivalTargetCard) &&
+    sameNumberList(previous.recommendedTileIndexes, next.recommendedTileIndexes) &&
+    Boolean(previous.onTile) === Boolean(next.onTile) &&
+    Boolean(previous.onRivalTarget) === Boolean(next.onRivalTarget) &&
+    Boolean(previous.onRivalTile) === Boolean(next.onRivalTile) &&
+    Boolean(previous.onStartRoom) === Boolean(next.onStartRoom) &&
+    Boolean(previous.onActivateAbility) === Boolean(next.onActivateAbility);
+}
+
+const PlayerPanel = memo(function PlayerPanel({
+  player,
+  gameStatus,
+  serverNow,
+  receivedAt,
+  authorityPaused = false,
+  rank,
+  active,
+  isHost,
+  focused,
+  selectedCard,
+  draggingCard,
+  rivalTargetCard,
+  recommendedTileIndexes = [],
+  onTile,
+  onRivalTarget,
+  onRivalTile,
+  onStartRoom,
+  onActivateAbility,
+  onFocus
+}: PlayerPanelProps) {
   const canRivalTarget = Boolean(rivalTargetCard && onRivalTarget);
   // Runner position is driven by the server movement clock, so ordinary tiles
   // chain together visually and only stop when combat/stun state appears.
@@ -1790,7 +2031,11 @@ function PlayerPanel({
   const runnerRef = useRef<HTMLSpanElement | null>(null);
   const runnerHighlightRef = useRef<HTMLSpanElement | null>(null);
   const runnerFloatersRef = useRef<HTMLSpanElement | null>(null);
+  const [reachedPendingCombatCursor, setReachedPendingCombatCursor] = useState<number | null>(null);
   const previousRunnerStatsRef = useRef<{ hp: number; score: number; gold: number; xp: number; level: number; laps: number } | null>(null);
+  const onCombatStopReached = useCallback((cursor: number | null) => {
+    setReachedPendingCombatCursor((previous) => (previous === cursor ? previous : cursor));
+  }, []);
   const motionSeedKey = useMemo(
     () => `${player.id}:${player.board.map((tile) => `${tile.index}:${tile.coord[0]},${tile.coord[1]}`).join('|')}`,
     [player.board, player.id]
@@ -1804,7 +2049,7 @@ function PlayerPanel({
     // React must not reseed this on ordinary tile changes; the RAF motion loop owns the transform.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [motionSeedKey]);
-  useRunnerMotion(runnerRef, runnerHighlightRef, player, gameStatus, serverNow, receivedAt, authorityPaused);
+  useRunnerMotion(runnerRef, runnerHighlightRef, player, gameStatus, serverNow, receivedAt, authorityPaused, onCombatStopReached);
   useEffect(() => {
     const current = {
       hp: Math.ceil(player.hp),
@@ -1863,6 +2108,10 @@ function PlayerPanel({
   const compactRival = !active && !focused;
   const impact = eventImpact(player.event);
   const lobbyStart = active && gameStatus === 'lobby';
+  const abilityUnavailable = Boolean(
+    player.ability &&
+    (!player.ability.ready || gameStatus !== 'running' || player.combat || player.stunRemainingMs)
+  );
   const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
   const statusLabel = runnerStatusLabel(player);
   const runnerPoint = tileCenter(player.board[player.position] ?? player.board[0]);
@@ -1882,9 +2131,10 @@ function PlayerPanel({
     : pendingCombatCursor !== null
       ? pointAlongBoard(player.board, pendingCombatCursor)
       : runnerPoint;
+  const pendingCombatCueIsReady = pendingCombatCursor !== null && reachedPendingCombatCursor !== null && Math.abs(reachedPendingCombatCursor - pendingCombatCursor) < 0.001;
   const combatCueKey = player.combat
     ? `combat-cue-${player.combat.startedAt}`
-    : pendingCombatCursor !== null
+    : pendingCombatCueIsReady
       ? `combat-cue-pending-${pendingCombatCursor}-${pendingCombatSegment?.arriveAt ?? 'now'}`
       : null;
 
@@ -1975,6 +2225,36 @@ function PlayerPanel({
             </div>
           ) : (
             <>
+              {active && player.ability && onActivateAbility && (
+                <button
+                  type="button"
+                  className={`board-ability-button ${player.ability.ready ? 'ready' : 'cooling'}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (abilityUnavailable) return;
+                    onActivateAbility();
+                  }}
+                  aria-disabled={abilityUnavailable}
+                  aria-label={player.ability.name}
+                >
+                  <span className="ability-glyph">{player.ability.icon}</span>
+                  <span>
+                    <strong>{player.ability.name}</strong>
+                    <small>{player.ability.ready ? 'Ready' : `${player.ability.remainingLoops} loop${player.ability.remainingLoops === 1 ? '' : 's'}`}</small>
+                  </span>
+                  <Zap size={15} />
+                  <InfoPopover
+                    title={player.ability.name}
+                    eyebrow={player.ability.ready ? 'Activated ability ready' : 'Loop cooldown'}
+                    body={player.ability.text}
+                    hint={player.ability.ready ? 'click to use' : `ready after ${player.ability.remainingLoops} more loop${player.ability.remainingLoops === 1 ? '' : 's'}`}
+                  />
+                </button>
+              )}
+              <div className="bc-score-readout">
+                <strong>{player.score}</strong>
+                <span>{rank === 1 ? 'leader score' : 'score'}</span>
+              </div>
               <div className="bc-event-stage">
                 <small>{rank === 1 ? 'Leader' : active ? 'You' : player.name}</small>
                 <strong>{statusLabel}</strong>
@@ -1992,18 +2272,6 @@ function PlayerPanel({
               {player.marked && <div className="bc-claim">marked</div>}
             </>
           )}
-          <InfoPopover
-            title={player.name}
-            eyebrow={active ? 'Your runner' : 'Runner'}
-            body={`Lv ${player.level} · ${player.score} points · ${player.laps} laps`}
-            lines={[
-              `${Math.ceil(player.hp)}/${player.maxHp} HP`,
-              `${player.power} power · ${player.guard} guard · ${player.speed} speed`,
-              `${player.soloCorruption ?? 0} corruption · ${player.soloGatesCleared.length}/2 act bosses`,
-              `${player.cardsPlayed} cards played · ${player.rivalHits} rival hits`
-            ]}
-            className="player-pop"
-          />
         </div>
         {impact && (
           <div key={`${player.lastEventAt ?? 0}-${player.event}`} className={`event-burst ${impact.tone}`}>
@@ -2019,16 +2287,18 @@ function PlayerPanel({
             style={{
               '--cue-left': `${combatCuePoint.left}%`,
               '--cue-top': `${combatCuePoint.top}%`,
-              '--cue-delay': player.combat ? '0ms' : `${pendingCombatCueDelayMs}ms`
+              '--cue-delay': player.combat ? '0ms' : pendingCombatCueIsReady ? '0ms' : `${pendingCombatCueDelayMs}ms`
             } as CSSProperties}
             aria-hidden="true"
-          />
+          >
+            <span>fight!</span>
+          </div>
         )}
         {player.combat && <CombatOverlay key={player.combat.startedAt} player={player} />}
       </div>
     </article>
   );
-}
+}, playerPanelPropsEqual);
 
 function CombatOverlay({ player }: { player: Player }) {
   const combat = player.combat;
@@ -2067,14 +2337,34 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
       state: index === activeBeatIndex ? 'active' : index < activeBeatIndex ? 'done' : 'upcoming'
     };
   });
-  const enemyLineup = Array.from({ length: Math.max(1, Math.min(combat.enemyCount, 5)) }, (_, index) => ({
-    id: combat.enemyIds?.[index] ?? combat.enemyIds?.[0] ?? combat.enemyId,
-    name: combat.enemyNames?.[index] ?? combat.enemyNames?.[0] ?? combat.enemyName
-  }));
+  const enemyLineup = Array.from({ length: Math.max(1, Math.min(combat.enemyCount, 5)) }, (_, index) => {
+    const id = combat.enemyIds?.[index] ?? combat.enemyIds?.[0] ?? combat.enemyId;
+    return {
+      id,
+      name: combat.enemyNames?.[index] ?? combat.enemyNames?.[0] ?? combat.enemyName,
+      size: combatEnemySize(id)
+    };
+  });
+  const largestEnemySize = enemyLineup.some((enemy) => enemy.size === 'large')
+    ? 'large'
+    : enemyLineup.some((enemy) => enemy.size === 'medium')
+      ? 'medium'
+      : 'small';
   const enemyHpRows = enemyHealthRows(displayHp.enemy, combat.enemyMaxHp, enemyLineup);
   const activeEnemyIndex = activeBeat?.enemyIndex !== undefined
     ? Math.max(0, Math.min(activeBeat.enemyIndex, enemyLineup.length - 1))
     : Math.max(0, Math.min(enemyHpRows.findIndex((enemy) => enemy.current > 0), enemyLineup.length - 1));
+  const activeEnemyName = enemyLineup[activeEnemyIndex]?.name ?? combat.enemyName;
+  const attackerName = activeBeat?.attacker === 'enemy' ? activeEnemyName : player.name;
+  const defenderName = activeBeat?.attacker === 'enemy' ? player.name : activeEnemyName;
+  const impactTitle = presentationPhase === 'result' || presentationPhase === 'exit' ? combatOutcome : activeBeat ? `${attackerName} strikes ${defenderName}` : 'Fight!';
+  const impactValue = presentationPhase === 'result' || presentationPhase === 'exit' ? `+${combat.reward} XP` : activeBeat ? `-${activeBeat.damage} HP` : combat.label;
+  const impactDetail = presentationPhase === 'result' || presentationPhase === 'exit'
+    ? combat.heroHpAfter <= 0 ? 'Retreat and recover' : `${combat.enemyName} cleared`
+    : activeBeat?.text ?? `${combat.label} vs ${combat.enemyName}`;
+  const impactMeta = presentationPhase === 'result' || presentationPhase === 'exit'
+    ? `${combat.rounds} clashes resolved`
+    : combat.enemyCount > 1 ? `${combat.enemyCount} foes · ${combat.rounds} clashes` : combat.label;
 
   useEffect(() => {
     const timers = beats.map((beat, index) => window.setTimeout(() => {
@@ -2092,12 +2382,13 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
   }, [presentation, beats, resultAtMs, exitAtMs]);
 
   return (
-    <div className={`combat-overlay phase-${presentationPhase} ${logOpen ? 'log-open' : ''}`} style={{
+    <div className={`combat-overlay phase-${presentationPhase} combat-bg-${combat.backgroundId} combat-effect-${combat.effect} enemy-stage-${largestEnemySize} ${activeBeat ? 'combat-beat-active' : ''} ${logOpen ? 'log-open' : ''}`} style={{
       '--combat-bg': `url(${combatBackgroundUrl(combat.backgroundId)})`,
       '--combat-duration': `${visibleDurationMs}ms`,
       '--combat-delay': '0ms'
     } as CSSProperties}>
       <div className="combat-vignette" />
+      <div className="combat-frame" aria-hidden="true" />
       <button
         type="button"
         className="combat-log-toggle"
@@ -2116,26 +2407,26 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
         </span>
       </div>
       <div className={`combatant hero-combat ${activeBeat?.attacker === 'hero' ? 'combat-attacking' : ''} ${activeBeat?.attacker === 'enemy' ? 'combat-taking-hit' : ''}`}>
-        <img key={`hero-${activeBeatIndex}-${activeBeat?.attacker ?? 'idle'}`} src={heroSpriteUrl(player.heroId)} alt="" />
-        <div className="combat-name">{player.name}</div>
-        <CombatBar
-          current={Math.ceil(Math.max(0, displayHp.hero))}
-          max={combat.heroMaxHp}
-          value={displayHp.hero}
-        />
-        <InfoPopover
-          title={player.name}
-          eyebrow="Combatant"
-          body={`${Math.ceil(Math.max(0, combat.heroHpAfter))}/${combat.heroMaxHp} HP after impact`}
-          lines={[`${player.power} power`, `${player.guard} guard`, `${player.speed} speed`]}
-        />
+        <div className="combat-ground-shadow" aria-hidden="true" />
+        <img src={heroSpriteUrl(player.heroId)} alt="" />
+        <div className="combat-nameplate">
+          <div className="combat-name-row">
+            <span className="combat-side-label">Hero</span>
+            <strong>{player.name}</strong>
+          </div>
+          <CombatBar
+            current={Math.ceil(Math.max(0, displayHp.hero))}
+            max={combat.heroMaxHp}
+            value={displayHp.hero}
+          />
+        </div>
       </div>
-      <div className="combat-impact">
+      <div className="combat-banner">
         {activeBeat && <div key={`fx-${activeBeatIndex}`} className={combatFxClass(combat.effect)} aria-hidden="true" />}
-        <strong>{combat.label}</strong>
-        {combat.enemyCount > 1 && <em>{combat.enemyCount} foes · {combat.rounds} clashes</em>}
-        <span>{presentationPhase === 'result' || presentationPhase === 'exit' ? combatOutcome : activeBeat ? `-${activeBeat.damage} HP` : 'Fight'}</span>
-        <small>{presentationPhase === 'result' || presentationPhase === 'exit' ? `+${combat.reward} XP when cleared` : activeBeat?.text ?? `+${combat.reward} XP when cleared`}</small>
+        <em>{impactMeta}</em>
+        <strong>{impactTitle}</strong>
+        <span>{impactValue}</span>
+        <small>{impactDetail}</small>
         {activeBeat && (
           <b key={`${activeBeatIndex}-${activeBeat.attacker}`} className={`combat-damage-float ${activeBeat.attacker}`}>
             -{activeBeat.damage}
@@ -2152,37 +2443,42 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
           ))}
         </ol>
       )}
-      <div className={`combatant enemy-combat ${activeBeat?.attacker === 'enemy' ? 'combat-attacking' : ''} ${activeBeat?.attacker === 'hero' ? 'combat-taking-hit' : ''}`}>
-        <div className={`enemy-party enemy-party-${enemyLineup.length}`} aria-hidden="true">
+      <div className={`combatant enemy-combat enemy-combat-${largestEnemySize} ${activeBeat?.attacker === 'enemy' ? 'combat-attacking' : ''} ${activeBeat?.attacker === 'hero' ? 'combat-taking-hit' : ''}`}>
+        <div className="combat-ground-shadow" aria-hidden="true" />
+        <div className={`enemy-party enemy-party-${enemyLineup.length} enemy-party-max-${largestEnemySize}`} aria-hidden="true">
           {enemyLineup.map((enemy, index) => (
             <img
               key={`enemy-${index}-${enemy.id}`}
               data-enemy-slot={index}
-              className={index === activeEnemyIndex ? 'active-enemy' : ''}
+              className={`enemy-size-${enemy.size} enemy-kind-${enemy.id} ${index === activeEnemyIndex ? 'active-enemy' : ''}`}
               src={combatEnemyUrl(enemy.id)}
               alt=""
             />
           ))}
         </div>
-        <div className="combat-name">{combat.enemyName}</div>
-        <div className={`enemy-hp-stack enemy-hp-stack-${enemyHpRows.length}`}>
-          {enemyHpRows.map((enemy, index) => (
-            <CombatBar
-              key={`${enemy.name}-${index}`}
-              className={index === activeEnemyIndex ? 'active-enemy-hp' : ''}
-              label={enemy.name}
-              current={Math.ceil(enemy.current)}
-              max={enemy.max}
-              value={enemy.current}
-            />
-          ))}
+        <div className="combat-nameplate">
+          <div className="combat-name-row">
+            <span className="combat-side-label">Enemy</span>
+            <strong>{combat.enemyName}</strong>
+          </div>
+          <div className="enemy-pips" aria-hidden="true">
+            {enemyLineup.map((enemy, index) => (
+              <span key={`${enemy.id}-pip-${index}`} className={index === activeEnemyIndex ? 'active-enemy-pip' : ''} />
+            ))}
+          </div>
+          <div className={`enemy-hp-stack enemy-hp-stack-${enemyHpRows.length}`}>
+            {enemyHpRows.map((enemy, index) => (
+              <CombatBar
+                key={`${enemy.name}-${index}`}
+                className={index === activeEnemyIndex ? 'active-enemy-hp' : ''}
+                label={enemy.name}
+                current={Math.ceil(enemy.current)}
+                max={enemy.max}
+                value={enemy.current}
+              />
+            ))}
+          </div>
         </div>
-        <InfoPopover
-          title={combat.enemyName}
-          eyebrow="Enemy"
-          body={combat.label}
-          lines={[`${combat.enemyCount} foe${combat.enemyCount === 1 ? '' : 's'}`, `${combat.rounds} clash${combat.rounds === 1 ? '' : 'es'}`, `${combat.damage} damage dealt`, `${combat.reward} XP reward`]}
-        />
       </div>
     </div>
   );

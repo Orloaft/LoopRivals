@@ -63,9 +63,21 @@ function roomTimeScale(room) {
   return timeScale;
 }
 const actBossByTier = {
-  1: { label: 'briar warden', threat: 26, reward: 74, enemyCount: 1, nextTier: 2, armor: 2 },
-  2: { label: 'crown sentinel', threat: 35, reward: 112, enemyCount: 2, nextTier: 3, armor: 3 }
+  1: { label: 'briar warden', tileTypes: ['rootwall', 'bramblebloom', 'wardensheart', 'oldgrowth'], threat: 26, reward: 74, enemyCount: 1, nextTier: 2, armor: 2 },
+  2: { label: 'crown sentinel', tileTypes: ['guardstance', 'markedchallenge', 'retaliation', 'executionstance'], threat: 35, reward: 112, enemyCount: 2, nextTier: 3, armor: 3 }
 };
+const loopBossConfig = { label: 'loop tyrant', tileTypes: ['seal1', 'seal2', 'seal3', 'innergate'], threat: 42, reward: 160, enemyCount: 5, armor: 3 };
+const bossTileSides = [
+  [2, 1, 3, 4],
+  [6, 5, 7, 8],
+  [10, 9, 11, 12],
+  [14, 13, 15]
+];
+const bossTileTypes = new Set([
+  ...actBossByTier[1].tileTypes,
+  ...actBossByTier[2].tileTypes,
+  ...loopBossConfig.tileTypes
+]);
 
 const combatEncounters = {
   'rat grove': {
@@ -180,6 +192,30 @@ const combatEncounters = {
     backgroundId: 'grove',
     effect: 'claw'
   },
+  'spider nest': {
+    enemyId: 'mire-slime',
+    enemyName: 'Webbed Mire',
+    enemyIds: ['mire-slime', 'plague-rat', 'thorn-wolf'],
+    enemyNames: ['Mire Slime', 'Plague Rat', 'Thorn Wolf'],
+    backgroundId: 'grove',
+    effect: 'claw'
+  },
+  'thorn maze': {
+    enemyId: 'dire-thorn',
+    enemyName: 'Thorn Maze',
+    enemyIds: ['dire-thorn', 'thorn-wolf', 'mire-slime'],
+    enemyNames: ['Dire Thorn', 'Thorn Wolf', 'Mire Slime'],
+    backgroundId: 'grove',
+    effect: 'claw'
+  },
+  'graveyard': {
+    enemyId: 'crypt-skeleton',
+    enemyName: 'Graveyard Watch',
+    enemyIds: ['crypt-skeleton', 'crypt-wraith', 'bone-host'],
+    enemyNames: ['Crypt Skeleton', 'Crypt Wraith', 'Bone Host'],
+    backgroundId: 'crypt',
+    effect: 'spectral'
+  },
   'bandit camp': {
     enemyId: 'road-bandit',
     enemyName: 'Road Bandit',
@@ -212,6 +248,14 @@ const combatEncounters = {
     backgroundId: 'road',
     effect: 'sword'
   },
+  'tollgate': {
+    enemyId: 'road-bandit',
+    enemyName: 'Tollgate Blades',
+    enemyIds: ['road-bandit', 'goblin-cutthroat', 'brigand'],
+    enemyNames: ['Road Bandit', 'Goblin Cutthroat', 'Road Brigand'],
+    backgroundId: 'road',
+    effect: 'sword'
+  },
   'blood moon': {
     enemyId: 'moon-fiend',
     enemyName: 'Moonbound Fiend',
@@ -225,6 +269,14 @@ const combatEncounters = {
     enemyName: 'Gate Wyrm',
     enemyIds: ['gate-wyrm', 'crown-gate', 'ash-imp'],
     enemyNames: ['Gate Wyrm', 'Crown Gate', 'Ash Imp'],
+    backgroundId: 'forge',
+    effect: 'ember'
+  },
+  'dragon roost': {
+    enemyId: 'gate-wyrm',
+    enemyName: 'Roost Wyrm',
+    enemyIds: ['gate-wyrm', 'ash-imp', 'crown-gate'],
+    enemyNames: ['Gate Wyrm', 'Ash Imp', 'Crown Gate'],
     backgroundId: 'forge',
     effect: 'ember'
   },
@@ -447,7 +499,19 @@ export const terrainCards = [
   { id: 'mire', name: 'Mire', kind: 'terrain', tile: 'mire', icon: '≈', text: 'Slows movement but draws cards. Use before a dangerous future tile.' },
   { id: 'village', name: 'Village', kind: 'terrain', tile: 'village', icon: '⌂', text: 'Safe heal, XP, and supply chance. Stabilizes greed-heavy loops.' },
   { id: 'obelisk', name: 'Obelisk', kind: 'terrain', tile: 'obelisk', icon: '◆', text: 'Armor, HP, XP, and loot without stopping movement.' },
-  { id: 'watchtower', name: 'Watchtower', kind: 'terrain', tile: 'watchtower', icon: '◈', text: 'Draws rival cards. Use when another runner is about to spike.' }
+  { id: 'watchtower', name: 'Watchtower', kind: 'terrain', tile: 'watchtower', icon: '◈', text: 'Draws rival cards. Use when another runner is about to spike.' },
+  { id: 'orchard', name: 'Orchard', kind: 'terrain', tile: 'orchard', icon: '✿', text: 'Safe heal and a terrain draw chance. Plant before long danger chains.' },
+  { id: 'chapel', name: 'Chapel', kind: 'terrain', tile: 'chapel', icon: '✚', text: 'Cleanses curse, heals, and grants XP without stopping for combat.' },
+  { id: 'black-market', name: 'Black Market', kind: 'terrain', tile: 'market', icon: '$', text: 'Banks gold and refreshes your shop for a mid-loop pivot.' },
+  { id: 'armory', name: 'Armory', kind: 'terrain', tile: 'armory', icon: '▣', text: 'Stacks armor and has a small loot roll before a planned fight.' },
+  { id: 'waystone', name: 'Waystone', kind: 'terrain', tile: 'waystone', icon: '◇', text: 'Accelerates card timing and pays XP when your hand is thin.' },
+  { id: 'scriptorium', name: 'Scriptorium', kind: 'terrain', tile: 'scriptorium', icon: '✧', text: 'Draws terrain and XP, but adds a little curse pressure.' },
+  { id: 'spider-nest', name: 'Spider Nest', kind: 'terrain', tile: 'spidernest', icon: '♣', text: 'Pack fight that can refill your hand if you survive the web.' },
+  { id: 'tollgate', name: 'Tollgate', kind: 'terrain', tile: 'tollgate', icon: '$', text: 'Bandit fight that pays gold after the blades stop swinging.' },
+  { id: 'thorn-maze', name: 'Thorn Maze', kind: 'terrain', tile: 'thornmaze', icon: '✣', text: 'Dense grove fight with high stack pressure and strong XP.' },
+  { id: 'graveyard', name: 'Graveyard', kind: 'terrain', tile: 'graveyard', icon: '☗', text: 'Medium undead fight. Grave Singer turns it into extra momentum.' },
+  { id: 'reliquary', name: 'Reliquary', kind: 'terrain', tile: 'reliquary', icon: '◆', text: 'Guaranteed loot and XP, with curse pressure when you are already healthy.' },
+  { id: 'dragon-roost', name: 'Dragon Roost', kind: 'terrain', tile: 'dragonroost', icon: '▲', text: 'Late-loop boss fight. Huge payout if armor and healing are ready.' }
 ];
 
 export const rivalCards = [
@@ -467,6 +531,12 @@ const combatBlockingTileTypes = new Set([
   'ruinedkeep',
   'bloodmoon',
   'wyrmgate',
+  'spidernest',
+  'tollgate',
+  'thornmaze',
+  'graveyard',
+  'dragonroost',
+  ...bossTileTypes,
   'ambush'
 ]);
 
@@ -520,8 +590,10 @@ export const bonkCards = [
   { id: 'chosen-bonk', name: 'Chosen Bonk', kind: 'bonk', rarity: 'rare', targetMode: 'chosen', stunSeconds: 6, icon: '!', text: 'Choose any rival and stun them for 6 seconds.' }
 ];
 
+export const maxTalentRank = 3;
+
 function talent(heroId, id, name, text, tier, x, y, bonus, prereqs = []) {
-  return { id, heroId, name, text, tier, x, y, bonus, prereqs };
+  return { id, heroId, name, text, tier, maxRanks: maxTalentRank, x, y, bonus, prereqs };
 }
 
 export const talentTrees = {
@@ -597,6 +669,14 @@ export const traits = Object.values(talentTrees).flat();
 export const equipmentSlots = ['weapon', 'shield', 'helm', 'armor', 'gloves', 'boots', 'ring', 'charm'];
 export const shopSize = 5;
 export const shopRotationMs = 60 * 1000;
+const healthPotionOffer = {
+  kind: 'potion',
+  name: 'Health Potion',
+  icon: '✚',
+  heal: 18,
+  text: 'Restores 18 HP immediately. Best bought before a boss gate.',
+  price: 28
+};
 const combatWindupMs = 82;
 const combatBeatMs = 106;
 const combatTailMs = 128;
@@ -1137,6 +1217,19 @@ export function score(player) {
   ));
 }
 
+function playerProjectionPayload(player) {
+  return {
+    hp: player.hp,
+    score: score(player),
+    level: player.level,
+    deaths: player.deaths,
+    xp: player.xp,
+    gold: player.gold ?? 0,
+    armor: player.armor ?? 0,
+    curse: player.curse ?? 0
+  };
+}
+
 function heroSignature(player) {
   if (player.heroId === 'ember-knight') {
     return {
@@ -1320,6 +1413,8 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     tierStartScore: 0,
     tierStartLap: 0,
     bossAttempts: 0,
+    bossPhase: null,
+    pendingBossOutcome: null,
     soloGatesCleared: [],
     soloCorruption: 0,
     soloGateAttempts: 0,
@@ -1461,7 +1556,7 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
   const card = player.hand.find((item) => item.instanceId === cardInstanceId);
   if (!card || card.kind !== 'terrain') return false;
   const tile = player.board[tileIndex];
-  if (!tile || tile.type === 'camp') return false;
+  if (!tile || tile.type !== 'road') return false;
   if (isBlockedCombatTerrainPlacement(player, card, tile)) return false;
   tile.type = card.tile;
   tile.charges = card.tile === 'mire' ? 5 : 0;
@@ -1573,10 +1668,7 @@ function resolveCurrentCombatTileIfArmed(room, player, tile) {
     tileType: player.board[player.position]?.type ?? null,
     position: player.position,
     laps: player.laps,
-    hp: player.hp,
-    score: score(player),
-    level: player.level,
-    deaths: player.deaths,
+    ...playerProjectionPayload(player),
     event: player.event,
     message: player.message,
     cause: 'armedCurrentCombatTile'
@@ -1614,7 +1706,7 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
     target.event = `${player.name} armed ${card.name} ahead`;
   } else if (card.id === 'bandits') {
     const tile = target.board[(target.position + 3 + rand(room, 5)) % target.board.length];
-    if (tile.type !== 'camp') {
+    if (tile.type === 'road') {
       tile.type = 'ambush';
       tile.charges = 2;
     }
@@ -1626,7 +1718,7 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
   } else if (card.id === 'meteor') {
     target.hp -= 8 + bonus;
     const tile = target.board[(target.position + 2) % target.board.length];
-    if (tile.type !== 'camp') {
+    if (tile.type === 'road') {
       tile.type = 'scorch';
       tile.charges = 2;
     }
@@ -1637,7 +1729,7 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
     target.event = `${player.name} stole tempo`;
   } else if (card.id === 'landslide') {
     const tile = target.board[(target.position + 1 + rand(room, 6)) % target.board.length];
-    if (tile.type !== 'camp') {
+    if (tile.type === 'road') {
       tile.type = 'mire';
       tile.charges = 4;
     }
@@ -1786,14 +1878,16 @@ export function playBonk(room, player, cardInstanceId, targetId = null) {
 export function chooseTrait(player, traitId, room = null) {
   refreshPendingTraits(player);
   if (!player.pendingTraits.includes(traitId)) return false;
+  const trait = traits.find((item) => item.id === traitId);
+  if (!trait || traitRank(player, traitId) >= traitMaxRanks(trait)) return false;
   player.traits.push(traitId);
   player.talentPoints = Math.max(0, player.talentPoints - 1);
   player.pendingTraits = [];
   recalcStats(player);
-  const trait = traits.find((item) => item.id === traitId);
-  player.event = `learned ${trait?.name ?? 'a trait'}`;
+  const rank = traitRank(player, traitId);
+  player.event = `${rank > 1 ? 'ranked' : 'learned'} ${trait.name} ${rank}/${traitMaxRanks(trait)}`;
   refreshPendingTraits(player);
-  if (room) emitRuleEvent(room, 'traitChosen', { playerId: player.id, traitId, traitName: trait?.name ?? null });
+  if (room) emitRuleEvent(room, 'traitChosen', { playerId: player.id, traitId, traitName: trait.name, rank });
   return true;
 }
 
@@ -1847,16 +1941,22 @@ export function buyShopOffer(room, player, offerId) {
   if ((player.gold ?? 0) < offer.price) return false;
   if (offer.kind === 'card' && player.hand.length >= 7) return false;
   if (offer.kind === 'loot' && player.loot.length >= 10) return false;
+  if (offer.kind === 'potion' && player.hp >= player.maxHp) return false;
 
   player.gold = (player.gold ?? 0) - offer.price;
   if (offer.kind === 'card') {
     player.hand.push({ ...offer.card, instanceId: randomId(room, 'card') });
     player.event = `bought ${offer.card.name}`;
     addLog(room, `${player.name} bought ${offer.card.name} for ${offer.price} gold.`);
-  } else {
+  } else if (offer.kind === 'loot') {
     player.loot.unshift({ ...offer.loot, id: randomId(room, 'loot') });
     player.event = `bought ${offer.loot.name}`;
     addLog(room, `${player.name} bought ${offer.loot.name} for ${offer.price} gold.`);
+  } else {
+    const beforeHp = player.hp;
+    player.hp = clamp(player.hp + offer.heal, 0, player.maxHp);
+    player.event = `drank ${offer.name}: +${Math.ceil(player.hp - beforeHp)} HP`;
+    addLog(room, `${player.name} bought ${offer.name} for ${offer.price} gold.`);
   }
   shop.offers = shop.offers.filter((item) => item.id !== offer.id);
   room.lastActivityAt = now(room);
@@ -1910,7 +2010,7 @@ export function activateHeroAbility(room, player) {
     if (!tile) return false;
     tile.type = strength >= 3 ? 'village' : 'meadow';
     tile.charges = 0;
-    tile.expiresOnLap = player.laps + tileLoopLife(player) + (strength >= 4 ? 1 : 0);
+    tile.expiresOnLap = player.laps + tileLoopLife(player);
     const heal = 8 + strength * 3;
     player.hp = clamp(player.hp + heal, 0, player.maxHp);
     player.wardenOvergrowth = (player.wardenOvergrowth ?? 0) + 1;
@@ -1977,7 +2077,7 @@ export function activateHeroAbility(room, player) {
     if (!tile) return false;
     tile.type = strength >= 4 ? 'bonepit' : 'crypt';
     tile.charges = 0;
-    tile.expiresOnLap = player.laps + tileLoopLife(player);
+    delete tile.expiresOnLap;
     const xp = 12 + strength * 5;
     const heal = 5 + Math.min(12, (player.deathsThisTier ?? 0) * 3 + strength);
     player.hp = clamp(player.hp + heal, 0, player.maxHp);
@@ -2106,15 +2206,25 @@ function finishClaim(room, player) {
 
 function updateEndgame(room) {
   if (room.status !== 'running') return null;
-  for (const player of Object.values(room.players)) promotePlayerIfReady(room, player);
+  for (const player of Object.values(room.players)) {
+    if (player.pendingBossOutcome && !player.combat) resolvePendingBossOutcome(room, player);
+    if (!promotePlayerIfReady(room, player)) maybeSpawnStageBoss(room, player);
+  }
   updateTier(room);
   updateMarks(room);
 
   const contender = Object.values(room.players)
-    .filter((player) => (player.loopTier ?? 1) >= 3 && player.laps >= (player.tierStartLap ?? 0) + bossLoopRequirement && !isCombatLocked(room, player))
+    .filter((player) => (
+      (player.loopTier ?? 1) >= 3 &&
+      player.laps >= (player.tierStartLap ?? 0) + bossLoopRequirement &&
+      !player.combat &&
+      !player.pendingBossOutcome &&
+      !player.bossPhase &&
+      !isCombatLocked(room, player)
+    ))
     .sort((a, b) => score(b) - score(a))[0];
   if (!contender) return null;
-  return challengeLoopBoss(room, contender);
+  return stageBossPhaseForPlayer(room, contender, loopBossConfig, { kind: 'loop', tier: 3 }) ? null : null;
 }
 
 function isSoloPlayer(room, player) {
@@ -2129,10 +2239,14 @@ function resetTile(tile) {
   tile.type = tile.index === 0 ? 'camp' : 'road';
   tile.charges = 0;
   delete tile.expiresOnLap;
+  delete tile.bossPhaseId;
+  delete tile.bossChunkIndex;
 }
 
 function resetPlayerBoard(room, player) {
   for (const tile of player.board) resetTile(tile);
+  player.bossPhase = null;
+  player.pendingBossOutcome = null;
   player.position = 0;
   player.lastMoveAt = now(room);
   player.moveStartedAt = now(room);
@@ -2142,6 +2256,7 @@ function resetPlayerBoard(room, player) {
 }
 
 function promotePlayerIfReady(room, player) {
+  if (player.combat || player.pendingBossOutcome || player.bossPhase) return false;
   const currentTier = player.loopTier ?? 1;
   const nextTier = loopTierForLaps(player.laps ?? 0);
   if (nextTier <= currentTier) return false;
@@ -2177,72 +2292,178 @@ function promotePlayerIfReady(room, player) {
   return true;
 }
 
+function stageBossPhaseForPlayer(room, player, config, options = {}) {
+  if (!config || player.bossPhase || player.combat || player.pendingBossOutcome || isCombatLocked(room, player)) return false;
+  const tileIndexes = bossTileSides.map((side) => side.find((index) => player.board[index]?.type === 'road'));
+  if (tileIndexes.some((index) => !Number.isInteger(index))) return false;
+  const phase = {
+    id: `${options.kind ?? 'act'}-${options.tier ?? player.loopTier ?? 1}-${player.laps}`,
+    kind: options.kind ?? 'act',
+    tier: options.tier ?? player.loopTier ?? 1,
+    nextTier: options.nextTier ?? null,
+    label: config.label,
+    tileTypes: [...config.tileTypes],
+    threat: config.threat,
+    reward: config.reward,
+    enemyCount: config.enemyCount,
+    armor: config.armor ?? 0,
+    totalChunks: tileIndexes.length,
+    remainingChunks: tileIndexes.length,
+    defeatedChunks: [],
+    tileIndexes,
+    spawnedLap: player.laps
+  };
+  player.bossPhase = phase;
+  for (const [chunkIndex, tileIndex] of tileIndexes.entries()) {
+    const tile = player.board[tileIndex];
+    tile.type = config.tileTypes[chunkIndex] ?? config.tileTypes[0];
+    tile.charges = 1;
+    tile.bossPhaseId = phase.id;
+    tile.bossChunkIndex = chunkIndex;
+    delete tile.expiresOnLap;
+    emitRuleEvent(room, 'tileChanged', {
+      playerId: player.id,
+      tileIndex,
+      tile: cloneJson(visibleTile(tile)),
+      cause: 'bossPhase'
+    });
+  }
+  player.event = `${config.label} anchored into the loop`;
+  addLog(room, `${player.name}'s final loop anchored the ${config.label} across four boss tiles.`);
+  emitRuleEvent(room, 'bossPhaseStarted', {
+    playerId: player.id,
+    bossPhase: cloneJson(phase),
+    tileIndexes
+  });
+  return true;
+}
+
+function maybeSpawnStageBoss(room, player) {
+  if (player.bossPhase || player.combat || player.pendingBossOutcome || isCombatLocked(room, player)) return false;
+  const currentTier = player.loopTier ?? 1;
+  if (currentTier >= 3) {
+    const targetLap = (player.tierStartLap ?? 0) + bossLoopRequirement - 1;
+    if (player.laps < targetLap) return false;
+    return stageBossPhaseForPlayer(room, player, loopBossConfig, { kind: 'loop', tier: 3 });
+  }
+  const boss = actBossByTier[currentTier];
+  const nextTier = loopTierForLaps(player.laps + 1);
+  if (!boss || nextTier <= currentTier) return false;
+  return stageBossPhaseForPlayer(room, player, boss, { kind: 'act', tier: currentTier, nextTier: boss.nextTier });
+}
+
 function challengeActBoss(room, player, tier) {
-  if (isCombatLocked(room, player)) return false;
+  if (player.combat || player.pendingBossOutcome || isCombatLocked(room, player)) return false;
   const boss = actBossByTier[tier];
   if (!boss) return false;
+  if (!player.bossPhase) return stageBossPhaseForPlayer(room, player, boss, { kind: 'act', tier, nextTier: boss.nextTier });
+  return false;
+}
+
+function resolveBossTile(room, player, tile) {
+  const phase = player.bossPhase;
+  if (!phase || tile.bossPhaseId !== phase.id || !bossTileTypes.has(tile.type)) return false;
   if (isSoloPlayer(room, player) && (player.tilesPlaced ?? 0) <= 0) {
     player.hp = 0;
     resolveDefeat(room, player);
-    addLog(room, `${player.name} reached the ${boss.label} with an unchanged road and was forced back to camp.`);
+    addLog(room, `${player.name} reached the ${phase.label} with an unchanged road and was forced back to camp.`);
     return false;
   }
-  player.soloGateAttempts = (player.soloGateAttempts ?? 0) + 1;
-  player.hp = player.maxHp;
-  player.armor = Math.max(player.armor, boss.armor);
-  const corruptionPressure = isSoloPlayer(room, player) ? Math.floor((player.soloCorruption ?? 0) * 0.35) : 0;
+  if (phase.kind === 'act' && phase.remainingChunks === phase.totalChunks) player.soloGateAttempts = (player.soloGateAttempts ?? 0) + 1;
+  if (phase.kind === 'loop' && phase.remainingChunks === phase.totalChunks) player.bossAttempts = (player.bossAttempts ?? 0) + 1;
+  player.armor = Math.max(player.armor, phase.armor ?? 0);
+  const corruptionScale = phase.kind === 'loop' ? 0.45 : 0.35;
+  const attemptPressure = phase.kind === 'loop' ? (player.bossAttempts ?? 0) * 3 : (player.soloGateAttempts ?? 0) * 2;
+  const corruptionPressure = isSoloPlayer(room, player) ? Math.floor((player.soloCorruption ?? 0) * corruptionScale) : 0;
   const survived = fight(
     room,
     player,
-    boss.label,
-    boss.threat + corruptionPressure + player.soloGateAttempts * 2,
-    boss.reward,
-    boss.enemyCount
+    phase.label,
+    Math.ceil(phase.threat / phase.totalChunks) + corruptionPressure + attemptPressure,
+    Math.ceil(phase.reward / phase.totalChunks),
+    phase.kind === 'loop' ? Math.max(1, phase.enemyCount - (phase.totalChunks - phase.remainingChunks)) : phase.enemyCount
   );
   if (!survived) {
     resolveDefeatAfterVisibleCombat(room, player);
-    addLog(room, `${player.name} failed the ${boss.label}; the act holds.`);
+    addLog(room, `${player.name} failed the ${phase.label}; the boss phase holds.`);
     return false;
   }
-  player.soloGatesCleared = [...new Set([...(player.soloGatesCleared ?? []), tier])];
-  player.event = `cleared the ${boss.label}`;
-  addLog(room, `${player.name} broke the ${boss.label} and unlocked act ${boss.nextTier}.`);
-  return promotePlayerIfReady(room, player);
+  player.pendingBossOutcome = {
+    kind: phase.kind,
+    tier: phase.tier,
+    nextTier: phase.nextTier,
+    label: phase.label,
+    tileIndex: tile.index,
+    bossPhaseId: phase.id
+  };
+  return true;
 }
 
-function challengeLoopBoss(room, player) {
-  if (isSoloPlayer(room, player) && (player.tilesPlaced ?? 0) <= 0) {
-    player.hp = 0;
-    resolveDefeat(room, player);
-    addLog(room, `${player.name} reached the Loop Tyrant with an unchanged road and was forced back to camp.`);
-    return null;
+function resolvePendingBossOutcome(room, player) {
+  const outcome = player.pendingBossOutcome;
+  if (!outcome || player.combat || player.hp <= 0) return false;
+  player.pendingBossOutcome = null;
+
+  const phase = player.bossPhase;
+  if (phase && outcome.bossPhaseId === phase.id) {
+    const tile = player.board[outcome.tileIndex];
+    if (tile && bossTileTypes.has(tile.type)) resetTile(tile);
+    phase.remainingChunks = Math.max(0, (phase.remainingChunks ?? 1) - 1);
+    phase.defeatedChunks = [...new Set([...(phase.defeatedChunks ?? []), outcome.tileIndex])];
+    emitRuleEvent(room, 'bossPhaseChanged', {
+      playerId: player.id,
+      bossPhase: cloneJson(phase),
+      tileIndex: outcome.tileIndex,
+      remainingChunks: phase.remainingChunks
+    });
+    emitRuleEvent(room, 'tileChanged', {
+      playerId: player.id,
+      tileIndex: outcome.tileIndex,
+      tile: cloneJson(visibleTile(tile)),
+      cause: 'bossPhase'
+    });
+    if (phase.remainingChunks > 0) {
+      player.event = `${phase.label}: ${phase.remainingChunks} chunk${phase.remainingChunks === 1 ? '' : 's'} left`;
+      return true;
+    }
+    player.bossPhase = null;
   }
-  player.bossAttempts = (player.bossAttempts ?? 0) + 1;
-  player.hp = player.maxHp;
-  player.armor = Math.max(player.armor, 3);
-  const corruptionPressure = isSoloPlayer(room, player) ? Math.floor((player.soloCorruption ?? 0) * 0.45) : 0;
-  const survived = fight(room, player, 'loop tyrant', 42 + corruptionPressure + player.bossAttempts * 3, 160, 5);
-  if (!survived) {
-    resolveDefeatAfterVisibleCombat(room, player);
-    addLog(room, `${player.name} was broken by the Loop Tyrant and must rebuild act 3.`);
-    return null;
+
+  if (outcome.kind === 'act') {
+    player.soloGatesCleared = [...new Set([...(player.soloGatesCleared ?? []), outcome.tier])];
+    player.event = `cleared the ${outcome.label}`;
+    addLog(room, `${player.name} broke the ${outcome.label} and unlocked act ${outcome.nextTier}.`);
+    return promotePlayerIfReady(room, player);
   }
-  return finishClaim(room, player);
+
+  if (outcome.kind === 'loop') return finishClaim(room, player);
+  return false;
 }
 
 function expireLoopTiles(room, player) {
   let expired = 0;
   for (const tile of player.board) {
-    if (tile.type === 'camp' || tile.type === 'road' || !tile.expiresOnLap) continue;
-    if (player.laps < tile.expiresOnLap) continue;
-    resetTile(tile);
-    expired += 1;
+    if (
+      tile.type !== 'camp' &&
+      tile.type !== 'road' &&
+      !bossTileTypes.has(tile.type) &&
+      tile.expiresOnLap !== null &&
+      tile.expiresOnLap !== undefined &&
+      player.laps >= tile.expiresOnLap
+    ) {
+      resetTile(tile);
+      expired += 1;
+    }
   }
   if (expired > 0) {
-    player.event = `${expired} tile${expired === 1 ? '' : 's'} expired`;
-    addLog(room, `${player.name}'s loop shed ${expired} expired tile${expired === 1 ? '' : 's'}.`);
-    emitRuleEvent(room, 'tilesExpired', { playerId: player.id, count: expired, lap: player.laps });
+    emitRuleEvent(room, 'tilesExpired', {
+      playerId: player.id,
+      count: expired,
+      lap: player.laps,
+      board: cloneJson(visibleBoard(player))
+    });
   }
+  maybeSpawnStageBoss(room, player);
   updateMarks(room);
   return null;
 }
@@ -2292,8 +2513,9 @@ function clearExpiredCombat(room, player) {
   player.combat = null;
   emitRuleEvent(room, 'combatEnded', { playerId: player.id, combat: cloneJson(combat) });
   const defeated = resolveDefeat(room, player);
+  if (!defeated) resolvePendingBossOutcome(room, player);
   applyPendingBonks(room, player);
-  if (!defeated && !player.combat && !isStunned(room, player)) {
+  if (!defeated && room.status === 'running' && !player.combat && !isStunned(room, player)) {
     emitRuleEvent(room, 'movementSegment', {
       playerId: player.id,
       nextMovement: player.nextMovement,
@@ -2409,6 +2631,13 @@ function refreshShop(room, player) {
 }
 
 function createShopOffer(room, heroId, index) {
+  if (index === 2) {
+    return {
+      id: randomId(room, 'offer'),
+      ...healthPotionOffer
+    };
+  }
+
   const wantsCard = index < 2 || random(room) < 0.45;
   if (wantsCard) {
     const card = drawCard(room, index === 0 ? 'terrain' : null);
@@ -2460,6 +2689,20 @@ function drawCard(room = null, preferredKind = null, player = null) {
         : soloPool ? terrainCards : rivalPool;
   const card = sample(room, pool);
   return { ...card, instanceId: randomId(room, 'card') };
+}
+
+function drawCardIntoHand(room, player, preferredKind = null, cause = 'effect') {
+  if (!player || player.hand.length >= 7) return null;
+  const card = drawCard(room, preferredKind, player);
+  player.hand.push(card);
+  emitRuleEvent(room, 'cardDrawn', {
+    playerId: player.id,
+    cardId: card.id,
+    cardInstanceId: card.instanceId,
+    kind: card.kind,
+    cause
+  });
+  return card;
 }
 
 function createLoot(room, player) {
@@ -2559,10 +2802,22 @@ function recalcStats(player) {
   player.hp = clamp(player.hp, 0, player.maxHp);
 }
 
+function traitRank(player, traitId) {
+  return player.traits.filter((id) => id === traitId).length;
+}
+
+function traitMaxRanks(trait) {
+  return Math.max(1, trait?.maxRanks ?? maxTalentRank);
+}
+
+function totalTalentRankSlots(heroId) {
+  return (talentTrees[heroId] ?? []).reduce((total, trait) => total + traitMaxRanks(trait), 0);
+}
+
 function availableTraits(player) {
   if ((player.talentPoints ?? 0) <= 0) return [];
   return (talentTrees[player.heroId] ?? [])
-    .filter((trait) => !player.traits.includes(trait.id))
+    .filter((trait) => traitRank(player, trait.id) < traitMaxRanks(trait))
     .filter((trait) => trait.prereqs.every((prereq) => player.traits.includes(prereq)));
 }
 
@@ -2577,7 +2832,7 @@ function addXp(room, player, amount) {
     player.xp -= xpNeeded(player);
     player.level += 1;
     player.hp = clamp(player.hp + 10, 0, player.maxHp);
-    if (player.traits.length + player.talentPoints < (talentTrees[player.heroId] ?? []).length) {
+    if (player.traits.length + player.talentPoints < totalTalentRankSlots(player.heroId)) {
       player.talentPoints += 1;
       refreshPendingTraits(player);
     }
@@ -2592,9 +2847,26 @@ function addXp(room, player, amount) {
   }
 }
 
-const dangerTiles = new Set(['grove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'ambush', 'scorch']);
-const stackAuraTiles = new Set(['bloodmoon', 'bonepit', 'wolfden', 'wyrmgate']);
-const stabilizerTiles = new Set(['meadow', 'village', 'forge', 'shrine', 'mire']);
+const dangerTiles = new Set([
+  'grove',
+  'crypt',
+  'wolfden',
+  'bonepit',
+  'ruinedkeep',
+  'bloodmoon',
+  'wyrmgate',
+  'obelisk',
+  'spidernest',
+  'tollgate',
+  'thornmaze',
+  'graveyard',
+  'reliquary',
+  'dragonroost',
+  'ambush',
+  'scorch'
+]);
+const stackAuraTiles = new Set(['bloodmoon', 'bonepit', 'wolfden', 'wyrmgate', 'thornmaze', 'dragonroost']);
+const stabilizerTiles = new Set(['meadow', 'village', 'forge', 'shrine', 'mire', 'orchard', 'chapel', 'armory', 'waystone']);
 
 function encounterStack(room, player, tile, baseCount = 1) {
   const previous = player.board[(tile.index - 1 + player.board.length) % player.board.length];
@@ -2671,13 +2943,14 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   const tier = player.loopTier ?? room.tier?.id ?? 1;
   const tierThreat = (tier - 1) * 3;
   const tierReward = 1 + (tier - 1) * 0.28;
-  const corruption = isSoloPlayer(room, player) ? player.soloCorruption ?? 0 : 0;
+  const rawCorruption = isSoloPlayer(room, player) ? player.soloCorruption ?? 0 : 0;
   const cursePenalty = player.curse > 0 ? 3 : 0;
   const emberHeat = player.heroId === 'ember-knight' ? clamp(player.heroHeat ?? 0, 0, 3) : 0;
   const graveDirge = player.heroId === 'grave-singer' ? clamp(player.graveEcho ?? 0, 0, 8) : 0;
   const runeMarks = player.heroId === 'rune-archer' ? clamp(player.runeMarkCount ?? 0, 0, 8) : 0;
   const runeWard = runeMarks > 0 && staged.pressure >= 3 ? Math.min(4, 1 + Math.floor(runeMarks / 2)) : 0;
   const bossLabels = ['briar warden', 'crown sentinel', 'loop tyrant'];
+  const corruption = bossLabels.includes(label) ? Math.min(rawCorruption, 80) : rawCorruption;
   const runePower = runeMarks > 0 && (staged.pressure >= 5 || bossLabels.includes(label))
     ? Math.min(2, Math.floor(runeMarks / 3))
     : 0;
@@ -2882,6 +3155,8 @@ function revivePlayer(room, player) {
   resetPlayerBoard(room, player);
   player.tierStartLap = player.laps;
   player.combat = null;
+  player.bossPhase = null;
+  player.pendingBossOutcome = null;
   player.hand = player.hand.slice(0, 3);
   if (solo) applySoloDeathPenalty(room, player);
   player.event = `fell, then restarted act ${player.loopTier ?? 1}`;
@@ -2979,7 +3254,7 @@ function triggerTile(room, player, tile) {
   } else if (tile.type === 'mire') {
     player.nextMoveAt += 450 * roomTimeScale(room);
     player.nextMovement = movementSegmentForPlayer(player);
-    if (player.hand.length < 7) player.hand.push(drawCard(room));
+    drawCardIntoHand(room, player, null, 'mire');
     player.event = 'mire drag: slowed, drew a card';
   } else if (tile.type === 'village') {
     player.hp = clamp(player.hp + 7, 0, player.maxHp);
@@ -2998,9 +3273,89 @@ function triggerTile(room, player, tile) {
     drawLoot(room, player);
     player.event = 'obelisk surge: power in the stones';
   } else if (tile.type === 'watchtower') {
-    if (player.hand.length < 7) player.hand.push(drawCard(room, 'rival'));
+    drawCardIntoHand(room, player, 'rival', 'watchtower');
     addXp(room, player, 7);
     player.event = 'watchtower spotted a rival opening';
+  } else if (tile.type === 'orchard') {
+    const heal = player.heroId === 'moss-warden' ? 8 : 6;
+    player.hp = clamp(player.hp + heal, 0, player.maxHp);
+    if (isSoloPlayer(room, player)) player.soloCorruption = Math.max(0, (player.soloCorruption ?? 0) - 2);
+    const drawn = random(room) < 0.65 ? drawCardIntoHand(room, player, 'terrain', 'orchard') : null;
+    addXp(room, player, 4);
+    player.event = `orchard stores: +${heal} hp${drawn ? ', drew terrain' : ''}`;
+  } else if (tile.type === 'chapel') {
+    const cleansed = Math.min(player.curse ?? 0, 2);
+    player.curse = Math.max(0, (player.curse ?? 0) - 2);
+    player.hp = clamp(player.hp + 5, 0, player.maxHp);
+    if (isSoloPlayer(room, player)) player.soloCorruption = Math.max(0, (player.soloCorruption ?? 0) - 2);
+    addXp(room, player, 10);
+    player.event = cleansed > 0 ? `chapel bells: cleansed ${cleansed} curse` : 'chapel bells: healed and learned';
+  } else if (tile.type === 'market') {
+    const gold = 18 + (player.loopTier ?? 1) * 4;
+    player.gold = (player.gold ?? 0) + gold;
+    player.shop = createShop(room, player);
+    addXp(room, player, 3);
+    player.event = `black market: +${gold} gold, shop refreshed`;
+  } else if (tile.type === 'armory') {
+    const armorGain = 2 + Math.floor((player.loopTier ?? 1) / 2);
+    player.armor += armorGain;
+    const found = random(room) < 0.28 + player.lootLuck;
+    if (found) drawLoot(room, player);
+    addXp(room, player, 5);
+    player.event = `armory prep: +${armorGain} armor${found ? ', found gear' : ''}`;
+  } else if (tile.type === 'waystone') {
+    const pullMs = Math.round(2200 * roomTimeScale(room));
+    player.nextDrawAt = Math.max(now(room), (player.nextDrawAt ?? now(room)) - pullMs);
+    const drawn = player.hand.length <= 2 ? drawCardIntoHand(room, player, null, 'waystone') : null;
+    addXp(room, player, 8);
+    player.event = drawn ? 'waystone pulse: drew a card and gained XP' : 'waystone pulse: draw timing accelerated';
+  } else if (tile.type === 'scriptorium') {
+    player.curse = (player.curse ?? 0) + 1;
+    drawCardIntoHand(room, player, 'terrain', 'scriptorium');
+    addXp(room, player, 11);
+    player.event = 'scriptorium: terrain notes, +1 curse';
+  } else if (tile.type === 'spidernest') {
+    const survived = fight(room, player, 'spider nest', 12, 16, encounterStack(room, player, tile, 2));
+    if (survived) {
+      const drawn = drawCardIntoHand(room, player, null, 'spiderNest');
+      if (drawn) player.event += ', cut a card from the web';
+    }
+  } else if (tile.type === 'tollgate') {
+    const survived = fight(room, player, 'tollgate', 15, 19, encounterStack(room, player, tile));
+    if (survived) {
+      const gold = 16 + (player.loopTier ?? 1) * 5;
+      player.gold = (player.gold ?? 0) + gold;
+      player.event += `, claimed ${gold} gold`;
+    }
+  } else if (tile.type === 'thornmaze') {
+    fight(room, player, 'thorn maze', 17, 22, encounterStack(room, player, tile, 2));
+  } else if (tile.type === 'graveyard') {
+    const survived = fight(room, player, 'graveyard', 13, 17, encounterStack(room, player, tile));
+    if (survived && player.heroId === 'grave-singer') {
+      player.graveEcho = Math.min(8, (player.graveEcho ?? 0) + 1);
+      addXp(room, player, 4);
+      player.event += ', dirge echoed';
+    }
+  } else if (tile.type === 'reliquary') {
+    drawLoot(room, player);
+    addXp(room, player, 9);
+    if (player.hp > player.maxHp * 0.72) {
+      player.curse = (player.curse ?? 0) + 1;
+      player.event = 'reliquary opened: loot, XP, +1 curse';
+    } else {
+      player.hp = clamp(player.hp + 4, 0, player.maxHp);
+      player.event = 'reliquary opened: loot, XP, and mercy';
+    }
+  } else if (tile.type === 'dragonroost') {
+    const survived = fight(room, player, 'dragon roost', 22, 32, encounterStack(room, player, tile, 2));
+    if (survived) {
+      const combatEvent = player.event;
+      player.gold = (player.gold ?? 0) + 28;
+      drawLoot(room, player);
+      player.event = `${combatEvent}, roost hoard claimed`;
+    }
+  } else if (bossTileTypes.has(tile.type)) {
+    resolveBossTile(room, player, tile);
   } else if (tile.type === 'ambush') {
     fight(room, player, 'bandit ambush', 16, 15, encounterStack(room, player, tile));
     tile.charges -= 1;
@@ -3064,14 +3419,13 @@ function advancePlayer(room, player) {
     expireLoopTiles(room, player);
     player.hp = clamp(player.hp + player.lapHeal, 0, player.maxHp);
     addXp(room, player, 4);
-    if (player.hand.length < 7 && random(room) < 0.38) player.hand.push(drawCard(room));
+    if (random(room) < 0.38) drawCardIntoHand(room, player, null, 'lapCompleted');
     addLog(room, `${player.name} completed lap ${player.laps}.`);
     emitRuleEvent(room, 'lapCompleted', { playerId: player.id, laps: player.laps });
     if ((player.loopTier ?? 1) >= 3) {
       const loopsToTyrant = Math.max(0, (player.tierStartLap ?? 0) + bossLoopRequirement - player.laps);
       if (loopsToTyrant === 1) {
-        player.event = 'Loop Tyrant wakes next loop';
-        addLog(room, `The Loop Tyrant is close. ${player.name} has one loop before the final fight.`);
+        maybeSpawnStageBoss(room, player);
       }
     }
   }
@@ -3082,10 +3436,7 @@ function advancePlayer(room, player) {
     tileType: player.board[player.position]?.type ?? null,
     position: player.position,
     laps: player.laps,
-    hp: player.hp,
-    score: score(player),
-    level: player.level,
-    deaths: player.deaths,
+    ...playerProjectionPayload(player),
     event: player.event,
     message: player.message
   });
@@ -3112,16 +3463,9 @@ function advancePlayer(room, player) {
 
 function maybeDraw(room, player) {
   if (now(room) < player.nextDrawAt) return;
-  if (player.hand.length < 7) {
-    const card = drawCard(room, null, player);
-    player.hand.push(card);
+  const card = drawCardIntoHand(room, player, null, 'passiveDraw');
+  if (card) {
     player.event = 'drew a card';
-    emitRuleEvent(room, 'cardDrawn', {
-      playerId: player.id,
-      cardId: card.id,
-      cardInstanceId: card.instanceId,
-      kind: card.kind
-    });
     if (isGuidedHuman(room, player)) updateGuidedRun(room);
   }
   player.nextDrawAt = now(room) + Math.round((6500 + rand(room, 1400)) * player.drawRate * roomTimeScale(room));
@@ -3152,12 +3496,16 @@ function chooseBotTrait(player) {
     'ember-knight': ['ember-oath', 'cinder-step', 'shield-heat', 'red-riposte', 'furnace-heart', 'banner-flame', 'loopforged', 'overheat', 'ash-tithe', 'coal-veins', 'sunbrand']
   }[player.heroId] ?? [];
   refreshPendingTraits(player);
+  const unlearnedPriority = priorities.find((traitId) => player.pendingTraits.includes(traitId) && !player.traits.includes(traitId));
+  if (unlearnedPriority) return unlearnedPriority;
+  const unlearnedFallback = player.pendingTraits.find((traitId) => !player.traits.includes(traitId));
+  if (unlearnedFallback) return unlearnedFallback;
   return priorities.find((traitId) => player.pendingTraits.includes(traitId)) ?? player.pendingTraits[0];
 }
 
 function chooseBotTerrainTile(room, player, card) {
-  const candidates = player.board.filter((tile) => tile.type !== 'camp' && !isBlockedCombatTerrainPlacement(player, card, tile));
-  const emptyRoads = candidates.filter((tile) => tile.type === 'road');
+  const candidates = player.board.filter((tile) => tile.type === 'road' && !isBlockedCombatTerrainPlacement(player, card, tile));
+  const emptyRoads = candidates;
   const ahead = emptyRoads.find((tile) => tile.index > player.position) ?? emptyRoads[0] ?? candidates[rand(room, candidates.length)];
   if (card.tile === 'crypt' && player.hp < player.maxHp * 0.55) {
     return emptyRoads.find((tile) => tile.index > player.position + 5) ?? ahead;
@@ -3228,6 +3576,7 @@ export const testApi = {
   joinRoom,
   kickPlayer,
   matchTiers,
+  maxTalentRank,
   maxPlayers,
   movementDelay,
   goalScore,
@@ -3248,6 +3597,7 @@ export const testApi = {
   shopRotationMs,
   shopSize,
   startRoom,
+  traitRank,
   updateRoomSettings,
   traits,
   triggerTile

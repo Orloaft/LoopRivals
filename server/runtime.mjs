@@ -89,6 +89,10 @@ function roomFacts(room) {
       laps: player.laps,
       level: player.level,
       hp: player.hp,
+      xp: player.xp,
+      gold: player.gold ?? 0,
+      armor: player.armor ?? 0,
+      curse: player.curse ?? 0,
       deaths: player.deaths,
       score: score(player),
       event: player.event,
@@ -96,8 +100,9 @@ function roomFacts(room) {
       nextMovement: movementKey(player.nextMovement),
       arrivalMovement: movementKey(player.arrivalMovement),
       combat: combatKey(player.combat),
+      bossPhase: player.bossPhase ? JSON.stringify(player.bossPhase) : null,
       lootIds: player.loot.map((item) => item.id),
-      tileTypes: player.board.map((tile) => `${tile.index}:${tile.type}:${tile.charges}:${tile.expiresOnLap ?? ''}`)
+      tileTypes: player.board.map((tile) => `${tile.index}:${tile.type}:${tile.charges}:${tile.expiresOnLap ?? ''}:${tile.bossPhaseId ?? ''}:${tile.bossChunkIndex ?? ''}`)
     });
   }
 
@@ -390,6 +395,10 @@ export class RoomRuntime {
           position: current.position,
           laps: current.laps,
           hp: current.hp,
+          xp: current.xp,
+          gold: current.gold,
+          armor: current.armor,
+          curse: current.curse,
           score: current.score,
           level: current.level,
           deaths: current.deaths,
@@ -405,13 +414,25 @@ export class RoomRuntime {
           board: cloneJson(this.room.players[playerId]?.board ?? [])
         }));
       }
-      if (previous.score !== current.score || previous.hp !== current.hp || previous.level !== current.level) {
+      if (
+        previous.score !== current.score ||
+        previous.hp !== current.hp ||
+        previous.level !== current.level ||
+        previous.xp !== current.xp ||
+        previous.gold !== current.gold ||
+        previous.armor !== current.armor ||
+        previous.curse !== current.curse
+      ) {
         events.push(this.appendEvent('playerProjectionChanged', {
           ...base,
           playerId,
           score: current.score,
           hp: current.hp,
-          level: current.level
+          level: current.level,
+          xp: current.xp,
+          gold: current.gold,
+          armor: current.armor,
+          curse: current.curse
         }));
       }
     }

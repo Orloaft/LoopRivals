@@ -65,11 +65,12 @@ function assertCustomCursor(cursor, label) {
 async function travelState(page) {
   return page.evaluate(() => {
     const runner = document.querySelector('.player-panel.active.focused .runner');
-    const backdrop = document.querySelector('.gothic-parallax');
+    const parallaxLayer = document.querySelector('.parallax-brambles');
     const styles = runner ? window.getComputedStyle(runner) : null;
+    const parallaxStyles = parallaxLayer ? window.getComputedStyle(parallaxLayer) : null;
     return {
       runnerTransform: styles?.transform ?? null,
-      loopProgress: backdrop ? window.getComputedStyle(backdrop).getPropertyValue('--loop-progress').trim() : null
+      parallaxTransform: parallaxStyles?.transform ?? null
     };
   });
 }
@@ -182,11 +183,12 @@ try {
   const movingSample = await travelState(page);
   await page.waitForFunction((sample) => {
     const runner = document.querySelector('.player-panel.active.focused .runner');
-    const backdrop = document.querySelector('.gothic-parallax');
-    if (!runner || !backdrop) return false;
+    const parallaxLayer = document.querySelector('.parallax-brambles');
+    if (!runner || !parallaxLayer) return false;
     const styles = window.getComputedStyle(runner);
+    const parallaxStyles = window.getComputedStyle(parallaxLayer);
     return styles.transform !== sample.runnerTransform ||
-      window.getComputedStyle(backdrop).getPropertyValue('--loop-progress').trim() !== sample.loopProgress;
+      parallaxStyles.transform !== sample.parallaxTransform;
   }, movingSample, { timeout: 6000 });
   await stopServer(serverInfo.server);
   await page.waitForSelector('.authority-pause', { timeout: 6000 });

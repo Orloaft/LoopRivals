@@ -2,11 +2,11 @@ import type { CSSProperties } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
-import { Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield, ShoppingBag } from 'lucide-react';
+import { Activity, Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield, ShoppingBag } from 'lucide-react';
 import { isAuthorityStateStale } from './authority-timeline';
 import { createRoomAuthorityBatcher } from './client-authority-batcher';
 import { createClientCommandTransport } from './client-command-transport';
-import { heroPortraitUrl, statLine } from './game-assets';
+import { heroPortraitUrl, statLine, warmCriticalGameImages } from './game-assets';
 import { gameplayRaf, type GameplayRafFrame } from './gameplay-raf';
 import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, playerMotionIsLocked, visualCursorForPlayer, visualFrameCursorForPlayer, visualSegmentDurationMs } from './movement';
 import { applyRoomDelta } from './room-projection';
@@ -26,6 +26,7 @@ import {
   RivalIntel,
   PlayerSideDock,
   SellZone,
+  HeroStatsDrawer,
   ShopDrawer
 } from './game-ui';
 
@@ -61,6 +62,22 @@ const commandAckEvents = new Set([
   'chooseTrait'
 ]);
 
+function setParallaxLayerProgress(
+  layers: {
+    spires: HTMLSpanElement | null;
+    graves: HTMLSpanElement | null;
+    brambles: HTMLSpanElement | null;
+  },
+  cursor: number,
+  boardLength: number
+) {
+  const progress = cursor / Math.max(1, boardLength);
+  const translate = (px: number) => `translate3d(${(progress * px).toFixed(2)}px, 0, 0)`;
+  if (layers.spires) layers.spires.style.transform = translate(-120);
+  if (layers.graves) layers.graves.style.transform = translate(-200);
+  if (layers.brambles) layers.brambles.style.transform = translate(-380);
+}
+
 function GothicParallaxBackdrop({
   player,
   gameStatus,
@@ -75,6 +92,9 @@ function GothicParallaxBackdrop({
   authorityPaused?: boolean;
 }) {
   const backdropRef = useRef<HTMLDivElement | null>(null);
+  const spiresRef = useRef<HTMLSpanElement | null>(null);
+  const gravesRef = useRef<HTMLSpanElement | null>(null);
+  const bramblesRef = useRef<HTMLSpanElement | null>(null);
   const cursorRef = useRef<number | null>(null);
   const lastFrameAtRef = useRef<number | null>(null);
   const motionRef = useRef({ player, serverNow, receivedAt, authorityPaused });
@@ -97,7 +117,7 @@ function GothicParallaxBackdrop({
     if (!current.player) {
       cursorRef.current = null;
       lastFrameAtRef.current = null;
-      backdrop.style.setProperty('--loop-progress', '0.000');
+      setParallaxLayerProgress({ spires: spiresRef.current, graves: gravesRef.current, brambles: bramblesRef.current }, 0, 1);
       return undefined;
     }
 
@@ -106,7 +126,7 @@ function GothicParallaxBackdrop({
       const cursor = visualCursorForPlayer(current.player, current.serverNow ?? Date.now(), current.receivedAt, authorityPaused);
       cursorRef.current = cursor;
       lastFrameAtRef.current = null;
-      backdrop.style.setProperty('--loop-progress', (cursor / boardLength).toFixed(4));
+      setParallaxLayerProgress({ spires: spiresRef.current, graves: gravesRef.current, brambles: bramblesRef.current }, cursor, boardLength);
       if (!current.player.combat || authorityPaused || gameStatus !== 'running') return undefined;
     }
 
@@ -119,7 +139,7 @@ function GothicParallaxBackdrop({
         const cursor = visualCursorForPlayer(current.player, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused);
         cursorRef.current = cursor;
         lastFrameAtRef.current = null;
-        backdrop.style.setProperty('--loop-progress', (cursor / Math.max(1, current.player.board.length)).toFixed(4));
+        setParallaxLayerProgress({ spires: spiresRef.current, graves: gravesRef.current, brambles: bramblesRef.current }, cursor, current.player.board.length);
         if (!combatEngageIsPending(current.player, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused)) {
           unsubscribe?.();
           unsubscribe = null;
@@ -136,7 +156,7 @@ function GothicParallaxBackdrop({
       const nextCursor = visualFrameCursorForPlayer(current.player, previousCursor, localStepCursor, current.serverNow ?? frameAt, current.receivedAt, current.authorityPaused);
       lastFrameAtRef.current = frameAt;
       cursorRef.current = nextCursor;
-      backdrop.style.setProperty('--loop-progress', (nextCursor / Math.max(1, current.player.board.length)).toFixed(4));
+      setParallaxLayerProgress({ spires: spiresRef.current, graves: gravesRef.current, brambles: bramblesRef.current }, nextCursor, current.player.board.length);
     };
     unsubscribe = gameplayRaf.subscribe(tick);
     return () => {
@@ -146,11 +166,11 @@ function GothicParallaxBackdrop({
   }, [authorityPaused, gameStatus, hasMotionPlayer, motionLocked]);
 
   return (
-    <div ref={backdropRef} className="gothic-parallax" style={{ '--loop-progress': '0.000' } as CSSProperties} aria-hidden="true">
+    <div ref={backdropRef} className="gothic-parallax" aria-hidden="true">
       <span className="parallax-sky" />
-      <span className="parallax-spires" />
-      <span className="parallax-graves" />
-      <span className="parallax-brambles" />
+      <span ref={spiresRef} className="parallax-spires" />
+      <span ref={gravesRef} className="parallax-graves" />
+      <span ref={bramblesRef} className="parallax-brambles" />
       <span className="parallax-vignette" />
     </div>
   );
@@ -198,11 +218,14 @@ function App() {
   const dragFrameRef = useRef<number | null>(null);
   const [bgmOn, setBgmOn] = useState(() => localStorage.getItem('loopduel.bgm') !== 'off');
   const [shopOpen, setShopOpen] = useState(false);
+  const [heroStatsOpen, setHeroStatsOpen] = useState(false);
   const [profile, setProfile] = useState(loadProfile);
   const [recordedFinishId, setRecordedFinishId] = useState<string | null>(null);
   const [mobileDrawer, setMobileDrawer] = useState<'loot' | 'talents' | 'log' | 'menu' | null>(null);
   const commandTransportRef = useRef<ReturnType<typeof createClientCommandTransport> | null>(null);
   const roomAuthorityBatcherRef = useRef<ReturnType<typeof createRoomAuthorityBatcher> | null>(null);
+  const me = game?.players.find((player) => player.id === playerToken) ?? null;
+  const assetWarmPhase = me ? 'game' : 'lobby';
 
   useEffect(() => {
     playerTokenRef.current = playerToken;
@@ -211,6 +234,10 @@ function App() {
   useEffect(() => {
     gameRef.current = game;
   }, [game]);
+
+  useEffect(() => {
+    warmCriticalGameImages(config, assetWarmPhase);
+  }, [assetWarmPhase, config]);
 
   useEffect(() => {
     const commandTransport = createClientCommandTransport({
@@ -355,7 +382,6 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [showHelp]);
 
-  const me = game?.players.find((player) => player.id === playerToken) ?? null;
   const selectedCard = me?.hand.find((card) => card.instanceId === selectedCardId) ?? null;
   const draggedCard = me?.hand.find((card) => card.instanceId === dragCardId) ?? null;
   const draggedLoot = me?.loot.find((item) => item.id === dragLootId) ?? null;
@@ -824,7 +850,7 @@ function App() {
         receivedAt={game.receivedAt}
         authorityPaused={authorityPaused}
       />
-      <audio ref={bgmRef} src="/assets/audio/crypt-of-neon-glass.mp3" preload="auto" loop />
+      <audio ref={bgmRef} src="/assets/audio/crypt-of-neon-glass.m4a" preload="none" loop />
       {notice && <div className="notice-toast">{notice}</div>}
       {authorityPaused && (
         <section className="authority-pause" role="status" aria-live="polite">
@@ -902,6 +928,7 @@ function App() {
               } : undefined}
               onRivalTile={player.id !== me.id && rivalTargetCard ? (tileIndex, cardId) => playRivalOnTile(player.id, tileIndex, cardId) : undefined}
               onStartRoom={startRoom}
+              onActivateAbility={player.id === me.id ? activateHeroAbility : undefined}
               onFocus={() => focusBoard(player.id)}
             />
           ))}
@@ -1001,7 +1028,6 @@ function App() {
           lines={game.log}
           onEquip={equip}
           onChoose={chooseTrait}
-          onActivateAbility={activateHeroAbility}
           onLootDragStart={(id, point) => {
             setDragLootId(id);
             setDragPoint(point);
@@ -1021,7 +1047,10 @@ function App() {
         <button
           type="button"
           className={`shop-dock-toggle ${shopOpen ? 'open' : ''}`}
-          onClick={() => setShopOpen((open) => !open)}
+          onClick={() => {
+            setHeroStatsOpen(false);
+            setShopOpen((open) => !open);
+          }}
           aria-label={shopOpen ? 'Close shop' : 'Open shop'}
           style={{ '--hero-color': me.color } as CSSProperties}
         >
@@ -1033,12 +1062,37 @@ function App() {
             body="Opens the rotating shop beside your right dock."
           />
         </button>
+        <button
+          type="button"
+          className={`hero-stats-toggle ${heroStatsOpen ? 'open' : ''}`}
+          onClick={() => {
+            setShopOpen(false);
+            setHeroStatsOpen((open) => !open);
+          }}
+          aria-label={heroStatsOpen ? 'Close hero stats' : 'Open hero stats'}
+          aria-expanded={heroStatsOpen}
+          style={{ '--hero-color': me.color } as CSSProperties}
+        >
+          <Activity size={20} />
+          <span>Stats</span>
+          <InfoPopover
+            title="Hero Stats"
+            eyebrow={heroStatsOpen ? 'Stats open' : 'Build details'}
+            body="Opens your hero stats and run details."
+          />
+        </button>
         <ShopDrawer
           open={shopOpen}
           player={me}
           onClose={() => setShopOpen(false)}
           onDrop={handleSellDrop}
           onBuy={buyShopOffer}
+        />
+        <HeroStatsDrawer
+          open={heroStatsOpen}
+          player={me}
+          config={config}
+          onClose={() => setHeroStatsOpen(false)}
         />
         <MobileDrawer
           mode={mobileDrawer}
