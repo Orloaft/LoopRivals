@@ -847,11 +847,18 @@ input:focus {
   background: rgba(0, 0, 0, 0.22);
 }
 
-.onboarding-coach {
+.game-shell > .onboarding-coach {
+  position: fixed;
+  left: 12px;
+  right: clamp(350px, 30vw, 466px);
+  bottom: 162px;
+  z-index: 19;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(220px, 0.42fr);
-  align-items: center;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, 0.28fr);
+  align-items: start;
   gap: 10px;
+  max-height: min(36svh, 260px);
+  overflow: auto;
   padding: 9px 11px;
   border: 1px solid color-mix(in srgb, var(--blue) 40%, var(--line));
   border-radius: 6px;
@@ -861,7 +868,7 @@ input:focus {
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.34);
 }
 
-.onboarding-coach.debrief {
+.game-shell > .onboarding-coach.debrief {
   border-color: color-mix(in srgb, var(--gold-bright) 58%, var(--blue));
 }
 
@@ -880,12 +887,10 @@ input:focus {
 }
 
 .coach-copy strong {
-  overflow: hidden;
   color: var(--parchment);
   font-family: Georgia, "Times New Roman", serif;
   font-size: 1.16rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.08;
 }
 
 .coach-copy p {
@@ -895,22 +900,19 @@ input:focus {
 }
 
 .coach-copy small {
-  overflow: hidden;
   color: #c8dddc;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   text-transform: none;
 }
 
 .coach-facts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(64px, auto));
+  grid-template-columns: 1fr;
   gap: 6px;
 }
 
 .coach-facts span {
   display: grid;
-  place-items: center;
+  align-items: center;
   min-height: 32px;
   padding: 0 9px;
   border: 1px solid rgba(111, 199, 232, 0.24);
@@ -919,10 +921,70 @@ input:focus {
   background: rgba(0, 0, 0, 0.22);
   font-size: 0.78rem;
   font-weight: 950;
+}
+
+.coach-runes {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.coach-rune {
+  flex: 0 0 clamp(190px, 20vw, 270px);
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  min-height: 86px;
+  padding: 8px;
+  border: 1px solid rgba(210, 177, 92, 0.16);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.coach-rune.safe {
+  border-color: color-mix(in srgb, var(--moss) 44%, rgba(210, 177, 92, 0.18));
+}
+
+.coach-rune.danger {
+  border-color: color-mix(in srgb, var(--blood) 44%, rgba(210, 177, 92, 0.18));
+}
+
+.coach-rune.gold {
+  border-color: color-mix(in srgb, var(--gold-bright) 52%, rgba(210, 177, 92, 0.18));
+}
+
+.coach-rune.arcane {
+  border-color: color-mix(in srgb, var(--violet) 44%, rgba(210, 177, 92, 0.18));
+}
+
+.coach-rune strong {
+  color: var(--parchment);
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.coach-rune span {
+  overflow: hidden;
+  color: var(--gold-bright);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.coach-rune p {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.28;
+}
+
 .coach-recaps {
+  grid-column: 1 / -1;
   display: grid;
   gap: 4px;
   min-width: 0;
@@ -937,9 +999,35 @@ input:focus {
 }
 
 .coach-actions {
-  display: flex;
-  justify-content: end;
+  display: none;
   grid-column: 1 / -1;
+}
+
+.mobile-card-counsel {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid rgba(210, 177, 92, 0.18);
+  border-radius: 5px;
+  background: rgba(8, 8, 7, 0.7);
+}
+
+.mobile-card-counsel strong {
+  color: var(--gold-bright);
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.mobile-card-counsel span,
+.mobile-card-counsel small {
+  color: var(--parchment);
+  font-size: 0.84rem;
+  line-height: 1.28;
+}
+
+.mobile-card-counsel small {
+  color: var(--muted);
 }
 
 .phase-strip {
@@ -4333,6 +4421,15 @@ input:focus {
 .tile.innergate,
 .hand-card.innergate,
 .shop-card-art.innergate { --tile-art: url('/assets/tiles/v2/innergate.png'); }
+.tile.bloomgrove,
+.hand-card.bloomgrove,
+.shop-card-art.bloomgrove { --tile-art: url('/assets/tiles/v2/bloomgrove.png'); }
+.tile.ransackedvillage,
+.hand-card.ransackedvillage,
+.shop-card-art.ransackedvillage { --tile-art: url('/assets/tiles/v2/ransackedvillage.png'); }
+.tile.embergate,
+.hand-card.embergate,
+.shop-card-art.embergate { --tile-art: url('/assets/tiles/v2/embergate.png'); }
 
 .tile.road::before {
   background-image: url('/assets/tiles/loopduel-tiles-retro-gothic-v1.png');
@@ -7073,14 +7170,34 @@ body.loot-drag-active * {
   gap: 10px;
 }
 
+.tutorial-head > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tutorial-head span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
 .tutorial-head strong {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 1.35rem;
 }
 
+.tutorial-head p {
+  max-width: 58ch;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
 .tutorial-steps {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin: 14px 0;
 }
@@ -7089,7 +7206,7 @@ body.loot-drag-active * {
   display: grid;
   gap: 7px;
   min-width: 0;
-  min-height: 178px;
+  min-height: 154px;
   padding: 10px;
   border: 1px solid rgba(210, 177, 92, 0.16);
   border-radius: 5px;
@@ -7109,8 +7226,14 @@ body.loot-drag-active * {
   font-weight: 950;
 }
 
+.tutorial-steps article > span svg {
+  stroke-width: 2.4;
+}
+
 .tutorial-steps strong {
   color: var(--parchment);
+  font-size: 0.96rem;
+  line-height: 1.12;
 }
 
 .tutorial-steps p {
@@ -7389,7 +7512,11 @@ body.loot-drag-active * {
   }
 
   .game-shell:has(.onboarding-coach) .arena-grid {
-    --top-chrome: 220px;
+    --top-chrome: 260px;
+  }
+
+  .coach-runes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .play-layout,
@@ -7471,13 +7598,24 @@ body.loot-drag-active * {
     padding-bottom: calc(142px + env(safe-area-inset-bottom));
   }
 
+  .game-shell:has(.mobile-card-counsel) {
+    padding-bottom: calc(196px + env(safe-area-inset-bottom));
+  }
+
   .phase-strip {
     display: none;
   }
 
-  .onboarding-coach {
+  .game-shell > .onboarding-coach {
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    z-index: 1;
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
+    max-height: min(32svh, 240px);
+    overflow: auto;
     padding: 9px;
   }
 
@@ -7489,6 +7627,16 @@ body.loot-drag-active * {
 
   .coach-facts {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .coach-runes {
+    gap: 7px;
+    padding-bottom: 2px;
+  }
+
+  .coach-rune {
+    flex: 0 0 min(72vw, 260px);
+    min-height: 0;
   }
 
   .mobile-status-bar {
@@ -7786,6 +7934,29 @@ body.loot-drag-active * {
 
   .action-hint span {
     font-size: 0.68rem;
+  }
+
+  .mobile-card-counsel {
+    max-height: 72px;
+    overflow: hidden;
+    margin-top: 4px;
+    padding: 6px 8px;
+  }
+
+  .mobile-card-counsel span,
+  .mobile-card-counsel small {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 0.72rem;
+    -webkit-box-orient: vertical;
+  }
+
+  .mobile-card-counsel span {
+    -webkit-line-clamp: 1;
+  }
+
+  .mobile-card-counsel small {
+    -webkit-line-clamp: 2;
   }
 
   .hand-card {
@@ -8327,6 +8498,14 @@ body.loot-drag-active * {
     max-height: 82svh;
     overflow: auto;
   }
+
+  .tutorial-steps {
+    gap: 8px;
+  }
+
+  .tutorial-steps article {
+    min-height: 0;
+  }
 }
 
 @media (min-width: 681px) and (max-width: 1100px) {
@@ -8343,6 +8522,17 @@ body.loot-drag-active * {
 
   .control-dock {
     padding-inline: 12px;
+  }
+}
+
+@media (min-width: 1101px) {
+  .game-shell > .onboarding-coach {
+    position: fixed;
+    left: 12px;
+    right: clamp(350px, 30vw, 466px);
+    bottom: 162px;
+    z-index: 19;
+    width: auto;
   }
 }
 

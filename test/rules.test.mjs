@@ -118,6 +118,79 @@ test('rival cards can be armed on unoccupied enemy road tiles only', () => {
   assert.equal(target.board[target.position].type, 'road');
 });
 
+test('oblivion purges one owned non-camp tile back to road', () => {
+  room.status = 'running';
+  const player = testApi.createPlayer('purger', 'Purger', 'night-vagrant');
+  const oblivion = {
+    id: 'oblivion',
+    instanceId: 'oblivion-owned',
+    name: 'Oblivion',
+    kind: 'rival',
+    icon: 'O',
+    text: 'Purge one of your non-camp tiles back to road.'
+  };
+  player.hand = [oblivion];
+  player.board[4].type = 'bloomgrove';
+  player.board[4].expiresOnLap = 3;
+  player.board[4].charges = 1;
+  room.players[player.id] = player;
+
+  assert.equal(testApi.playRival(room, player, oblivion.instanceId, player.id, 4), true);
+
+  assert.equal(player.board[4].type, 'road');
+  assert.equal(player.board[4].charges, 0);
+  assert.equal(player.board[4].expiresOnLap, undefined);
+  assert.equal(player.hand.length, 0);
+  assert.equal(player.event, 'purged tile 4 to road');
+
+  const events = testApi.drainRoomEvents(room);
+  assert.equal(events.some((event) => event.type === 'cardPlayed' && event.payload.cardId === 'oblivion'), true);
+  assert.equal(events.some((event) => (
+    event.type === 'tileChanged' &&
+    event.payload.cause === 'purgeCard' &&
+    event.payload.previousType === 'bloomgrove' &&
+    event.payload.tile.type === 'road'
+  )), true);
+});
+
+test('oblivion only targets owned non-road non-boss tiles', () => {
+  room.status = 'running';
+  const player = testApi.createPlayer('purger', 'Purger', 'night-vagrant');
+  const rival = testApi.createPlayer('rival', 'Rival', 'ember-knight');
+  const card = (instanceId) => ({
+    id: 'oblivion',
+    instanceId,
+    name: 'Oblivion',
+    kind: 'rival',
+    icon: 'O',
+    text: 'Purge one of your non-camp tiles back to road.'
+  });
+  room.players[player.id] = player;
+  room.players[rival.id] = rival;
+  rival.board[4].type = 'grove';
+  player.board[4].type = 'road';
+  player.board[5].type = 'camp';
+  player.board[6].type = 'rootwall';
+
+  player.hand = [card('oblivion-rival')];
+  assert.equal(testApi.playRival(room, player, 'oblivion-rival', rival.id, 4), false);
+  assert.equal(rival.board[4].type, 'grove');
+  assert.equal(player.hand.length, 1);
+
+  player.hand = [card('oblivion-road')];
+  assert.equal(testApi.playRival(room, player, 'oblivion-road', player.id, 4), false);
+  assert.equal(player.hand.length, 1);
+
+  player.hand = [card('oblivion-camp')];
+  assert.equal(testApi.playRival(room, player, 'oblivion-camp', player.id, 5), false);
+  assert.equal(player.hand.length, 1);
+
+  player.hand = [card('oblivion-boss')];
+  assert.equal(testApi.playRival(room, player, 'oblivion-boss', player.id, 6), false);
+  assert.equal(player.board[6].type, 'rootwall');
+  assert.equal(player.hand.length, 1);
+});
+
 test('snapshots expose visible movement stop semantics for loop tiles', () => {
   const player = testApi.createPlayer('runner', 'Runner', 'ember-knight');
   player.board[1].type = 'road';
@@ -167,6 +240,71 @@ test('terrain deck has a broad set of unique board tiles', () => {
   assert.equal(new Set(terrainCards.map((card) => card.id)).size, terrainCards.length);
   assert.equal(new Set(terrainCards.map((card) => card.tile)).size, terrainCards.length);
   assert.ok(terrainCards.every((card) => card.kind === 'terrain'));
+});
+
+test('adjacent terrain combos change full tile identities after placement', () => {
+  const player = testApi.createPlayer('combo', 'Combo', 'ember-knight');
+  room.players.combo = player;
+  room.status = 'running';
+  player.position = 0;
+  player.hand = [
+    { id: 'meadow', instanceId: 'meadow-combo', name: 'Meadow', kind: 'terrain', tile: 'meadow', icon: '*', text: 'Heal.' },
+    { id: 'village', instanceId: 'village-combo', name: 'Village', kind: 'terrain', tile: 'village', icon: 'H', text: 'Rest.' },
+    { id: 'wyrm-gate', instanceId: 'gate-combo', name: 'Wyrm Gate', kind: 'terrain', tile: 'wyrmgate', icon: 'G', text: 'Gate.' }
+  ];
+  player.board[5].type = 'grove';
+  player.board[7].type = 'crypt';
+  player.board[9].type = 'forge';
+
+  assert.equal(testApi.playTerrain(room, player, 'meadow-combo', 4), true);
+  assert.equal(testApi.playTerrain(room, player, 'village-combo', 6), true);
+  assert.equal(testApi.playTerrain(room, player, 'gate-combo', 10), true);
+
+  assert.equal(player.board[5].type, 'bloomgrove');
+  assert.equal(player.board[6].type, 'ransackedvillage');
+  assert.equal(player.board[10].type, 'embergate');
+  assert.equal(player.board[5].expiresOnLap, player.board[4].expiresOnLap);
+  assert.equal(player.board[6].expiresOnLap, player.laps + 3);
+
+  const events = testApi.drainRoomEvents(room).filter((event) => event.type === 'tileChanged' && event.payload.cause === 'tileCombo');
+  assert.deepEqual(events.map((event) => event.payload.comboId), ['meadow-grove', 'village-crypt', 'forge-wyrmgate']);
+  assert.deepEqual(events.map((event) => event.payload.tile.type), ['bloomgrove', 'ransackedvillage', 'embergate']);
+
+  const snapshotTiles = testApi.roomSnapshot(room).players[0].board;
+  assert.equal(snapshotTiles[5].movementStopKind, 'combat');
+  assert.equal(snapshotTiles[6].movementStopKind, 'combat');
+  assert.equal(snapshotTiles[10].movementStopKind, 'combat');
+});
+
+test('combo terrain resolves through distinct combat behaviors', () => {
+  const player = testApi.createPlayer('combo-fighter', 'Combo Fighter', 'ember-knight');
+  room.players[player.id] = player;
+  room.status = 'running';
+  player.maxHp = 180;
+  player.hp = 150;
+  player.power = 60;
+  player.guard = 90;
+
+  player.position = 2;
+  player.board[2].type = 'bloomgrove';
+  testApi.triggerTile(room, player, player.board[2]);
+  assert.equal(player.combat.label, 'bloom grove');
+  assert.equal(player.armor, 1);
+  assert.ok(player.hp > player.combat.heroHpAfter);
+
+  player.combat = null;
+  player.position = 3;
+  player.board[3].type = 'ransackedvillage';
+  testApi.triggerTile(room, player, player.board[3]);
+  assert.equal(player.combat.label, 'ransacked village');
+  assert.ok(player.gold > 0);
+
+  player.combat = null;
+  player.position = 4;
+  player.board[4].type = 'embergate';
+  testApi.triggerTile(room, player, player.board[4]);
+  assert.equal(player.combat.label, 'ember gate');
+  assert.ok(player.combat.reward >= 48);
 });
 
 test('new combat terrain advertises and resolves combat stops', () => {

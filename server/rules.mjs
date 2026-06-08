@@ -104,6 +104,14 @@ const combatEncounters = {
     backgroundId: 'grove',
     effect: 'claw'
   },
+  'bloom grove': {
+    enemyId: 'thorn-wolf',
+    enemyName: 'Bloomguard Thorn',
+    enemyIds: ['thorn-wolf', 'mire-slime'],
+    enemyNames: ['Bloomguard Thorn', 'Mire Slime'],
+    backgroundId: 'grove',
+    effect: 'claw'
+  },
   'dire grove': {
     enemyId: 'dire-thorn',
     enemyName: 'Dire Thorn',
@@ -248,6 +256,14 @@ const combatEncounters = {
     backgroundId: 'road',
     effect: 'sword'
   },
+  'ransacked village': {
+    enemyId: 'brigand',
+    enemyName: 'Village Reavers',
+    enemyIds: ['brigand', 'crypt-skeleton'],
+    enemyNames: ['Road Brigand', 'Crypt Skeleton'],
+    backgroundId: 'road',
+    effect: 'sword'
+  },
   'tollgate': {
     enemyId: 'road-bandit',
     enemyName: 'Tollgate Blades',
@@ -269,6 +285,14 @@ const combatEncounters = {
     enemyName: 'Gate Wyrm',
     enemyIds: ['gate-wyrm', 'crown-gate', 'ash-imp'],
     enemyNames: ['Gate Wyrm', 'Crown Gate', 'Ash Imp'],
+    backgroundId: 'forge',
+    effect: 'ember'
+  },
+  'ember gate': {
+    enemyId: 'gate-wyrm',
+    enemyName: 'Ember Gate Wyrm',
+    enemyIds: ['gate-wyrm', 'crown-gate', 'ash-imp'],
+    enemyNames: ['Ember Gate Wyrm', 'Crown Gate', 'Ash Imp'],
     backgroundId: 'forge',
     effect: 'ember'
   },
@@ -520,17 +544,21 @@ export const rivalCards = [
   { id: 'meteor', name: 'Meteor', kind: 'rival', icon: '☄', text: 'Damages a rival and scorches a tile.' },
   { id: 'tax', name: 'Tithe Trap', kind: 'rival', icon: '$', text: 'Steals tempo: rival loses a card or HP.' },
   { id: 'landslide', name: 'Landslide', kind: 'rival', icon: '⬖', text: 'Turns an upcoming rival tile into mire.' },
-  { id: 'cutpurse', name: 'Cutpurse', kind: 'rival', icon: '✂', text: 'Steals a loose loot tempo or wounds instead.' }
+  { id: 'cutpurse', name: 'Cutpurse', kind: 'rival', icon: '✂', text: 'Steals a loose loot tempo or wounds instead.' },
+  { id: 'oblivion', name: 'Oblivion', kind: 'rival', icon: '◌', text: 'Purge one of your non-camp tiles back to road.' }
 ];
 
 const combatBlockingTileTypes = new Set([
   'grove',
+  'bloomgrove',
   'crypt',
   'wolfden',
   'bonepit',
   'ruinedkeep',
+  'ransackedvillage',
   'bloodmoon',
   'wyrmgate',
+  'embergate',
   'spidernest',
   'tollgate',
   'thornmaze',
@@ -1548,6 +1576,65 @@ export function fillCpuOpponents(room, targetCount = roomMaxPlayers(room)) {
   return added;
 }
 
+function neighborLoopTiles(player, tile) {
+  if (!tile || !player.board.length) return [];
+  return [
+    player.board[(tile.index - 1 + player.board.length) % player.board.length],
+    player.board[(tile.index + 1) % player.board.length]
+  ].filter(Boolean);
+}
+
+function keepComboExpiry(targetTile, sourceTile, player) {
+  const sourceExpiry = sourceTile.expiresOnLap ?? player.laps + tileLoopLife(player);
+  targetTile.expiresOnLap = targetTile.expiresOnLap ?? sourceExpiry;
+}
+
+function changeTileForCombo(room, player, tile, nextType, sourceTile, comboId, message) {
+  if (!tile || tile.type === nextType || bossTileTypes.has(tile.type)) return null;
+  const previousType = tile.type;
+  tile.type = nextType;
+  tile.charges = 0;
+  keepComboExpiry(tile, sourceTile, player);
+  emitRuleEvent(room, 'tileChanged', {
+    playerId: player.id,
+    tileIndex: tile.index,
+    tile: cloneJson(visibleTile(tile)),
+    cause: 'tileCombo',
+    comboId,
+    previousType
+  });
+  addLog(room, `${player.name}'s ${message}.`);
+  return { tile, comboId, previousType, nextType };
+}
+
+function applyTerrainCombos(room, player, placedTile) {
+  const changed = [];
+  for (const neighbor of neighborLoopTiles(player, placedTile)) {
+    if (placedTile.type === 'meadow' && neighbor.type === 'grove') {
+      changed.push(changeTileForCombo(room, player, neighbor, 'bloomgrove', placedTile, 'meadow-grove', 'Meadow fed a Grove into Bloomgrove'));
+    } else if (placedTile.type === 'grove' && neighbor.type === 'meadow') {
+      changed.push(changeTileForCombo(room, player, placedTile, 'bloomgrove', neighbor, 'meadow-grove', 'Grove rooted beside Meadow and became Bloomgrove'));
+    } else if (placedTile.type === 'village' && neighbor.type === 'crypt') {
+      changed.push(changeTileForCombo(room, player, placedTile, 'ransackedvillage', neighbor, 'village-crypt', 'Village was ransacked by a nearby Crypt'));
+    } else if (placedTile.type === 'crypt' && neighbor.type === 'village') {
+      changed.push(changeTileForCombo(room, player, neighbor, 'ransackedvillage', placedTile, 'village-crypt', 'Crypt spilled into a Village and ransacked it'));
+    }
+
+    const gate = placedTile.type === 'wyrmgate' ? placedTile : neighbor.type === 'wyrmgate' ? neighbor : null;
+    const forge = placedTile.type === 'forge' ? placedTile : neighbor.type === 'forge' ? neighbor : null;
+    if (gate && forge && (forge.index + 1) % player.board.length === gate.index) {
+      changed.push(changeTileForCombo(room, player, gate, 'embergate', forge, 'forge-wyrmgate', 'Forge stoked the Wyrm Gate into an Embergate'));
+    }
+  }
+
+  const applied = changed.filter(Boolean);
+  if (applied.length > 0) {
+    const summary = applied.map((item) => item.nextType).join(', ');
+    player.event = `${player.event}; combo changed ${summary}`;
+  }
+  return applied.map((item) => item.tile);
+}
+
 export function playTerrain(room, player, cardInstanceId, tileIndex) {
   if (room.status !== 'running') return false;
   if (isStunned(room, player)) return false;
@@ -1603,8 +1690,10 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
       cause: 'mossWardenOvergrowth'
     });
   }
+  const comboTiles = applyTerrainCombos(room, player, tile);
   resolveCurrentCombatTileIfArmed(room, player, tile);
   if (overgrown) resolveCurrentCombatTileIfArmed(room, player, overgrown);
+  for (const comboTile of comboTiles) resolveCurrentCombatTileIfArmed(room, player, comboTile);
   if (isGuidedHuman(room, player)) {
     pushGuidedRecap(room, overgrown
       ? `${card.name} changed two future stops: the placed tile and a free Grove from Moss Warden.`
@@ -1677,12 +1766,66 @@ function resolveCurrentCombatTileIfArmed(room, player, tile) {
   return true;
 }
 
+function canPurgeOwnedTile(player, tile) {
+  return Boolean(
+    tile &&
+    tile.index !== 0 &&
+    tile.type !== 'camp' &&
+    tile.type !== 'road' &&
+    !bossTileTypes.has(tile.type) &&
+    !tile.bossPhaseId &&
+    player.board[tile.index] === tile
+  );
+}
+
+function playOblivion(room, player, card, cardInstanceId, target, tileIndex) {
+  if (target.id !== player.id || !Number.isInteger(tileIndex)) return false;
+  const tile = player.board[tileIndex];
+  if (!canPurgeOwnedTile(player, tile)) return false;
+
+  const previousType = tile.type;
+  player.hand = player.hand.filter((item) => item.instanceId !== cardInstanceId);
+  resetTile(tile);
+  player.cardsPlayed += 1;
+  player.event = `purged tile ${tile.index} to road`;
+  player.lastEventAt = now(room);
+  room.lastActivityAt = now(room);
+  addXp(room, player, 3);
+  addLog(room, `${player.name} played ${card.name}; tile ${tile.index} returned to road.`);
+  emitRuleEvent(room, 'cardPlayed', {
+    playerId: player.id,
+    cardId: card.id,
+    cardInstanceId,
+    kind: card.kind,
+    targetPlayerId: player.id,
+    tileIndex: tile.index
+  });
+  emitRuleEvent(room, 'tileChanged', {
+    playerId: player.id,
+    tileIndex: tile.index,
+    tile: cloneJson(visibleTile(tile)),
+    cause: 'purgeCard',
+    previousType
+  });
+  emitRuleEvent(room, 'playerProjectionChanged', {
+    playerId: player.id,
+    hp: player.hp,
+    score: score(player),
+    level: player.level,
+    cause: 'purgeCard'
+  });
+  checkWinner(room);
+  return true;
+}
+
 export function playRival(room, player, cardInstanceId, targetId, tileIndex = null) {
   if (room.status !== 'running') return false;
   if (isStunned(room, player)) return false;
   const card = player.hand.find((item) => item.instanceId === cardInstanceId);
   const target = room.players[targetId];
-  if (!card || card.kind !== 'rival' || !target || target.id === player.id) return false;
+  if (!card || card.kind !== 'rival' || !target) return false;
+  if (card.id === 'oblivion') return playOblivion(room, player, card, cardInstanceId, target, tileIndex);
+  if (target.id === player.id) return false;
   const hasTileTarget = Number.isInteger(tileIndex);
   const targetedTile = hasTileTarget ? target.board[tileIndex] : null;
   if (hasTileTarget && (!targetedTile || targetedTile.type !== 'road' || targetedTile.index === target.position)) return false;
@@ -2296,6 +2439,7 @@ function stageBossPhaseForPlayer(room, player, config, options = {}) {
   if (!config || player.bossPhase || player.combat || player.pendingBossOutcome || isCombatLocked(room, player)) return false;
   const tileIndexes = bossTileSides.map((side) => side.find((index) => player.board[index]?.type === 'road'));
   if (tileIndexes.some((index) => !Number.isInteger(index))) return false;
+  // TODO(low-clutter boss ante): add a default wager here once the client can surface one pre-boss choice cleanly.
   const phase = {
     id: `${options.kind ?? 'act'}-${options.tier ?? player.loopTier ?? 1}-${player.laps}`,
     kind: options.kind ?? 'act',
@@ -2849,12 +2993,15 @@ function addXp(room, player, amount) {
 
 const dangerTiles = new Set([
   'grove',
+  'bloomgrove',
   'crypt',
   'wolfden',
   'bonepit',
   'ruinedkeep',
+  'ransackedvillage',
   'bloodmoon',
   'wyrmgate',
+  'embergate',
   'obelisk',
   'spidernest',
   'tollgate',
@@ -2865,7 +3012,7 @@ const dangerTiles = new Set([
   'ambush',
   'scorch'
 ]);
-const stackAuraTiles = new Set(['bloodmoon', 'bonepit', 'wolfden', 'wyrmgate', 'thornmaze', 'dragonroost']);
+const stackAuraTiles = new Set(['bloodmoon', 'bonepit', 'wolfden', 'wyrmgate', 'embergate', 'thornmaze', 'dragonroost']);
 const stabilizerTiles = new Set(['meadow', 'village', 'forge', 'shrine', 'mire', 'orchard', 'chapel', 'armory', 'waystone']);
 
 function encounterStack(room, player, tile, baseCount = 1) {
@@ -3223,6 +3370,14 @@ function triggerTile(room, player, tile) {
     player.event = 'campfire recovery';
   } else if (tile.type === 'grove') {
     fight(room, player, 'wolf grove', 8, 10, encounterStack(room, player, tile));
+  } else if (tile.type === 'bloomgrove') {
+    const survived = fight(room, player, 'bloom grove', 9, 15, encounterStack(room, player, tile));
+    if (survived) {
+      const heal = player.heroId === 'moss-warden' ? 7 : 5;
+      player.hp = clamp(player.hp + heal, 0, player.maxHp);
+      player.armor += 1;
+      player.event += `, bloom mend +${heal} hp`;
+    }
   } else if (tile.type === 'meadow') {
     const bonus = player.heroId === 'moss-warden' ? 7 : 4;
     player.hp = clamp(player.hp + bonus, 0, player.maxHp);
@@ -3236,10 +3391,24 @@ function triggerTile(room, player, tile) {
     fight(room, player, 'bone pit', 16, 22, encounterStack(room, player, tile, 2));
   } else if (tile.type === 'ruinedkeep') {
     fight(room, player, 'ruined keep', 18, 24, encounterStack(room, player, tile, 2));
+  } else if (tile.type === 'ransackedvillage') {
+    const survived = fight(room, player, 'ransacked village', 15, 20, encounterStack(room, player, tile));
+    if (survived) {
+      const gold = 7 + (player.loopTier ?? 1) * 3;
+      player.gold = (player.gold ?? 0) + gold;
+      player.event += `, recovered ${gold} gold`;
+    }
   } else if (tile.type === 'bloodmoon') {
     fight(room, player, 'blood moon', 15, 18, encounterStack(room, player, tile, 1));
   } else if (tile.type === 'wyrmgate') {
     fight(room, player, 'wyrm gate', 23, 34, encounterStack(room, player, tile, 3));
+  } else if (tile.type === 'embergate') {
+    const survived = fight(room, player, 'ember gate', 29, 48, encounterStack(room, player, tile, 4));
+    if (survived) {
+      player.armor += 2;
+      if (random(room) < 0.34 + player.lootLuck) drawLoot(room, player);
+      player.event += ', ember spoils claimed';
+    }
   } else if (tile.type === 'forge') {
     player.armor += 3;
     if (isSoloPlayer(room, player)) player.soloCorruption = Math.max(0, (player.soloCorruption ?? 0) - 1);
@@ -3551,6 +3720,11 @@ function botThink(room, player) {
     const target = card.targetMode === 'chosen' ? chooseRivalTarget(room, player) : null;
     playBonk(room, player, card.instanceId, target?.id);
   } else {
+    if (card.id === 'oblivion') {
+      const purgeTile = player.board.find((tile) => canPurgeOwnedTile(player, tile) && dangerTiles.has(tile.type));
+      if (purgeTile) playRival(room, player, card.instanceId, player.id, purgeTile.index);
+      return;
+    }
     const target = chooseRivalTarget(room, player);
     if (target) playRival(room, player, card.instanceId, target.id);
   }

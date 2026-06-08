@@ -55,6 +55,12 @@ const bossLoopSpritePlan = [
   { tileType: 'innergate', base: 'tollgate', accent: [222, 140, 57], symbol: 'gate' }
 ];
 
+const comboTransformationSpritePlan = [
+  { tileType: 'bloomgrove', base: 'grove', accent: [113, 173, 83], symbol: 'bloomgrove' },
+  { tileType: 'ransackedvillage', base: 'village', accent: [181, 88, 55], symbol: 'ransackedvillage' },
+  { tileType: 'embergate', base: 'wyrmgate', accent: [226, 118, 50], symbol: 'embergate' }
+];
+
 const rowCropPlan = [
   { sourceY: 0, sourceHeight: 256 },
   { sourceY: 296, sourceHeight: 256 },
@@ -404,11 +410,55 @@ function drawBossSymbol(image, symbol, accent) {
     drawCircle(image, 128, 95, 46, bright, 5, 0.82);
     drawLine(image, 82, 95, 174, 95, dark, 8, 0.88);
     drawLine(image, 128, 95, 128, 190, bright, 4, 0.72);
+  } else if (symbol === 'bloomgrove') {
+    for (const [x0, y0, x1, y1] of [[54, 190, 108, 76], [85, 202, 128, 58], [128, 206, 157, 66], [179, 193, 205, 84]]) {
+      drawLine(image, x0, y0, x1, y1, dark, 9, 0.86);
+      drawLine(image, x0, y0, x1, y1, bright, 4, 0.78);
+    }
+    for (const [x, y, radius] of [[76, 132, 18], [111, 88, 16], [139, 118, 19], [174, 87, 17], [185, 150, 20], [102, 166, 15]]) {
+      drawDisk(image, x, y, radius, accent, 0.72);
+      drawCircle(image, x, y, radius - 3, bright, 3, 0.72);
+      drawDisk(image, x, y, Math.max(5, radius / 3), [230, 192, 103, 255], 0.72);
+    }
+  } else if (symbol === 'ransackedvillage') {
+    for (const [x0, y0, x1, y1] of [[66, 74, 194, 180], [61, 179, 196, 88], [82, 131, 182, 132]]) {
+      drawLine(image, x0, y0, x1, y1, dark, 13, 0.82);
+      drawLine(image, x0, y0, x1, y1, bright, 5, 0.64);
+    }
+    drawPolygon(image, [[83, 92], [123, 67], [157, 96], [139, 119], [104, 116]], dark, 8, 0.82);
+    drawPolygon(image, [[93, 99], [123, 81], [148, 102], [135, 114], [108, 112]], [92, 54, 43, 255], 5, 0.82);
+    for (const [x, y] of [[79, 171], [107, 188], [151, 178], [180, 162], [159, 79]]) {
+      drawDisk(image, x, y, 7, [221, 172, 82, 255], 0.76);
+      drawCircle(image, x, y, 7, dark, 2, 0.54);
+    }
+    drawLine(image, 59, 207, 199, 207, dark, 6, 0.6);
+  } else if (symbol === 'embergate') {
+    drawLine(image, 73, 196, 73, 93, dark, 13, 0.9);
+    drawLine(image, 183, 196, 183, 93, dark, 13, 0.9);
+    drawCircle(image, 128, 95, 55, dark, 10, 0.9);
+    drawLine(image, 75, 96, 181, 96, dark, 11, 0.9);
+    drawLine(image, 93, 194, 93, 112, bright, 4, 0.82);
+    drawLine(image, 128, 194, 128, 101, bright, 4, 0.82);
+    drawLine(image, 163, 194, 163, 112, bright, 4, 0.82);
+    for (const [x, height, lean] of [[88, 60, -12], [118, 76, 4], [145, 64, 13], [171, 52, 8]]) {
+      drawPolygon(image, [[x - 14, 190], [x + lean, 190 - height], [x + 16, 190]], [117, 48, 35, 255], 6, 0.78);
+      drawPolygon(image, [[x - 7, 187], [x + lean, 195 - height], [x + 9, 187]], bright, 4, 0.78);
+    }
   }
 }
 
 function writeBossLoopSprites(tileSprites) {
   for (const plan of bossLoopSpritePlan) {
+    const base = tileSprites.get(plan.base);
+    if (!base) throw new Error(`Missing base tile sprite ${plan.base} for ${plan.tileType}`);
+    const sprite = cloneImage(base);
+    drawBossSymbol(sprite, plan.symbol, plan.accent);
+    writeFileSync(path.join(outputDir, `${plan.tileType}.png`), encodePng(sprite));
+  }
+}
+
+function writeComboTransformationSprites(tileSprites) {
+  for (const plan of comboTransformationSpritePlan) {
     const base = tileSprites.get(plan.base);
     if (!base) throw new Error(`Missing base tile sprite ${plan.base} for ${plan.tileType}`);
     const sprite = cloneImage(base);
@@ -431,6 +481,7 @@ function writeTileSprites() {
     writeFileSync(path.join(outputDir, `${plan.tileType}.png`), encodePng(sprite));
   }
   writeBossLoopSprites(tileSprites);
+  writeComboTransformationSprites(tileSprites);
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
@@ -443,6 +494,7 @@ export {
   decodePng,
   bossLoopSpritePlan,
   bossLoopTileTypes,
+  comboTransformationSpritePlan,
   sourceAtlasPath,
   spriteSize,
   tileSpritePlan,

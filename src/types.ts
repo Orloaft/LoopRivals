@@ -32,10 +32,18 @@ export type Card = {
   kind: 'terrain' | 'rival' | 'bonk';
   tile?: string;
   rarity?: 'common' | 'rare' | 'relic';
+  combo?: ProjectedMechanicHint;
   targetMode?: 'leader' | 'chosen';
   stunSeconds?: number;
   icon: string;
   text: string;
+};
+
+export type ProjectedMechanicHint = {
+  label: string;
+  text: string;
+  value?: string;
+  tone?: 'safe' | 'danger' | 'gold' | 'arcane';
 };
 
 export type Trait = {
@@ -114,6 +122,7 @@ export type Tile = {
   type: string;
   charges: number;
   expiresOnLap?: number | null;
+  omen?: ProjectedMechanicHint | null;
   bossPhaseId?: string;
   bossChunkIndex?: number;
   movementStopKind?: 'none' | 'combat';
@@ -156,6 +165,8 @@ export type OnboardingState = {
   detail: string;
   recommendedTileIndexes: number[];
   recaps: string[];
+  speaker?: string;
+  mechanics?: ProjectedMechanicHint[];
   completed: boolean;
   startedAt: number;
   completedAt: number | null;
@@ -293,6 +304,9 @@ export type Player = {
     tileIndex?: number;
     bossPhaseId?: string;
   } | null;
+  purge?: ProjectedMechanicHint | null;
+  bossWager?: ProjectedMechanicHint | null;
+  relicTriggers?: ProjectedMechanicHint[];
   soloGatesCleared: number[];
   soloCorruption: number;
   soloGateAttempts: number;

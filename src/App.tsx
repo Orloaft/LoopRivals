@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
-import { Activity, Bot, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield, ShoppingBag } from 'lucide-react';
+import { Activity, Bot, Crown, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield, ShoppingBag, Sparkles } from 'lucide-react';
 import { isAuthorityStateStale } from './authority-timeline';
 import { createRoomAuthorityBatcher } from './client-authority-batcher';
 import { createClientCommandTransport } from './client-command-transport';
@@ -21,6 +21,7 @@ import {
   InfoPopover,
   MobileDrawer,
   MobileRivalStrip,
+  OnboardingCoach,
   PhaseStrip,
   PlayerPanel,
   RivalIntel,
@@ -828,7 +829,8 @@ function App() {
   const arrangedPlayers = focusedPlayer
     ? [focusedPlayer, ...game.players.filter((player) => player.id !== focusedPlayer.id)]
     : game.players;
-  const rivalTargetCard = activeCard?.kind === 'rival' ? activeCard : null;
+  const purgeTargetCard = activeCard?.kind === 'rival' && activeCard.id === 'oblivion' ? activeCard : null;
+  const rivalTargetCard = activeCard?.kind === 'rival' && activeCard.id !== 'oblivion' ? activeCard : null;
   const bonkTargetCard = activeCard?.kind === 'bonk' ? activeCard : null;
   const highestScoreRival = game.players
     .filter((player) => player.id !== me.id)
@@ -840,6 +842,19 @@ function App() {
   const bonkTargets = bonkTargetCard?.targetMode === 'chosen'
     ? game.players.filter((player) => player.id !== me.id)
     : highestScoreRival ? [highestScoreRival] : [];
+  const activeCardGuidance = activeCard ? activeCard.combo?.text ?? (
+    activeCard.kind === 'terrain'
+      ? 'Place it where the next lap stays legible: haven before peril, engine before a boss push, danger only with recovery nearby.'
+      : activeCard.kind === 'bonk'
+        ? 'Use it when a rival is one beat from payoff, a gate push, or a clean lead.'
+        : activeCard.id === 'oblivion'
+          ? 'Choose one of your own changed tiles. Clear the route before a bad combo or hazard keeps taxing every lap.'
+        : 'Aim at a rival plan you can see: a payoff tile, a greedy road, or the leader about to cash out.'
+  ) : '';
+  const showOnboardingCoach = Boolean(
+    game.onboarding?.enabled &&
+    (!game.onboarding.playerId || game.onboarding.playerId === me.id)
+  );
 
   return (
     <main className={`game-shell ${authorityPaused ? 'authority-paused' : ''}`}>
@@ -901,6 +916,15 @@ function App() {
           </div>
         </section>
       )}
+      {showOnboardingCoach && game.onboarding && (
+        <OnboardingCoach
+          onboarding={game.onboarding}
+          player={me}
+          config={config}
+          activeCard={activeCard}
+          onOpenRules={() => setShowHelp(true)}
+        />
+      )}
 
       <section className="play-layout">
         <section className={`arena-grid ${focusedPlayerId !== me.id ? 'has-focus' : ''}`}>
@@ -918,7 +942,11 @@ function App() {
               focused={player.id === focusedPlayerId}
               selectedCard={player.id === me.id ? activeCard : null}
               draggingCard={player.id === me.id ? activeCard : null}
-              rivalTargetCard={player.id !== me.id && (!bonkTargetCard || bonkTargetCard.targetMode === 'chosen' || player.id === highestScoreRival?.id) ? rivalTargetCard ?? bonkTargetCard : null}
+              rivalTargetCard={player.id === me.id && purgeTargetCard
+                ? purgeTargetCard
+                : player.id !== me.id && (!bonkTargetCard || bonkTargetCard.targetMode === 'chosen' || player.id === highestScoreRival?.id)
+                  ? rivalTargetCard ?? bonkTargetCard
+                  : null}
               recommendedTileIndexes={player.id === me.id ? game.onboarding?.recommendedTileIndexes ?? [] : []}
               onTile={player.id === me.id ? placeCard : undefined}
               onRivalTarget={player.id !== me.id ? (cardId) => {
@@ -926,7 +954,9 @@ function App() {
                 if (card?.kind === 'bonk') playBonk(player.id, cardId);
                 else playRival(player.id, cardId);
               } : undefined}
-              onRivalTile={player.id !== me.id && rivalTargetCard ? (tileIndex, cardId) => playRivalOnTile(player.id, tileIndex, cardId) : undefined}
+              onRivalTile={(player.id === me.id && purgeTargetCard) || (player.id !== me.id && rivalTargetCard)
+                ? (tileIndex, cardId) => playRivalOnTile(player.id, tileIndex, cardId)
+                : undefined}
               onStartRoom={startRoom}
               onActivateAbility={player.id === me.id ? activateHeroAbility : undefined}
               onFocus={() => focusBoard(player.id)}
@@ -984,8 +1014,15 @@ function App() {
           />
           <div className={`action-hint ${activeCard ? activeCard.kind : 'empty'}`} aria-hidden={!activeCard}>
             <strong>{activeCard ? `${activeCard.icon} ${activeCard.name}` : 'No card'}</strong>
-            <span>{activeCard ? (activeCard.kind === 'terrain' ? 'choose a loop tile' : activeCard.kind === 'bonk' ? (activeCard.targetMode === 'chosen' ? 'choose who gets stunned' : 'bonks the leading rival') : 'choose a rival or road trap') : 'standing by'}</span>
+            <span>{activeCard ? (activeCard.kind === 'terrain' ? 'choose a loop tile' : activeCard.kind === 'bonk' ? (activeCard.targetMode === 'chosen' ? 'choose who gets stunned' : 'bonks the leading rival') : activeCard.id === 'oblivion' ? 'choose your tile to purge' : 'choose a rival or road trap') : 'standing by'}</span>
           </div>
+          {activeCard && (
+            <div className="mobile-card-counsel" role="status" aria-live="polite">
+              <strong>{activeCard.kind === 'terrain' ? 'Road counsel' : activeCard.kind === 'bonk' ? 'Timing counsel' : 'Rival counsel'}</strong>
+              <span>{activeCard.text}</span>
+              <small>{activeCardGuidance}</small>
+            </div>
+          )}
           {(rivalTargetCard || bonkTargetCard) && (
             <div className="target-row">
               <span className="target-label">{bonkTargetCard ? 'bonk' : 'strike'}</span>
@@ -1135,29 +1172,43 @@ function App() {
         <section className="tutorial-overlay" role="dialog" aria-modal="true">
           <div className="tutorial-panel">
             <div className="tutorial-head">
-              <strong>First Run</strong>
+              <div>
+                <span>The Warden speaks</span>
+                <strong>First Run</strong>
+                <p>Learn the road by changing it. Loopduel is a race, a duel, and a bargain with the board.</p>
+              </div>
               <button className="icon-action" onClick={closeTutorial}>Close</button>
             </div>
             <div className="tutorial-steps">
               <article>
-                <span>1</span>
-                <strong>Build the loop</strong>
-                <p>Drop terrain cards onto your board. Safe tiles keep you alive; danger tiles pay XP and loot.</p>
+                <span><Shield size={16} /></span>
+                <strong>Shape the loop</strong>
+                <p>Drop terrain onto your own road. Havens keep you alive; peril pays XP and loot when recovery is close.</p>
               </article>
               <article>
-                <span>2</span>
-                <strong>Equip and choose traits</strong>
-                <p>Loot and talents turn early survival into enough power for the Briar Warden, Crown Sentinel, and Tyrant.</p>
+                <span><GitBranch size={16} /></span>
+                <strong>Read combos</strong>
+                <p>Some pairings can transform the road. Put engines, havens, and danger where the next lap stays readable.</p>
               </article>
               <article>
-                <span>3</span>
-                <strong>Control rivals</strong>
-                <p>Rival and bonk cards slow the leader. In solo, the deck favors terrain so the run stays build-focused.</p>
+                <span><ScrollText size={16} /></span>
+                <strong>Watch omens</strong>
+                <p>When the calendar appears, its status copy is the truth. The board should not need a crown of badges.</p>
               </article>
               <article>
-                <span>4</span>
-                <strong>Claim the loop</strong>
-                <p>Completed loops wake an act boss. The final clear needs act III, four more loops, and a clean Tyrant fight.</p>
+                <span><RotateCcw size={16} /></span>
+                <strong>Purge with intent</strong>
+                <p>Purge is a reset, not a panic button. Spend it to cut away a poisoned route before it snowballs.</p>
+              </article>
+              <article>
+                <span><Crown size={16} /></span>
+                <strong>Pay the boss ante</strong>
+                <p>Act bosses and the Tyrant test the whole build. Wager only when your stats, gear, and road can answer.</p>
+              </article>
+              <article>
+                <span><Sparkles size={16} /></span>
+                <strong>Trust restrained relics</strong>
+                <p>Relics should fire from clear moments. Watch status copy and the log, not hidden hover text.</p>
               </article>
             </div>
             <div className="tutorial-actions">

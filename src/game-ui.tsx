@@ -15,7 +15,7 @@ import {
 import { configureGameplayRafMetrics, gameplayRaf, type GameplayRafFrame } from './gameplay-raf';
 import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, pendingCombatStopCursor, playerMotionIsLocked, pointAlongBoard, serverPresentationClock, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, visualSegmentDurationMs, type RunnerPoint } from './movement';
 import { loopduelSmoothnessMetrics } from './smoothness-metrics';
-import type { Card, Combat, CombatBeat, EquipmentSlot, GameConfig, GameState, Loot, Player, RoomSettings, ShopOffer, Tile, Trait } from './types';
+import type { Card, Combat, CombatBeat, EquipmentSlot, GameConfig, GameState, Loot, OnboardingState, Player, ProjectedMechanicHint, RoomSettings, ShopOffer, Tile, Trait } from './types';
 
 configureGameplayRafMetrics(loopduelSmoothnessMetrics);
 
@@ -49,13 +49,16 @@ const tileNames: Record<string, string> = {
   road: 'Road',
   camp: 'Camp',
   grove: 'Grove',
+  bloomgrove: 'Bloom Grove',
   meadow: 'Meadow',
   crypt: 'Crypt',
   wolfden: 'Wolf Den',
   bonepit: 'Bone Pit',
   ruinedkeep: 'Ruined Keep',
+  ransackedvillage: 'Ransacked Village',
   bloodmoon: 'Blood Moon',
   wyrmgate: 'Wyrm Gate',
+  embergate: 'Ember Gate',
   forge: 'Forge',
   shrine: 'Shrine',
   mire: 'Mire',
@@ -98,13 +101,16 @@ const tileGlyphs: Record<string, string> = {
   road: '',
   camp: '⌂',
   grove: '♣',
+  bloomgrove: '✿',
   meadow: '✦',
   crypt: '☗',
   wolfden: '♣',
   bonepit: '☗',
   ruinedkeep: '⚔',
+  ransackedvillage: '⚔',
   bloodmoon: '☾',
   wyrmgate: '◆',
+  embergate: '◆',
   forge: '⚒',
   shrine: '✚',
   mire: '≈',
@@ -169,13 +175,16 @@ function tileDescription(tile: Tile) {
     road: 'Can trigger a skirmish, a breather, or a sprint.',
     camp: 'Safe reset point. Crossing camp heals the runner.',
     grove: 'A steady fight tile with XP and loot pressure.',
+    bloomgrove: 'A transformed Grove that fights, then mends survivors.',
     meadow: 'Healing terrain. Moss Warden gains extra value here.',
     crypt: 'Dangerous fight tile with better loot odds.',
     wolfden: 'A pack fight tile that stacks hard beside danger.',
     bonepit: 'A two-enemy undead fight with stronger loot pressure.',
     ruinedkeep: 'An elite raider encounter with high XP and loot odds.',
+    ransackedvillage: 'A Village-Crypt transformation with danger and recovered gold.',
     bloodmoon: 'A danger aura that makes nearby fights stack larger.',
     wyrmgate: 'A boss-class fight tile for powered-up runners.',
+    embergate: 'A Forge-stoked Wyrm Gate with harsher threat and richer spoils.',
     forge: 'Grants armor and has strong loot tempo.',
     shrine: 'XP burst that accelerates trait choices.',
     mire: 'Slows movement but draws cards.',
@@ -200,10 +209,10 @@ function tileDescription(tile: Tile) {
   return descriptions[tile.type] ?? 'Unknown loop tile.';
 }
 
-const dangerousTileTypes = new Set(['grove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'spidernest', 'tollgate', 'thornmaze', 'graveyard', 'reliquary', 'dragonroost', 'ambush', 'scorch']);
-const combatPlacementTileTypes = new Set(['grove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'spidernest', 'tollgate', 'thornmaze', 'graveyard', 'dragonroost', 'ambush']);
+const dangerousTileTypes = new Set(['grove', 'bloomgrove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'ransackedvillage', 'bloodmoon', 'wyrmgate', 'embergate', 'obelisk', 'spidernest', 'tollgate', 'thornmaze', 'graveyard', 'reliquary', 'dragonroost', 'ambush', 'scorch']);
+const combatPlacementTileTypes = new Set(['grove', 'bloomgrove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'ransackedvillage', 'bloodmoon', 'wyrmgate', 'embergate', 'spidernest', 'tollgate', 'thornmaze', 'graveyard', 'dragonroost', 'ambush']);
 const stabilizerTileTypes = new Set(['camp', 'meadow', 'village', 'forge', 'shrine', 'mire', 'orchard', 'chapel', 'armory', 'waystone']);
-const payoffTileTypes = new Set(['crypt', 'bonepit', 'ruinedkeep', 'bloodmoon', 'wyrmgate', 'obelisk', 'forge', 'watchtower', 'market', 'armory', 'waystone', 'scriptorium', 'tollgate', 'reliquary', 'dragonroost']);
+const payoffTileTypes = new Set(['bloomgrove', 'crypt', 'bonepit', 'ruinedkeep', 'ransackedvillage', 'bloodmoon', 'wyrmgate', 'embergate', 'obelisk', 'forge', 'watchtower', 'market', 'armory', 'waystone', 'scriptorium', 'tollgate', 'reliquary', 'dragonroost']);
 const defaultTalentMaxRanks = 3;
 
 function traitMaxRanks(trait: Trait) {
@@ -310,6 +319,7 @@ function runnerStatusLabel(player: Player) {
 }
 
 function comboHint(card: Card) {
+  if (card.combo?.text) return card.combo.text;
   if (card.kind === 'rival') return 'Best when a rival is near a danger tile or marked as leader.';
   if (card.kind === 'bonk') return card.targetMode === 'chosen' ? 'Save for a gate push or a rival about to cash out.' : 'Tempo answer when the leader is about to spike.';
   if (card.tile === 'bloodmoon') return 'Place within two tiles of Crypt, Wolf Den, or Bone Pit to grow enemy stacks.';
@@ -339,6 +349,214 @@ function cardFaceClass(card: Card) {
   if (card.kind === 'rival') return 'rival';
   if (card.kind === 'bonk') return `bonk ${card.rarity ?? 'common'}`;
   return `terrain ${card.tile ?? 'road'}`;
+}
+
+type CoachLesson = {
+  speaker: string;
+  title: string;
+  prompt: string;
+  detail: string;
+};
+
+const guidedLessons: Record<string, CoachLesson> = {
+  welcome: {
+    speaker: 'The Warden',
+    title: 'At the thorn gate',
+    prompt: 'Runner, the loop remembers every kindness and every wound you lay into its road.',
+    detail: 'Place terrain for future laps. Havens keep breath in your ribs; peril pays only if you survive it.'
+  },
+  'place-safe': {
+    speaker: 'The Warden',
+    title: 'First mercy',
+    prompt: 'Set a haven before the Crypt. A brave road without recovery is only a prettier grave.',
+    detail: 'Drop Meadow on the marked tile. The lesson is timing: healing belongs before danger, not after panic.'
+  },
+  'prep-threat': {
+    speaker: 'The Warden',
+    title: 'Sharpen the road',
+    prompt: 'The Crypt and Blood Moon are awake. Add steel, moss, or a readable fight while the path is still yours.',
+    detail: 'Engines like Forge and controlled peril like Grove turn survival into XP, loot, and build momentum.'
+  },
+  'build-fork': {
+    speaker: 'The Warden',
+    title: 'Choose your hunger',
+    prompt: 'Every card is a bargain: shelter the runner, feed the engine, or let danger grow teeth.',
+    detail: 'Good placement creates a plan you can read on the next lap. Bad greed creates a funeral procession.'
+  },
+  rival: {
+    speaker: 'The Warden',
+    title: 'A second shadow',
+    prompt: 'Vesper has started their own engine. Strike when their next steps point at payoff.',
+    detail: 'Rival and bonk cards are timing tools. Use them from portrait chips or the rival board, never from guesswork.'
+  },
+  'free-run': {
+    speaker: 'The Warden',
+    title: 'The leash is cut',
+    prompt: 'You know the first laws now. Build toward the next act boss and read the log when the loop bites back.',
+    detail: 'Bosses test the whole road: stats, recovery, danger spacing, and whether your greed can pay its debt.'
+  },
+  debrief: {
+    speaker: 'The Warden',
+    title: 'Ashes counted',
+    prompt: 'The duel is over. Keep the lesson that hurt the most; the loop will ask for it again.',
+    detail: 'Deaths, missed recovery, and late rival cards are clues, not scolding. Shape the next run around them.'
+  }
+};
+
+const coreMechanicRunes: ProjectedMechanicHint[] = [
+  {
+    label: 'Combos',
+    value: 'shape',
+    tone: 'arcane',
+    text: 'Some card pairings can transform the road. Put havens, engines, and peril where their next lap can be read.'
+  },
+  {
+    label: 'Omens',
+    value: 'calendar',
+    tone: 'arcane',
+    text: 'When the moon writes a date, follow the status copy. The calendar should teach the turn, not clutter the tiles.'
+  },
+  {
+    label: 'Purge',
+    value: 'reset',
+    tone: 'safe',
+    text: 'A purge is a deliberate reset. Spend it to clear a poisoned plan before the board snowballs.'
+  },
+  {
+    label: 'Wager',
+    value: 'boss',
+    tone: 'danger',
+    text: 'Boss gates ask for an ante in risk, time, or gold. Pay only when your loop can survive the answer.'
+  },
+  {
+    label: 'Relics',
+    value: 'trigger',
+    tone: 'gold',
+    text: 'Relics should whisper from narrow triggers. Watch the log and status copy instead of hunting for badges.'
+  }
+];
+
+function onboardingLesson(onboarding: OnboardingState): CoachLesson {
+  const scripted = guidedLessons[onboarding.completed ? 'debrief' : onboarding.step];
+  if (!scripted) {
+    return {
+      speaker: onboarding.speaker ?? guidedLessons.welcome.speaker,
+      title: onboarding.title || guidedLessons.welcome.title,
+      prompt: onboarding.prompt || guidedLessons.welcome.prompt,
+      detail: onboarding.detail || guidedLessons.welcome.detail
+    };
+  }
+  return {
+    speaker: onboarding.speaker ?? scripted.speaker,
+    title: scripted.title,
+    prompt: scripted.prompt,
+    detail: scripted.detail
+  };
+}
+
+function coreMechanics(config: GameConfig): ProjectedMechanicHint[] {
+  const haven = config.cards.find((card) => card.kind === 'terrain' && stabilizerTileTypes.has(card.tile ?? ''));
+  const peril = config.cards.find((card) => card.kind === 'terrain' && dangerousTileTypes.has(card.tile ?? ''));
+  return coreMechanicRunes.map((hint) => (
+    hint.label === 'Combos' && haven && peril
+      ? { ...hint, text: `${haven.name} near ${peril.name} is the shape of the lesson: safety, engine, and danger become readable before they become lethal.` }
+      : hint
+  ));
+}
+
+function projectedMechanics(player: Player, activeCard: Card | null, config: GameConfig): ProjectedMechanicHint[] {
+  const boardOmen = player.board.find((tile) => tile.omen)?.omen ?? null;
+  const activeCombo = activeCard ? {
+    label: activeCard.kind === 'terrain' ? 'Held terrain' : activeCard.kind === 'bonk' ? 'Held bonk' : 'Held rival',
+    value: activeCard.name,
+    tone: activeCard.kind === 'terrain' && dangerousTileTypes.has(activeCard.tile ?? '') ? 'danger' : 'arcane',
+    text: comboHint(activeCard)
+  } satisfies ProjectedMechanicHint : null;
+  const bossWager = player.bossWager ?? (player.bossPhase ? {
+    label: 'Boss wager',
+    value: player.bossPhase.label,
+    tone: 'danger',
+    text: `${player.bossPhase.remainingChunks} seal${player.bossPhase.remainingChunks === 1 ? '' : 's'} remain. Treat each attempt as an ante against your whole build.`
+  } satisfies ProjectedMechanicHint : null);
+  const relicTrigger = player.relicTriggers?.[0] ?? (player.loot.some((item) => item.rarity === 'relic') ? {
+    label: 'Relic trigger',
+    value: 'equipped',
+    tone: 'gold',
+    text: 'Your relics should fire from specific moments. Read the combat log when they stir.'
+  } satisfies ProjectedMechanicHint : null);
+
+  return [
+    activeCombo,
+    boardOmen,
+    player.purge,
+    bossWager,
+    relicTrigger,
+    ...coreMechanics(config)
+  ].filter((hint): hint is ProjectedMechanicHint => Boolean(hint));
+}
+
+function OnboardingCoach({
+  onboarding,
+  player,
+  config,
+  activeCard,
+  onOpenRules
+}: {
+  onboarding: OnboardingState;
+  player: Player;
+  config: GameConfig;
+  activeCard: Card | null;
+  onOpenRules: () => void;
+}) {
+  const lesson = onboardingLesson(onboarding);
+  const recommendedNames = onboarding.recommendedTileIndexes
+    .map((index) => player.board[index])
+    .filter((tile): tile is Tile => Boolean(tile))
+    .map((tile) => tileNames[tile.type] ?? `Tile ${tile.index + 1}`)
+    .slice(0, 3);
+  const mechanics = [
+    ...(onboarding.mechanics ?? []),
+    ...projectedMechanics(player, activeCard, config)
+  ].slice(0, 5);
+  const facts = [
+    recommendedNames.length > 0 ? `Marked: ${recommendedNames.join(', ')}` : `Lap ${player.laps}`,
+    `${player.hand.length} cards in hand`,
+    player.pendingTraits.length > 0 ? `${player.pendingTraits.length} trait choice${player.pendingTraits.length === 1 ? '' : 's'}` : `${Math.ceil(player.hp)}/${player.maxHp} HP`
+  ];
+
+  return (
+    <section className={`onboarding-coach ${onboarding.completed ? 'debrief' : ''}`} aria-live="polite">
+      <div className="coach-copy">
+        <span>{lesson.speaker}</span>
+        <strong>{lesson.title}</strong>
+        <p>{lesson.prompt}</p>
+        <small>{lesson.detail}</small>
+      </div>
+      <div className="coach-facts" aria-label="Current tutorial status">
+        {facts.map((fact) => <span key={fact}>{fact}</span>)}
+      </div>
+      <div className="coach-runes" aria-label="Loop lessons">
+        {mechanics.map((hint, index) => (
+          <article key={`${hint.label}-${hint.value ?? index}`} className={`coach-rune ${hint.tone ?? 'arcane'}`}>
+            <strong>{hint.label}</strong>
+            {hint.value && <span>{hint.value}</span>}
+            <p>{hint.text}</p>
+          </article>
+        ))}
+      </div>
+      {onboarding.recaps.length > 0 && (
+        <div className="coach-recaps" aria-label="Recent tutorial lessons">
+          {onboarding.recaps.slice(0, 2).map((line) => <span key={line}>{line}</span>)}
+        </div>
+      )}
+      <div className="coach-actions">
+        <button className="icon-action" onClick={onOpenRules}>
+          <HelpCircle size={17} />
+          Rules
+        </button>
+      </div>
+    </section>
+  );
 }
 
 function InfoPopover({
@@ -1925,7 +2143,7 @@ const BoardTileButton = memo(function BoardTileButton({
           tile.charges > 0 ? `${tile.charges} charge${tile.charges === 1 ? '' : 's'} left` : tile.expiresOnLap ? `Expires on lap ${tile.expiresOnLap}` : 'Permanent tile',
           'Loop path'
         ]}
-        hint={placementHint ?? (canPlaceRivalTile ? `Arm ${rivalTargetCard?.name} here` : undefined)}
+        hint={placementHint ?? (canPlaceRivalTile ? (rivalTargetCard?.id === 'oblivion' ? `Purge ${tileNames[tile.type] ?? tile.type}` : `Arm ${rivalTargetCard?.name} here`) : undefined)}
         className="tile-pop"
       />
     </button>
@@ -2170,7 +2388,11 @@ const PlayerPanel = memo(function PlayerPanel({
           const placementBlocked = combatPlacementBlocked(player, tile, selectedCard, serverNow, receivedAt, authorityPaused);
           const placementHint = terrainPlacementHint(player, tile, selectedCard, serverNow, receivedAt, authorityPaused);
           const canPlaceTerrain = Boolean(onTile && selectedCard?.kind === 'terrain' && tile.type !== 'camp' && !placementBlocked);
-          const canPlaceRivalTile = Boolean(onRivalTile && rivalTargetCard && tile.type === 'road' && player.position !== tile.index);
+          const canPlaceRivalTile = Boolean(onRivalTile && rivalTargetCard && (
+            rivalTargetCard.id === 'oblivion'
+              ? tile.type !== 'camp' && tile.type !== 'road' && !tile.bossPhaseId
+              : tile.type === 'road' && player.position !== tile.index
+          ));
           const recommended = recommendedTileIndexes.includes(tile.index);
           return (
             <BoardTileButton
@@ -2601,6 +2823,7 @@ export {
   InfoPopover,
   MobileDrawer,
   MobileRivalStrip,
+  OnboardingCoach,
   PhaseStrip,
   PlayerPanel,
   RivalIntel,

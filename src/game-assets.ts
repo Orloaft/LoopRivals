@@ -115,9 +115,16 @@ const bossLoopTileArtIds = [
   'innergate'
 ] as const;
 
+const comboTransformationTileArtIds = [
+  'bloomgrove',
+  'ransackedvillage',
+  'embergate'
+] as const;
+
 const tileArtIds = [
   ...terrainTileArtIds,
-  ...bossLoopTileArtIds
+  ...bossLoopTileArtIds,
+  ...comboTransformationTileArtIds
 ] as const;
 
 function tileArtUrl(tileId: typeof tileArtIds[number]) {
