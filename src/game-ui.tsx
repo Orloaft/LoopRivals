@@ -625,8 +625,39 @@ function InfoPopover({
   hint?: string;
   className?: string;
 }) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  // The popover is centered above its trigger via pure CSS, so near a screen
+  // edge it spills off and gets clipped. On hover/focus, measure it and nudge it
+  // back inside the viewport (horizontal clamp) or flip it below (vertical), via
+  // a CSS var + class the stylesheet consumes. Runs only on the user's
+  // hover/focus, so the forced layout read is negligible.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const trigger = el?.parentElement;
+    if (!el || !trigger) return;
+    const reposition = () => {
+      el.style.setProperty('--pop-shift-x', '0px');
+      el.classList.remove('pop-flip-below');
+      const rect = el.getBoundingClientRect();
+      // Skip popovers that aren't laid out (display:none at this breakpoint) —
+      // a 0×0 rect would otherwise yield a bogus shift.
+      if (rect.width === 0 && rect.height === 0) return;
+      const margin = 8;
+      let shift = 0;
+      if (rect.left < margin) shift = margin - rect.left;
+      else if (rect.right > window.innerWidth - margin) shift = window.innerWidth - margin - rect.right;
+      if (shift !== 0) el.style.setProperty('--pop-shift-x', `${Math.round(shift)}px`);
+      if (rect.top < margin) el.classList.add('pop-flip-below');
+    };
+    trigger.addEventListener('pointerenter', reposition);
+    trigger.addEventListener('focusin', reposition);
+    return () => {
+      trigger.removeEventListener('pointerenter', reposition);
+      trigger.removeEventListener('focusin', reposition);
+    };
+  }, []);
   return (
-    <span className={`hover-pop ${className}`}>
+    <span ref={ref} className={`hover-pop ${className}`}>
       {eyebrow && <em>{eyebrow}</em>}
       <strong>{title}</strong>
       {body && <span>{body}</span>}

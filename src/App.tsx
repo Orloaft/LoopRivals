@@ -505,8 +505,23 @@ function App() {
       });
     }
 
+    // Safety net: a native-drag node can be detached by a server-snapshot
+    // re-render mid-drag, so its own onDragEnd never fires and the drag ghost
+    // stays stuck (the relic square at top-left). Clear drag state on ANY
+    // global drag end / drop, and let Escape dismiss it.
+    function endDrag() {
+      setDragCardId(null);
+      setDragLootId(null);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') endDrag();
+    }
+
     window.addEventListener('drag', trackDrag, true);
     window.addEventListener('dragover', trackDrag, true);
+    window.addEventListener('dragend', endDrag, true);
+    window.addEventListener('drop', endDrag, true);
+    window.addEventListener('keydown', onKeyDown);
     return () => {
       document.body.classList.remove('card-drag-active');
       document.body.classList.remove('loot-drag-active');
@@ -514,6 +529,9 @@ function App() {
       dragFrameRef.current = null;
       window.removeEventListener('drag', trackDrag, true);
       window.removeEventListener('dragover', trackDrag, true);
+      window.removeEventListener('dragend', endDrag, true);
+      window.removeEventListener('drop', endDrag, true);
+      window.removeEventListener('keydown', onKeyDown);
     };
   }, [draggedCard, draggedLoot]);
 
