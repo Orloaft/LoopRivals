@@ -7307,42 +7307,112 @@ body.loot-drag-active * {
   white-space: nowrap;
 }
 
+/* The 7 controls are absolutely placed onto the painted slots in the bar art; each button's
+   horizontal center is set inline (DOCK_SLOT_CX, measured from the dock PNG). The container
+   spans the slot band and is click-through so only the slots themselves are interactive. */
 .side-controls {
   position: absolute;
-  left: 18%;
-  right: 18%;
-  top: 87.7%;
-  height: 4.9%;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 1.4%;
+  left: 0;
+  right: 0;
+  top: 88.3%;
+  height: 4.3%;
+  pointer-events: none;
 }
 
 .side-control-button {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  height: 100%;
+  position: absolute;
+  top: 50%;
+  width: 10.5%;
+  aspect-ratio: 1;
   padding: 0;
   border: 0;
   border-radius: 0;
-  color: var(--gold-bright);
   background: transparent;
-  font-size: 0.74rem;
-  font-weight: 900;
-  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.88));
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: pointer;
 }
 
-.side-control-button span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* Bespoke painterly icon (talent medallion today; other slots fill in once art exists). */
+.dock-slot-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: center / contain no-repeat;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.55));
+}
+
+/* Center-slot gear: opens the full room/settings menu. */
+.gear-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dock-slot-gear {
+  display: block;
+  width: 76%;
+  height: 76%;
+  color: #c99c49;
+  filter:
+    drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7))
+    drop-shadow(0 1px 0 rgba(255, 231, 170, 0.22));
+}
+
+.gear-slot:not(:disabled):hover .dock-slot-gear,
+.gear-slot:not(:disabled):focus-visible .dock-slot-gear {
+  color: var(--gold-bright);
+  filter:
+    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7))
+    drop-shadow(0 0 6px color-mix(in srgb, var(--gold) 50%, transparent));
+}
+
+/* Icon-less slots: a faint hover glow gives an affordance while the painted slot reads through. */
+.side-control-button:not(.talent-slot):not(:disabled)::before {
+  content: '';
+  position: absolute;
+  inset: 14%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--gold) 30%, transparent), transparent 68%);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
 }
 
 .side-control-button:not(:disabled):hover,
-.side-control-button:not(:disabled):focus-visible,
+.side-control-button:not(:disabled):focus-visible {
+  z-index: 8;
+}
+
+.side-control-button:not(.talent-slot):not(:disabled):hover::before,
+.side-control-button:not(.talent-slot):not(:disabled):focus-visible::before {
+  opacity: 1;
+}
+
+.side-control-button:not(:disabled):hover .dock-slot-icon,
+.side-control-button:not(:disabled):focus-visible .dock-slot-icon {
+  filter:
+    drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6))
+    drop-shadow(0 0 6px color-mix(in srgb, var(--gold) 48%, transparent));
+}
+
+.dock-slot-badge {
+  position: absolute;
+  top: 2%;
+  right: 0;
+  min-width: 1.2em;
+  padding: 0 0.22em;
+  font-size: 0.58rem;
+  font-weight: 900;
+  line-height: 1.35;
+  text-align: center;
+  color: #fff;
+  background: #b3261e;
+  border-radius: 999px;
+  box-shadow: 0 0 6px rgba(244, 63, 50, 0.62);
+  pointer-events: none;
+}
+
 .side-loot:hover,
 .side-loot:focus-visible,
 .side-trait:hover,

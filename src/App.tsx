@@ -1091,14 +1091,7 @@ function App() {
           onLootDragEnd={() => setDragLootId(null)}
           draggingLootId={dragLootId}
           onMenu={() => setShowMenu(true)}
-          onAddBot={addBot}
-          onFillCpu={fillCpu}
-          onStartRoom={startRoom}
           isHost={isHost}
-          onSettings={updateRoomSettings}
-          profile={profile}
-          bgmOn={bgmOn}
-          onToggleBgm={() => setBgmOn((on) => !on)}
         />
         <button
           type="button"
@@ -1254,6 +1247,8 @@ function App() {
           onSettings={updateRoomSettings}
           inviteUrl={inviteUrl(game.id)}
           profile={profile}
+          bgmOn={bgmOn}
+          onToggleBgm={() => setBgmOn((on) => !on)}
           onReset={() => { resetRoom(); setShowMenu(false); }}
           onRules={() => { setShowMenu(false); setShowHelp(true); }}
           onClose={() => setShowMenu(false)}

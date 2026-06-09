@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, Bot, Coins, Crown, Footprints, Gem, GitBranch, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, ShoppingBag, Sparkles, Swords, UserX, Users, Volume2, VolumeX, Zap } from 'lucide-react';
+import { ArrowLeft, Bot, Coins, Crown, Footprints, Gem, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, ShoppingBag, Sparkles, Swords, UserX, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import {
   combatBackgroundUrl,
   combatEnemySize,
@@ -785,6 +785,8 @@ function GameMenu({
   onSettings,
   inviteUrl,
   profile,
+  bgmOn,
+  onToggleBgm,
   onReset,
   onRules,
   onClose
@@ -798,6 +800,8 @@ function GameMenu({
   onSettings: (settings: Partial<RoomSettings>) => void;
   inviteUrl: string;
   profile: LocalProfile;
+  bgmOn: boolean;
+  onToggleBgm: () => void;
   onReset: () => void;
   onRules: () => void;
   onClose: () => void;
@@ -896,6 +900,10 @@ function GameMenu({
               </button>
             ))}
           </div>
+          <button className="menu-item" onClick={onToggleBgm} aria-pressed={bgmOn}>
+            {bgmOn ? <Volume2 size={20} /> : <VolumeX size={20} />}
+            Music {bgmOn ? 'On' : 'Off'}
+          </button>
           <button className="menu-item" onClick={onRules}>
             <HelpCircle size={20} />
             Rules
@@ -926,16 +934,6 @@ function ItemSprite({ item, fallbackSize = 17 }: { item: Loot; fallbackSize?: nu
   const src = itemSpriteUrl(item.name);
   if (!src) return slotIcon(item.slot, fallbackSize);
   return <img className="item-sprite" src={src} alt="" />;
-}
-
-function traitGlyph(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 }
 
 function itemStatLine(item: Loot) {
@@ -1137,6 +1135,10 @@ function DragLootGhost({ item, x, y }: { item: Loot; x: number; y: number }) {
   );
 }
 
+// Horizontal centers (% of dock width) of the 7 painted control slots in the bottom bar,
+// measured from right-dock-loophero-gothic-v4.png via scripts/ui-slot-measure.mjs.
+const DOCK_SLOT_CX = [12.57, 24.26, 36.02, 47.72, 59.54, 71.84, 84.88];
+
 function PlayerSideDock({
   player,
   config,
@@ -1148,14 +1150,7 @@ function PlayerSideDock({
   onLootDragEnd,
   draggingLootId,
   onMenu,
-  onAddBot,
-  onFillCpu,
-  onStartRoom,
-  isHost,
-  onSettings,
-  profile,
-  bgmOn,
-  onToggleBgm
+  isHost
 }: {
   player: Player;
   config: GameConfig;
@@ -1167,23 +1162,13 @@ function PlayerSideDock({
   onLootDragEnd: () => void;
   draggingLootId: string | null;
   onMenu: () => void;
-  onAddBot: () => void;
-  onFillCpu: () => void;
-  onStartRoom: () => void;
   isHost: boolean;
-  onSettings: (settings: Partial<RoomSettings>) => void;
-  profile: LocalProfile;
-  bgmOn: boolean;
-  onToggleBgm: () => void;
 }) {
   const [dockMode, setDockMode] = useState<'default' | 'talents'>('default');
   const hero = config.heroes.find((item) => item.id === player.heroId);
   const tree = config.talentTrees[player.heroId] ?? [];
   const pending = tree.filter((trait) => player.pendingTraits.includes(trait.id));
   const learned = tree.filter((trait) => traitRank(player, trait.id) > 0);
-  const talentStrip = [...pending, ...learned.filter((trait) => !player.pendingTraits.includes(trait.id))];
-  const learnedRankCount = player.traits.length;
-  const totalRankCount = totalTalentRanks(tree);
   const equippedIds = new Set(Object.values(player.loadout).filter(Boolean).map((item) => item?.id));
   const looseLoot = player.loot.filter((item) => !equippedIds.has(item.id));
   const draggingLoot = draggingLootId ? player.loot.find((item) => item.id === draggingLootId) ?? null : null;
@@ -1290,28 +1275,6 @@ function PlayerSideDock({
             })}
           </div>
 
-          <section className={`dock-section side-talents ${pending.length > 0 ? 'has-pending' : ''}`} aria-label="Talents">
-            <div className="side-section-title icon-title">
-              <GitBranch size={15} />
-              <span>{learnedRankCount}/{totalRankCount}</span>
-            </div>
-            <button className={`talent-tree-entry ${pending.length > 0 ? 'pending' : ''}`} onClick={() => setDockMode('talents')}>
-              <span className="talent-tree-medallion" style={{ '--talent-icon': `url(${talentIconUrl(player.heroId)})` } as CSSProperties} />
-              <span className="talent-rune-strip">
-                {talentStrip.slice(0, 6).map((trait) => (
-                  <i key={trait.id} className={pending.some((item) => item.id === trait.id) ? 'pending' : 'learned'}>{traitGlyph(trait.name)}</i>
-                ))}
-                {[...Array(Math.max(0, Math.min(6, tree.length || 6) - Math.min(6, talentStrip.length)))].map((_, index) => <i key={`empty-${index}`} />)}
-              </span>
-              <strong>{pending.length > 0 ? pending.length : player.talentPoints}</strong>
-              <InfoPopover
-                title={`${hero?.name ?? 'Hero'} talent tree`}
-                eyebrow={pending.length > 0 ? 'Unlock ready' : 'Hero growth'}
-                body={pending.length > 0 ? 'Open the tree and choose one highlighted node or rank up a learned one.' : learned.length > 0 ? `${learned[learned.length - 1].name} learned most recently.` : 'Level up to awaken the first node.'}
-              />
-            </button>
-          </section>
-
           <section className="dock-section loot-section">
             <div className="side-section-title icon-title">
               <Gem size={15} />
@@ -1359,35 +1322,51 @@ function PlayerSideDock({
             />
           </div>
 
+          {/* Controls sit on the 7 painted slots. For now only two are used: a gear in the
+              center slot opens the full room/settings menu, and slot 7 holds the talent
+              medallion. The other slots stay empty until they earn a purpose. */}
           <div className="side-controls">
-            <button className="side-control-button" onClick={onMenu} aria-label="Menu">
-              <Bot size={15} />
-              <InfoPopover title="Menu" eyebrow={isHost ? 'Host controls' : 'Room menu'} body={`Room ${game.id} · ${game.players.length}/${game.maxPlayers} runners`} />
-            </button>
-            <button className="side-control-button" onClick={onAddBot} disabled={!isHost} aria-label="Add bot">
-              <Bot size={15} />
-              <InfoPopover title="Add bot" body={isHost ? 'Adds one CPU opponent if a seat is open.' : 'Only the room host can add opponents.'} />
-            </button>
-            <button className="side-control-button" onClick={onFillCpu} disabled={!isHost} aria-label="Fill CPU match">
-              <Users size={15} />
-              <InfoPopover title="Fill CPU match" body={isHost ? 'Fills every open seat with CPU opponents.' : 'Only the room host can fill the match.'} />
-            </button>
-            <button className="side-control-button" onClick={onStartRoom} disabled={!isHost || game.status !== 'lobby'} aria-label="Start match">
-              <Play size={15} />
-              <InfoPopover title="Start match" body={isHost ? 'Starts movement and scoring for this room.' : 'Only the room host can start the match.'} />
+            <button
+              className="side-control-button gear-slot"
+              style={{ left: `${DOCK_SLOT_CX[3]}%` }}
+              onClick={onMenu}
+              aria-label="Settings and room menu"
+            >
+              <span className="dock-slot-gear" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="100%" height="100%">
+                  <g fill="currentColor">
+                    <rect x="10.6" y="1.4" width="2.8" height="4.8" rx="0.7" />
+                    <rect x="10.6" y="1.4" width="2.8" height="4.8" rx="0.7" transform="rotate(45 12 12)" />
+                    <rect x="10.6" y="1.4" width="2.8" height="4.8" rx="0.7" transform="rotate(90 12 12)" />
+                    <rect x="10.6" y="1.4" width="2.8" height="4.8" rx="0.7" transform="rotate(135 12 12)" />
+                    <rect x="10.6" y="1.4" width="2.8" height="4.8" rx="0.7" transform="rotate(180 12 12)" />
+                    <rect x="10.6" y="1.4" width="2.8" height="4.8" rx="0.7" transform="rotate(225 12 12)" />
+                    <rect x="10.6" y="1.4" width="2.8" height="4.8" rx="0.7" transform="rotate(270 12 12)" />
+                    <rect x="10.6" y="1.4" width="2.8" height="4.8" rx="0.7" transform="rotate(315 12 12)" />
+                  </g>
+                  <circle cx="12" cy="12" r="6.4" fill="currentColor" />
+                  <circle cx="12" cy="12" r="2.7" fill="#160f08" />
+                </svg>
+              </span>
+              <InfoPopover
+                title="Settings"
+                eyebrow={isHost ? 'Host controls' : 'Room menu'}
+                body={`Add bots, start the match, pace, music and more · Room ${game.id} · ${game.players.length}/${game.maxPlayers} runners`}
+              />
             </button>
             <button
-              className="side-control-button"
-              onClick={() => onSettings({ pace: game.settings.pace === 'quick' ? 'steady' : 'quick' })}
-              disabled={!isHost || game.status !== 'lobby'}
-              aria-label="Toggle pace"
+              className={`side-control-button talent-slot ${pending.length > 0 ? 'has-pending' : ''}`}
+              style={{ left: `${DOCK_SLOT_CX[6]}%` }}
+              onClick={() => setDockMode('talents')}
+              aria-label={`${hero?.name ?? 'Hero'} talent tree`}
             >
-              <Settings size={15} />
-              <InfoPopover title="Room pace" eyebrow={game.settings.pace} body={`${game.settings.maxPlayers} seats · ${game.settings.goalScore} score scale · profile best ${profile.bestScore}`} />
-            </button>
-            <button className="side-control-button" onClick={onToggleBgm} aria-label="Toggle music">
-              {bgmOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
-              <InfoPopover title="Crypt of Neon Glass" eyebrow="BGM" body={bgmOn ? 'Music is playing.' : 'Music is muted.'} />
+              <span className="dock-slot-icon" style={{ backgroundImage: `url(${talentIconUrl(player.heroId)})` }} />
+              {pending.length > 0 && <strong className="dock-slot-badge">{pending.length}</strong>}
+              <InfoPopover
+                title={`${hero?.name ?? 'Hero'} talent tree`}
+                eyebrow={pending.length > 0 ? 'Unlock ready' : 'Hero growth'}
+                body={pending.length > 0 ? 'Open the tree and choose one highlighted node or rank up a learned one.' : learned.length > 0 ? `${learned[learned.length - 1].name} learned most recently.` : 'Level up to awaken the first node.'}
+              />
             </button>
           </div>
         </>
