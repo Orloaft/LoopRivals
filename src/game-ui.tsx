@@ -2387,7 +2387,7 @@ const PlayerPanel = memo(function PlayerPanel({
         {player.board.map((tile) => {
           const placementBlocked = combatPlacementBlocked(player, tile, selectedCard, serverNow, receivedAt, authorityPaused);
           const placementHint = terrainPlacementHint(player, tile, selectedCard, serverNow, receivedAt, authorityPaused);
-          const canPlaceTerrain = Boolean(onTile && selectedCard?.kind === 'terrain' && tile.type !== 'camp' && !placementBlocked);
+          const canPlaceTerrain = Boolean(onTile && selectedCard?.kind === 'terrain' && tile.type === 'road' && !placementBlocked);
           const canPlaceRivalTile = Boolean(onRivalTile && rivalTargetCard && (
             rivalTargetCard.id === 'oblivion'
               ? tile.type !== 'camp' && tile.type !== 'road' && !tile.bossPhaseId

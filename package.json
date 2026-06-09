@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "test": "NODE_ENV=test node --test",
     "test:e2e": "node scripts/playwright-smoke.mjs",
+    "test:e2e:autopsy": "npm run build && node scripts/playwright-autopsy.mjs",
     "test:motion": "node scripts/playwright-motion-audit.mjs",
     "test:balance": "node scripts/balance-sim.mjs",
     "test:ws-load": "node scripts/ws-load.mjs",

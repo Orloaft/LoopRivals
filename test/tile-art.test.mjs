@@ -3,10 +3,14 @@ import { Buffer } from 'node:buffer';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
-  cropSprite,
+  createTileSprite,
   comboTransformationSpritePlan,
   decodePng,
+  replacementTileSourceDir,
+  replacementTileTypes,
+  sourceAtlasHeight,
   sourceAtlasPath,
+  sourceAtlasWidth,
   spriteSize,
   tileSpritePlan,
   tileTypes
@@ -136,26 +140,42 @@ test('board road art keeps the established road-shape overlay sheet', () => {
   }
 });
 
-test('tile art crop plan avoids the overlapped source atlas row boundaries', () => {
+test('tile art crop plan uses measured atlas rows and explicit row-four replacements', () => {
   assert.deepEqual(
     tileSpritePlan.filter((plan) => plan.index % 6 === 0).map((plan) => ({
+      sourceKind: plan.sourceKind,
       sourceY: plan.sourceY,
       sourceHeight: plan.sourceHeight
     })),
     [
-      { sourceY: 0, sourceHeight: 256 },
-      { sourceY: 296, sourceHeight: 256 },
-      { sourceY: 577, sourceHeight: 256 },
-      { sourceY: 858, sourceHeight: 256 },
-      { sourceY: 1124, sourceHeight: 156 }
+      { sourceKind: 'atlas', sourceY: 8, sourceHeight: 240 },
+      { sourceKind: 'atlas', sourceY: 304, sourceHeight: 240 },
+      { sourceKind: 'atlas', sourceY: 585, sourceHeight: 240 },
+      { sourceKind: 'atlas', sourceY: 866, sourceHeight: 240 },
+      { sourceKind: 'replacement', sourceY: undefined, sourceHeight: undefined }
     ]
   );
 
   for (const plan of tileSpritePlan) {
     const row = Math.floor(plan.index / 6);
-    assert.equal(plan.sourceX, (plan.index % 6) * spriteSize, `${plan.tileType} source x should follow its atlas column`);
-    if (row > 0) {
-      assert.ok(plan.sourceY > row * spriteSize, `${plan.tileType} should not start at the exact overlapped atlas row boundary`);
+    assert.equal(plan.outputWidth, spriteSize, `${plan.tileType} output width should stay board-ready`);
+    assert.equal(plan.outputHeight, spriteSize, `${plan.tileType} output height should stay board-ready`);
+    if (row < 4) {
+      assert.equal(plan.sourceKind, 'atlas', `${plan.tileType} should come from the measured atlas rows`);
+      assert.equal(plan.sourceX, (plan.index % 6) * spriteSize + 8, `${plan.tileType} source x should stay inside its atlas column`);
+      assert.equal(plan.sourceWidth, spriteSize - 16, `${plan.tileType} source width should crop away neighboring atlas columns`);
+      assert.equal(plan.sourceHeight, spriteSize - 16, `${plan.tileType} source height should preserve full atlas tile scale`);
+      assert.equal(plan.scaleY, false, `${plan.tileType} should not be vertically scaled`);
+      if (row > 0) {
+        assert.ok(plan.sourceY > row * spriteSize, `${plan.tileType} should not start at the exact overlapped atlas row boundary`);
+      }
+    } else {
+      assert.equal(plan.sourceKind, 'replacement', `${plan.tileType} should not use the clipped atlas row`);
+      assert.ok(replacementTileTypes.has(plan.tileType), `${plan.tileType} should have an explicit replacement source`);
+      assert.equal(plan.sourcePath, `${replacementTileSourceDir}/${plan.tileType}.png`);
+      assert.equal(plan.scaleY, false, `${plan.tileType} should not use the old vertical stretch fallback`);
+      const source = readFileSync(plan.sourcePath);
+      assert.equal(source.toString('ascii', 1, 4), 'PNG', `${plan.tileType} replacement source should be a PNG`);
     }
   }
 });
@@ -163,8 +183,8 @@ test('tile art crop plan avoids the overlapped source atlas row boundaries', () 
 test('tile art source atlas dimensions match the sprite grid', () => {
   const atlas = readFileSync(sourceAtlasPath);
   assert.equal(atlas.toString('ascii', 1, 4), 'PNG');
-  assert.equal(atlas.readUInt32BE(16), 1536);
-  assert.equal(atlas.readUInt32BE(20), 1280);
+  assert.equal(atlas.readUInt32BE(16), sourceAtlasWidth);
+  assert.equal(atlas.readUInt32BE(20), sourceAtlasHeight);
 });
 
 test('tile art sprites are full-size single-tile images', () => {
@@ -186,7 +206,7 @@ test('tile art sprites are deterministic output from the slicer', () => {
   const tileSprites = new Map();
   for (const plan of tileSpritePlan) {
     const actual = decodePng(`public/assets/tiles/v2/${plan.tileType}.png`);
-    const expected = cropSprite(atlas, plan);
+    const expected = createTileSprite(atlas, plan);
     tileSprites.set(plan.tileType, expected);
     assert.equal(actual.width, expected.width, `${plan.tileType} sprite width changed`);
     assert.equal(actual.height, expected.height, `${plan.tileType} sprite height changed`);
@@ -215,9 +235,14 @@ test('lower atlas rows are not exact boundary crops with neighboring-row bleed',
   const atlas = decodePng(sourceAtlasPath);
   for (const [index, tileType] of tileTypes.entries()) {
     if (index < 6) continue;
+    const plan = tileSpritePlan[index];
     const sprite = decodePng(`public/assets/tiles/v2/${tileType}.png`);
     assert.equal(sprite.width, 256, `${tileType} sprite width should stay board-ready`);
     assert.equal(sprite.height, 256, `${tileType} sprite height should stay board-ready`);
+    if (plan.sourceKind === 'replacement') {
+      assert.ok(replacementTileTypes.has(tileType), `${tileType} should come from explicit generated replacement art`);
+      continue;
+    }
     assert.equal(
       spriteMatchesAtlasCell(sprite, atlas, index),
       false,

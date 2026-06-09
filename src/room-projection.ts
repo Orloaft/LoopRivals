@@ -9,12 +9,15 @@ export type RoomProjectionResult = {
 
 const combatBlockingTileTypes = new Set([
   'grove',
+  'bloomgrove',
   'crypt',
   'wolfden',
   'bonepit',
   'ruinedkeep',
+  'ransackedvillage',
   'bloodmoon',
   'wyrmgate',
+  'embergate',
   'spidernest',
   'tollgate',
   'thornmaze',
@@ -438,6 +441,22 @@ function applyRoomEvent(state: GameState, event: RoomEvent) {
     return;
   }
 
+  if (event.type === 'bossBoardReset') {
+    const board = boardValue(payload.board);
+    const hasNextMovement = hasOwn(payload, 'nextMovement');
+    const hasArrivalMovement = hasOwn(payload, 'arrivalMovement');
+    replacePlayer(state, playerId, (player) => ({
+      ...player,
+      position: numberValue(payload.position) ?? player.position,
+      laps: numberValue(payload.laps) ?? player.laps,
+      board: board ?? player.board,
+      nextMovement: hasNextMovement ? movementValue(payload.nextMovement) : player.nextMovement,
+      arrivalMovement: hasArrivalMovement ? movementValue(payload.arrivalMovement) : player.arrivalMovement,
+      combat: null
+    }));
+    return;
+  }
+
   if (event.type === 'playerProjectionChanged') {
     replacePlayer(state, playerId, (player) => applyPlayerProjection(player, payload));
     return;
@@ -446,8 +465,16 @@ function applyRoomEvent(state: GameState, event: RoomEvent) {
   if (event.type === 'bossPhaseStarted' || event.type === 'bossPhaseChanged') {
     const bossPhase = bossPhaseValue(payload.bossPhase);
     if (!bossPhase) return;
+    const board = boardValue(payload.board);
+    const hasNextMovement = hasOwn(payload, 'nextMovement');
+    const hasArrivalMovement = hasOwn(payload, 'arrivalMovement');
     replacePlayer(state, playerId, (player) => ({
       ...player,
+      position: numberValue(payload.position) ?? player.position,
+      laps: numberValue(payload.laps) ?? player.laps,
+      board: board ?? player.board,
+      nextMovement: hasNextMovement ? movementValue(payload.nextMovement) : player.nextMovement,
+      arrivalMovement: hasArrivalMovement ? movementValue(payload.arrivalMovement) : player.arrivalMovement,
       bossPhase: bossPhase.remainingChunks > 0 ? bossPhase : null
     }));
     return;

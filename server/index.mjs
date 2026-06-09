@@ -46,6 +46,7 @@ const buildSha = process.env.LOOPDUEL_BUILD_SHA ?? process.env.GITHUB_SHA ?? nul
 
 const rooms = new Map();
 const runtimes = new Map();
+const activePlayerSockets = new Map();
 let persistenceDirty = false;
 let lastPersistenceError = null;
 let lastPersistenceSaveAt = null;
@@ -291,6 +292,21 @@ function getSocketPlayer(socket) {
   return { room, player };
 }
 
+function playerSocketKey(roomId, playerId) {
+  return `${roomId}:${playerId}`;
+}
+
+function claimPlayerSocket(socket, roomId, playerId) {
+  activePlayerSockets.set(playerSocketKey(roomId, playerId), socket.id);
+}
+
+function releasePlayerSocket(socket, roomId, playerId) {
+  const key = playerSocketKey(roomId, playerId);
+  if (activePlayerSockets.get(key) !== socket.id) return false;
+  activePlayerSockets.delete(key);
+  return true;
+}
+
 function touchRoom(room) {
   room.lastActivityAt = Date.now();
   markPersistenceDirty();
@@ -521,6 +537,7 @@ async function startServer() {
       socket.join(room.id);
       socket.data.roomId = room.id;
       socket.data.playerId = playerId;
+      claimPlayerSocket(socket, room.id, playerId);
       socket.emit('session', { playerToken: playerId, roomId: room.id });
       markPersistenceDirty();
       const broadcast = mutation.duplicate
@@ -784,6 +801,7 @@ async function startServer() {
 
     socket.on('disconnect', () => {
       if (!socket.data.playerId) return;
+      if (!releasePlayerSocket(socket, socket.data.roomId, socket.data.playerId)) return;
       const room = getRoom(socket.data.roomId);
       commitRoomCommand(io, room, 'disconnect', { playerId: socket.data.playerId }, () => {
         const disconnected = disconnectPlayer(room, socket.data.playerId);

@@ -224,3 +224,43 @@ test('queued stale snapshot does not roll back an applied delta', () => {
   assert.equal(result.state.players[0].score, 70);
   assert.equal(result.state.receivedAt, 3333);
 });
+
+test('queued snapshot from a different room replaces state even with a lower sequence', () => {
+  const busyRoom = state(14, 140);
+  const quietRoom = {
+    ...state(1, 10),
+    id: 'quiet-room',
+    runtime: {
+      ...state(1, 10).runtime,
+      eventSeq: 1
+    }
+  };
+  const result = applyQueuedRoomAuthorityMessages(busyRoom, [
+    { type: 'state', payload: quietRoom }
+  ], applyRoomDelta, 4444);
+
+  assert.equal(result.recovery, null);
+  assert.equal(result.committed, true);
+  assert.equal(result.acceptedSeq, 1);
+  assert.equal(result.state.id, 'quiet-room');
+  assert.equal(result.state.runtime.eventSeq, 1);
+  assert.equal(result.state.players[0].score, 10);
+  assert.equal(result.state.receivedAt, 4444);
+});
+
+test('queued deltas from a previous room are ignored after a room switch snapshot', () => {
+  const nextRoom = {
+    ...state(1, 10),
+    id: 'next-room',
+    runtime: { ...state(1, 10).runtime, eventSeq: 1 }
+  };
+  const result = applyQueuedRoomAuthorityMessages(state(2, 20), [
+    { type: 'state', payload: nextRoom },
+    { type: 'delta', payload: delta(3, { score: 99 }) }
+  ], applyRoomDelta, 5555);
+
+  assert.equal(result.recovery, null);
+  assert.equal(result.state.id, 'next-room');
+  assert.equal(result.state.players[0].score, 10);
+  assert.equal(result.state.runtime.eventSeq, 1);
+});

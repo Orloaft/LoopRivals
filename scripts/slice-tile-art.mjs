@@ -6,8 +6,12 @@ import { deflateSync, inflateSync } from 'node:zlib';
 import { terrainCards } from '../server/rules.mjs';
 
 const sourceAtlasPath = 'dev-assets/source/assets/tiles/loopduel-tiles-retro-gothic-v2.png';
+const replacementTileSourceDir = 'dev-assets/source/assets/tiles/v2-row4-generated-v1';
 const outputDir = 'public/assets/tiles/v2';
 const spriteSize = 256;
+const sourceTileInset = 8;
+const sourceAtlasWidth = 1536;
+const sourceAtlasHeight = 1124;
 
 const tileTypes = [
   'road',
@@ -65,22 +69,46 @@ const rowCropPlan = [
   { sourceY: 0, sourceHeight: 256 },
   { sourceY: 296, sourceHeight: 256 },
   { sourceY: 577, sourceHeight: 256 },
-  { sourceY: 858, sourceHeight: 256 },
-  { sourceY: 1124, sourceHeight: 156 }
+  { sourceY: 858, sourceHeight: 256 }
 ];
+
+const replacementTileTypes = new Set([
+  'thornmaze',
+  'graveyard',
+  'reliquary',
+  'dragonroost',
+  'ambush',
+  'scorch'
+]);
 
 const tileSpritePlan = tileTypes.map((tileType, index) => {
   const row = Math.floor(index / 6);
   const col = index % 6;
   const crop = rowCropPlan[row];
-  if (!crop) throw new Error(`Missing crop plan for tile row ${row}`);
+  if (!crop) {
+    if (!replacementTileTypes.has(tileType)) throw new Error(`Missing crop plan or replacement source for ${tileType}`);
+    return {
+      tileType,
+      index,
+      sourceKind: 'replacement',
+      sourcePath: path.join(replacementTileSourceDir, `${tileType}.png`),
+      scaleY: false,
+      outputWidth: spriteSize,
+      outputHeight: spriteSize
+    };
+  }
+  const inset = Math.min(sourceTileInset, Math.floor((crop.sourceHeight - 1) / 2));
+  const sourceHeight = crop.sourceHeight - inset * 2;
   return {
     tileType,
     index,
-    sourceX: col * spriteSize,
-    sourceY: crop.sourceY,
-    sourceWidth: spriteSize,
-    sourceHeight: crop.sourceHeight,
+    sourceKind: 'atlas',
+    sourceX: col * spriteSize + sourceTileInset,
+    sourceY: crop.sourceY + inset,
+    sourceWidth: spriteSize - sourceTileInset * 2,
+    sourceHeight,
+    sourceInset: sourceTileInset,
+    scaleY: sourceHeight < spriteSize - sourceTileInset * 2,
     outputWidth: spriteSize,
     outputHeight: spriteSize
   };
@@ -209,8 +237,8 @@ function encodePng({ width, height, pixels }) {
 }
 
 function samplePixel(image, x, y) {
-  const clampedX = Math.max(0, Math.min(image.width - 1, x));
-  const clampedY = Math.max(0, Math.min(image.height - 1, y));
+  const clampedX = Math.floor(Math.max(0, Math.min(image.width - 1, x)));
+  const clampedY = Math.floor(Math.max(0, Math.min(image.height - 1, y)));
   const offset = (clampedY * image.width + clampedX) * 4;
   return [
     image.pixels[offset],
@@ -229,16 +257,93 @@ function sampleVertical(image, x, y) {
   return top.map((channel, index) => Math.round(channel + (bottom[index] - channel) * weight));
 }
 
-function cropSprite(atlas, plan) {
+function sampleBilinear(image, x, y) {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.min(image.width - 1, x0 + 1);
+  const y1 = Math.min(image.height - 1, y0 + 1);
+  const weightX = x - x0;
+  const weightY = y - y0;
+  const topLeft = samplePixel(image, x0, y0);
+  const topRight = samplePixel(image, x1, y0);
+  const bottomLeft = samplePixel(image, x0, y1);
+  const bottomRight = samplePixel(image, x1, y1);
+  return topLeft.map((channel, index) => {
+    const top = channel + (topRight[index] - channel) * weightX;
+    const bottom = bottomLeft[index] + (bottomRight[index] - bottomLeft[index]) * weightX;
+    return Math.round(top + (bottom - top) * weightY);
+  });
+}
+
+function replacementContentBounds(image) {
+  let minX = image.width;
+  let minY = image.height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < image.height; y += 1) {
+    for (let x = 0; x < image.width; x += 1) {
+      const offset = (y * image.width + x) * 4;
+      const red = image.pixels[offset];
+      const green = image.pixels[offset + 1];
+      const blue = image.pixels[offset + 2];
+      const alpha = image.pixels[offset + 3];
+      if (alpha > 0 && red + green + blue > 72) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return { minX: 0, minY: 0, maxX: image.width - 1, maxY: image.height - 1 };
+  }
+
+  return { minX, minY, maxX, maxY };
+}
+
+function normalizeReplacementSprite(source, plan) {
+  const bounds = replacementContentBounds(source);
+  const boundsWidth = bounds.maxX - bounds.minX + 1;
+  const boundsHeight = bounds.maxY - bounds.minY + 1;
+  const padding = Math.round(Math.max(boundsWidth, boundsHeight) * 0.01);
+  const side = Math.max(boundsWidth, boundsHeight) + padding * 2;
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  const sourceLeft = centerX - side / 2;
+  const sourceTop = centerY - side / 2;
   const pixels = Buffer.alloc(plan.outputWidth * plan.outputHeight * 4);
+
   for (let y = 0; y < plan.outputHeight; y += 1) {
-    const sourceY = plan.sourceHeight === plan.outputHeight
-      ? plan.sourceY + y
-      : plan.sourceY + ((y + 0.5) * plan.sourceHeight / plan.outputHeight) - 0.5;
+    const sourceY = sourceTop + ((y + 0.5) * side / plan.outputHeight) - 0.5;
     for (let x = 0; x < plan.outputWidth; x += 1) {
-      const [red, green, blue, alpha] = plan.sourceHeight === plan.outputHeight
-        ? samplePixel(atlas, plan.sourceX + x, sourceY)
-        : sampleVertical(atlas, plan.sourceX + x, sourceY);
+      const sourceX = sourceLeft + ((x + 0.5) * side / plan.outputWidth) - 0.5;
+      const [red, green, blue, alpha] = sampleBilinear(source, sourceX, sourceY);
+      const output = (y * plan.outputWidth + x) * 4;
+      pixels[output] = red;
+      pixels[output + 1] = green;
+      pixels[output + 2] = blue;
+      pixels[output + 3] = alpha;
+    }
+  }
+
+  return { width: plan.outputWidth, height: plan.outputHeight, pixels };
+}
+
+function cropSprite(atlas, plan) {
+  if (plan.sourceKind !== 'atlas') throw new Error(`${plan.tileType} is not an atlas-backed sprite`);
+  const pixels = Buffer.alloc(plan.outputWidth * plan.outputHeight * 4);
+  const inset = plan.sourceInset ?? 0;
+  for (let y = 0; y < plan.outputHeight; y += 1) {
+    const sourceY = plan.scaleY
+      ? plan.sourceY + ((y + 0.5) * plan.sourceHeight / plan.outputHeight) - 0.5
+      : plan.sourceY + Math.max(0, Math.min(plan.sourceHeight - 1, y - inset));
+    for (let x = 0; x < plan.outputWidth; x += 1) {
+      const sourceX = plan.sourceX + Math.max(0, Math.min(plan.sourceWidth - 1, x - inset));
+      const [red, green, blue, alpha] = plan.scaleY
+        ? sampleVertical(atlas, sourceX, sourceY)
+        : samplePixel(atlas, sourceX, sourceY);
       const output = (y * plan.outputWidth + x) * 4;
       pixels[output] = red;
       pixels[output + 1] = green;
@@ -247,6 +352,13 @@ function cropSprite(atlas, plan) {
     }
   }
   return { width: plan.outputWidth, height: plan.outputHeight, pixels };
+}
+
+function createTileSprite(atlas, plan) {
+  if (plan.sourceKind === 'replacement') {
+    return normalizeReplacementSprite(decodePng(plan.sourcePath), plan);
+  }
+  return cropSprite(atlas, plan);
 }
 
 function cloneImage(image) {
@@ -469,14 +581,14 @@ function writeComboTransformationSprites(tileSprites) {
 
 function writeTileSprites() {
   const atlas = decodePng(sourceAtlasPath);
-  if (atlas.width !== 1536 || atlas.height !== 1280) {
-    throw new Error(`${sourceAtlasPath} must be a 1536x1280 atlas`);
+  if (atlas.width !== sourceAtlasWidth || atlas.height !== sourceAtlasHeight) {
+    throw new Error(`${sourceAtlasPath} must be a ${sourceAtlasWidth}x${sourceAtlasHeight} atlas with the clipped final row removed`);
   }
 
   mkdirSync(outputDir, { recursive: true });
   const tileSprites = new Map();
   for (const plan of tileSpritePlan) {
-    const sprite = cropSprite(atlas, plan);
+    const sprite = createTileSprite(atlas, plan);
     tileSprites.set(plan.tileType, sprite);
     writeFileSync(path.join(outputDir, `${plan.tileType}.png`), encodePng(sprite));
   }
@@ -490,12 +602,18 @@ if (invokedPath === fileURLToPath(import.meta.url)) {
 }
 
 export {
+  createTileSprite,
   cropSprite,
   decodePng,
+  encodePng,
   bossLoopSpritePlan,
   bossLoopTileTypes,
   comboTransformationSpritePlan,
+  replacementTileSourceDir,
+  replacementTileTypes,
   sourceAtlasPath,
+  sourceAtlasHeight,
+  sourceAtlasWidth,
   spriteSize,
   tileSpritePlan,
   tileTypes,

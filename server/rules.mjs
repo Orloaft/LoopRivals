@@ -67,6 +67,11 @@ const actBossByTier = {
   2: { label: 'crown sentinel', tileTypes: ['guardstance', 'markedchallenge', 'retaliation', 'executionstance'], threat: 35, reward: 112, enemyCount: 2, nextTier: 3, armor: 3 }
 };
 const loopBossConfig = { label: 'loop tyrant', tileTypes: ['seal1', 'seal2', 'seal3', 'innergate'], threat: 42, reward: 160, enemyCount: 5, armor: 3 };
+const bossChunkThreatShare = { act: 0.52, loop: 0.84 };
+const bossAttemptPressureCap = { act: 4, loop: 8 };
+const bossCorruptionPressureCap = { act: 5, loop: 8 };
+const bossCombatCorruptionCap = 32;
+const reviveBonusPowerCap = 6;
 const bossTileSides = [
   [2, 1, 3, 4],
   [6, 5, 7, 8],
@@ -591,11 +596,35 @@ function isCombatTerrainCard(card) {
   return card?.kind === 'terrain' && combatBlockingTileTypes.has(card.tile);
 }
 
-function isBlockedCombatTerrainPlacement(player, card, tile) {
-  if (player.isBot) return false;
+function isBlockedCombatTerrainPlacement(player, card, tile, { allowImmediateCombat = false } = {}) {
+  if (allowImmediateCombat) return false;
   if (!isCombatTerrainCard(card) || !tile) return false;
   const stepsAhead = boardStepsAhead(player, tile.index);
   return stepsAhead === 1;
+}
+
+export function canPlaceTerrainCard(player, card, tile, options = {}) {
+  return Boolean(
+    player &&
+    card?.kind === 'terrain' &&
+    tile &&
+    tile.type === 'road' &&
+    !isBlockedCombatTerrainPlacement(player, card, tile, options)
+  );
+}
+
+export function findPlaceableTerrainTile(player, card, {
+  avoidIndexes = [],
+  allowImmediateCombat = false,
+  preferSafeDistance = false
+} = {}) {
+  const blocked = new Set(avoidIndexes);
+  const candidates = player?.board?.filter((tile) => canPlaceTerrainCard(player, card, tile, { allowImmediateCombat }) && !blocked.has(tile.index)) ?? [];
+  if (candidates.length === 0) return null;
+  if (preferSafeDistance) {
+    return candidates.find((tile) => boardStepsAhead(player, tile.index) > 1) ?? candidates[0];
+  }
+  return candidates[0];
 }
 
 function visibleBoard(player) {
@@ -1422,6 +1451,7 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     lapHeal: hero.lapHeal ?? 0,
     terrainScore: hero.terrainScore ?? 0,
     revivePower: hero.revivePower ?? 0,
+    reviveBonusPower: 0,
     heroHeat: 0,
     wardenOvergrowth: 0,
     vagrantEscapeTier: 0,
@@ -1643,8 +1673,7 @@ export function playTerrain(room, player, cardInstanceId, tileIndex) {
   const card = player.hand.find((item) => item.instanceId === cardInstanceId);
   if (!card || card.kind !== 'terrain') return false;
   const tile = player.board[tileIndex];
-  if (!tile || tile.type !== 'road') return false;
-  if (isBlockedCombatTerrainPlacement(player, card, tile)) return false;
+  if (!canPlaceTerrainCard(player, card, tile, { allowImmediateCombat: player.isBot })) return false;
   tile.type = card.tile;
   tile.charges = card.tile === 'mire' ? 5 : 0;
   tile.expiresOnLap = player.laps + tileLoopLife(player);
@@ -2398,6 +2427,29 @@ function resetPlayerBoard(room, player) {
   player.nextMovement = movementSegmentForPlayer(player);
 }
 
+function resetPlayerBoardForBossEntry(room, player, config) {
+  const before = player.board.map((tile) => `${tile.index}:${tile.type}:${tile.charges}:${tile.expiresOnLap ?? ''}:${tile.bossPhaseId ?? ''}:${tile.bossChunkIndex ?? ''}`);
+  resetPlayerBoard(room, player);
+  const resetIndexes = [];
+  for (const tile of player.board) {
+    const after = `${tile.index}:${tile.type}:${tile.charges}:${tile.expiresOnLap ?? ''}:${tile.bossPhaseId ?? ''}:${tile.bossChunkIndex ?? ''}`;
+    if (before[tile.index] !== after) resetIndexes.push(tile.index);
+  }
+  emitRuleEvent(room, 'bossBoardReset', {
+    playerId: player.id,
+    label: config.label,
+    position: player.position,
+    laps: player.laps,
+    board: cloneJson(visibleBoard(player)),
+    resetIndexes,
+    nextMovement: player.nextMovement,
+    arrivalMovement: player.arrivalMovement
+  });
+  if (resetIndexes.length > 0) {
+    addLog(room, `${player.name}'s loop reset to fresh road for the ${config.label}.`);
+  }
+}
+
 function promotePlayerIfReady(room, player) {
   if (player.combat || player.pendingBossOutcome || player.bossPhase) return false;
   const currentTier = player.loopTier ?? 1;
@@ -2437,8 +2489,17 @@ function promotePlayerIfReady(room, player) {
 
 function stageBossPhaseForPlayer(room, player, config, options = {}) {
   if (!config || player.bossPhase || player.combat || player.pendingBossOutcome || isCombatLocked(room, player)) return false;
+  resetPlayerBoardForBossEntry(room, player, config);
   const tileIndexes = bossTileSides.map((side) => side.find((index) => player.board[index]?.type === 'road'));
-  if (tileIndexes.some((index) => !Number.isInteger(index))) return false;
+  if (tileIndexes.some((index) => !Number.isInteger(index))) {
+    emitRuleEvent(room, 'bossPhaseBlocked', {
+      playerId: player.id,
+      label: config.label,
+      reason: 'no-road-anchor',
+      board: cloneJson(visibleBoard(player))
+    });
+    return false;
+  }
   // TODO(low-clutter boss ante): add a default wager here once the client can surface one pre-boss choice cleanly.
   const phase = {
     id: `${options.kind ?? 'act'}-${options.tier ?? player.loopTier ?? 1}-${player.laps}`,
@@ -2477,7 +2538,12 @@ function stageBossPhaseForPlayer(room, player, config, options = {}) {
   emitRuleEvent(room, 'bossPhaseStarted', {
     playerId: player.id,
     bossPhase: cloneJson(phase),
-    tileIndexes
+    tileIndexes,
+    position: player.position,
+    laps: player.laps,
+    board: cloneJson(visibleBoard(player)),
+    nextMovement: player.nextMovement,
+    arrivalMovement: player.arrivalMovement
   });
   return true;
 }
@@ -2486,12 +2552,12 @@ function maybeSpawnStageBoss(room, player) {
   if (player.bossPhase || player.combat || player.pendingBossOutcome || isCombatLocked(room, player)) return false;
   const currentTier = player.loopTier ?? 1;
   if (currentTier >= 3) {
-    const targetLap = (player.tierStartLap ?? 0) + bossLoopRequirement - 1;
+    const targetLap = (player.tierStartLap ?? 0) + bossLoopRequirement;
     if (player.laps < targetLap) return false;
     return stageBossPhaseForPlayer(room, player, loopBossConfig, { kind: 'loop', tier: 3 });
   }
   const boss = actBossByTier[currentTier];
-  const nextTier = loopTierForLaps(player.laps + 1);
+  const nextTier = loopTierForLaps(player.laps);
   if (!boss || nextTier <= currentTier) return false;
   return stageBossPhaseForPlayer(room, player, boss, { kind: 'act', tier: currentTier, nextTier: boss.nextTier });
 }
@@ -2517,17 +2583,21 @@ function resolveBossTile(room, player, tile) {
   if (phase.kind === 'loop' && phase.remainingChunks === phase.totalChunks) player.bossAttempts = (player.bossAttempts ?? 0) + 1;
   player.armor = Math.max(player.armor, phase.armor ?? 0);
   const corruptionScale = phase.kind === 'loop' ? 0.45 : 0.35;
-  const attemptPressure = phase.kind === 'loop' ? (player.bossAttempts ?? 0) * 3 : (player.soloGateAttempts ?? 0) * 2;
-  const corruptionPressure = isSoloPlayer(room, player) ? Math.floor((player.soloCorruption ?? 0) * corruptionScale) : 0;
+  const rawAttemptPressure = phase.kind === 'loop' ? (player.bossAttempts ?? 0) * 3 : (player.soloGateAttempts ?? 0) * 2;
+  const attemptPressure = Math.min(rawAttemptPressure, bossAttemptPressureCap[phase.kind] ?? 4);
+  const rawCorruptionPressure = isSoloPlayer(room, player) ? Math.floor((player.soloCorruption ?? 0) * corruptionScale) : 0;
+  const corruptionPressure = Math.min(rawCorruptionPressure, bossCorruptionPressureCap[phase.kind] ?? 5);
+  const bossThreat = Math.ceil(phase.threat * (bossChunkThreatShare[phase.kind] ?? 0.68));
   const survived = fight(
     room,
     player,
     phase.label,
-    Math.ceil(phase.threat / phase.totalChunks) + corruptionPressure + attemptPressure,
+    bossThreat + corruptionPressure + attemptPressure,
     Math.ceil(phase.reward / phase.totalChunks),
     phase.kind === 'loop' ? Math.max(1, phase.enemyCount - (phase.totalChunks - phase.remainingChunks)) : phase.enemyCount
   );
   if (!survived) {
+    player.laps = Math.max(player.tierStartLap ?? 0, (phase.spawnedLap ?? player.laps) - 1);
     resolveDefeatAfterVisibleCombat(room, player);
     addLog(room, `${player.name} failed the ${phase.label}; the boss phase holds.`);
     return false;
@@ -2901,6 +2971,7 @@ function recalcStats(player) {
   let lapHeal = hero.lapHeal ?? 0;
   let terrainScore = hero.terrainScore ?? 0;
   let revivePower = hero.revivePower ?? 0;
+  let reviveBonusPower = clamp(player.reviveBonusPower ?? 0, 0, reviveBonusPowerCap);
 
   for (const traitId of player.traits) {
     const trait = traits.find((item) => item.id === traitId);
@@ -2933,7 +3004,8 @@ function recalcStats(player) {
 
   const hpGain = maxHp - player.maxHp;
   player.maxHp = maxHp;
-  player.power = power;
+  player.reviveBonusPower = reviveBonusPower;
+  player.power = power + reviveBonusPower;
   player.guard = guard;
   player.speed = speed;
   player.drawRate = drawRate;
@@ -3097,7 +3169,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   const runeMarks = player.heroId === 'rune-archer' ? clamp(player.runeMarkCount ?? 0, 0, 8) : 0;
   const runeWard = runeMarks > 0 && staged.pressure >= 3 ? Math.min(4, 1 + Math.floor(runeMarks / 2)) : 0;
   const bossLabels = ['briar warden', 'crown sentinel', 'loop tyrant'];
-  const corruption = bossLabels.includes(label) ? Math.min(rawCorruption, 80) : rawCorruption;
+  const corruption = bossLabels.includes(label) ? Math.min(rawCorruption, bossCombatCorruptionCap) : rawCorruption;
   const runePower = runeMarks > 0 && (staged.pressure >= 5 || bossLabels.includes(label))
     ? Math.min(2, Math.floor(runeMarks / 3))
     : 0;
@@ -3124,21 +3196,25 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     player.vagrantVanishDelayMs = (player.vagrantVanishDelayMs ?? 0) + Math.round((650 + tier * 180) * roomTimeScale(room));
     vanished = true;
   }
+  const survivedCombat = player.hp > 0;
   player.armor = Math.max(0, player.armor - 1);
   const xpReward = Math.round((reward + heroBonus + graveBonus + (enemyCount - 1) * 5 + Math.max(0, rounds - enemyCount) * 2) * tierReward);
-  addXp(room, player, xpReward);
-  player.kos += enemyCount;
-  if (player.heroId === 'ember-knight') player.heroHeat = clamp((player.heroHeat ?? 0) + 1, 0, 3);
-  if (player.heroId === 'grave-singer' && threat >= 10) player.graveEcho = Math.min(8, (player.graveEcho ?? 0) + enemyCount);
-  player.event = `${label}: ${enemyCount} foe${enemyCount === 1 ? '' : 's'}, -${damage} hp, +${xpReward} xp`;
+  const grantedXp = survivedCombat ? xpReward : 0;
+  if (survivedCombat) {
+    addXp(room, player, xpReward);
+    player.kos += enemyCount;
+    if (player.heroId === 'ember-knight') player.heroHeat = clamp((player.heroHeat ?? 0) + 1, 0, 3);
+    if (player.heroId === 'grave-singer' && threat >= 10) player.graveEcho = Math.min(8, (player.graveEcho ?? 0) + enemyCount);
+  }
+  player.event = `${label}: ${enemyCount} foe${enemyCount === 1 ? '' : 's'}, -${damage} hp, +${grantedXp} xp`;
   if (emberHeat > 0) player.event += `, heat ${emberHeat}`;
   if (runeWard > 0) player.event += `, rune ward ${runeWard}`;
   if (mossPower > 0) player.event += `, wild power ${mossPower}`;
   if (vanished) player.event += ', vanished at 1 hp';
   if (isGuidedHuman(room, player)) {
     const heatLine = emberHeat > 0 ? ` Heat added ${emberHeat} power to the exchange.` : '';
-    const survivalLine = player.hp > 0 ? ` You survived with ${Math.ceil(player.hp)} HP.` : ' The chain was lethal, so the loop forced a reset.';
-    pushGuidedRecap(room, `${label} happened because this tile was on your road: ${enemyCount} foe${enemyCount === 1 ? '' : 's'}, ${damage} damage, ${xpReward} XP.${heatLine}${survivalLine}`);
+    const survivalLine = survivedCombat ? ` You survived with ${Math.ceil(player.hp)} HP.` : ' The chain was lethal, so the loop forced a reset.';
+    pushGuidedRecap(room, `${label} happened because this tile was on your road: ${enemyCount} foe${enemyCount === 1 ? '' : 's'}, ${damage} damage, ${grantedXp} XP.${heatLine}${survivalLine}`);
   }
   const encounter = staged.encounter;
   const lineup = encounterLineup(encounter, enemyCount);
@@ -3163,7 +3239,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     enemyNames: lineup.map((enemy) => enemy.name),
     label,
     damage,
-    reward: xpReward,
+    reward: grantedXp,
     enemyCount,
     rounds,
     heroHpBefore: hpBefore,
@@ -3189,13 +3265,13 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     encounterPressure: staged.pressure,
     enemyCount,
     damage,
-    reward: xpReward,
+    reward: grantedXp,
     combat: cloneJson(player.combat)
   });
   const vagrantLuck = 0;
-  if (random(room) < 0.17 + player.lootLuck + vagrantLuck + xpReward / 220) drawLoot(room, player);
-  if (player.curse > 0) player.curse -= 1;
-  return player.hp > 0;
+  if (survivedCombat && random(room) < 0.17 + player.lootLuck + vagrantLuck + xpReward / 220) drawLoot(room, player);
+  if (survivedCombat && player.curse > 0) player.curse -= 1;
+  return survivedCombat;
 }
 
 function splitDamage(total, parts) {
@@ -3298,7 +3374,12 @@ function revivePlayer(room, player) {
   player.deathsThisTier = (player.deathsThisTier ?? 0) + 1;
   const solo = isSoloPlayer(room, player);
   player.hp = Math.ceil(player.maxHp * 0.58);
-  if (!solo) player.power += player.revivePower;
+  if (!solo) {
+    const currentReviveBonus = clamp(player.reviveBonusPower ?? 0, 0, reviveBonusPowerCap);
+    const gainedReviveBonus = Math.min(player.revivePower ?? 0, reviveBonusPowerCap - currentReviveBonus);
+    player.reviveBonusPower = currentReviveBonus + gainedReviveBonus;
+    player.power += gainedReviveBonus;
+  }
   resetPlayerBoard(room, player);
   player.tierStartLap = player.laps;
   player.combat = null;
@@ -3673,7 +3754,7 @@ function chooseBotTrait(player) {
 }
 
 function chooseBotTerrainTile(room, player, card) {
-  const candidates = player.board.filter((tile) => tile.type === 'road' && !isBlockedCombatTerrainPlacement(player, card, tile));
+  const candidates = player.board.filter((tile) => canPlaceTerrainCard(player, card, tile, { allowImmediateCombat: player.isBot }));
   const emptyRoads = candidates;
   const ahead = emptyRoads.find((tile) => tile.index > player.position) ?? emptyRoads[0] ?? candidates[rand(room, candidates.length)];
   if (card.tile === 'crypt' && player.hp < player.maxHp * 0.55) {

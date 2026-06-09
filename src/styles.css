@@ -7753,7 +7753,7 @@ body.loot-drag-active * {
   }
 
   .arena-grid {
-    --focus-board: min(calc(100vw - 20px), calc(100svh - 214px), 540px);
+    --focus-board: min(calc(100vw - 88px), calc(100svh - 214px), 540px);
     display: grid;
     grid-area: arena;
     grid-template-columns: minmax(0, 1fr);

@@ -3,6 +3,7 @@
 import { spawn } from 'node:child_process';
 import process from 'node:process';
 import { io } from 'socket.io-client';
+import { findPlaceableTerrainTile } from '../server/rules.mjs';
 
 const heroIds = ['ember-knight', 'moss-warden', 'night-vagrant', 'rune-archer'];
 
@@ -269,8 +270,8 @@ function chooseAction(client) {
 
   const terrain = me.hand.find((card) => card.kind === 'terrain');
   if (terrain) {
-    const candidates = me.board.filter((tile) => tile.type !== 'camp');
-    const tile = candidates[Math.floor(Math.random() * candidates.length)];
+    const tile = findPlaceableTerrainTile(me, terrain, { preferSafeDistance: true });
+    if (!tile) return null;
     return ['placeCard', { cardId: terrain.instanceId, tileIndex: tile.index }];
   }
 

@@ -1387,6 +1387,8 @@ test('act one progression waits for the visible boss fight before tier advance',
   assert.equal(player.combat, null);
   assert.equal(player.bossPhase.label, 'briar warden');
   assert.deepEqual(player.bossPhase.tileIndexes.map((index) => player.board[index].type), ['rootwall', 'bramblebloom', 'wardensheart', 'oldgrowth']);
+  assert.equal(player.board[4].type, 'road');
+  assert.ok(startEvents.some((event) => event.type === 'bossBoardReset'), 'boss entry should reset placed terrain before staging');
   assert.equal(startEvents.some((event) => event.type === 'playerTierChanged'), false);
 
   clearBossPhase(room, player);
@@ -1404,6 +1406,38 @@ test('act one progression waits for the visible boss fight before tier advance',
   assert.notEqual(combatEndedIndex, -1);
   assert.notEqual(tierChangedIndex, -1);
   assert.ok(combatEndedIndex < tierChangedIndex);
+});
+
+test('boss entry resets saturated side lanes before placing boss tiles', () => {
+  room = testApi.createRoom('boss-reset-saturated-board', { simulated: true, now: 1000 });
+  const player = testApi.createPlayer('leader', 'Leader', 'ember-knight');
+  room.players.leader = player;
+  room.status = 'running';
+  player.level = 7;
+  player.maxHp = 130;
+  player.hp = 130;
+  player.power = 38;
+  player.guard = 48;
+  player.laps = testApi.matchTiers[1].minLoops;
+  player.tilesPlaced = 8;
+  for (const index of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]) {
+    player.board[index].type = 'crypt';
+    player.board[index].expiresOnLap = player.laps + 2;
+  }
+
+  testApi.drainRoomEvents(room);
+  testApi.checkWinner(room);
+  const events = testApi.drainRoomEvents(room);
+
+  assert.equal(player.bossPhase.label, 'briar warden');
+  assert.deepEqual(player.bossPhase.tileIndexes, [2, 6, 10, 14]);
+  assert.deepEqual(player.bossPhase.tileIndexes.map((index) => player.board[index].type), ['rootwall', 'bramblebloom', 'wardensheart', 'oldgrowth']);
+  assert.equal(player.board[1].type, 'road');
+  assert.equal(player.board[15].type, 'road');
+  const resetEvent = events.find((event) => event.type === 'bossBoardReset');
+  assert.ok(resetEvent, 'boss entry should emit board reset event');
+  assert.equal(resetEvent.payload.board.every((tile, index) => tile.type === (index === 0 ? 'camp' : 'road')), true);
+  assert.equal(events.some((event) => event.type === 'bossPhaseBlocked'), false);
 });
 
 test('solo act bosses still gate tier promotion', () => {
@@ -1466,6 +1500,69 @@ test('act boss failure adds corruption and score debt instead of brute-force pro
   assert.ok(player.scorePenalty > 0);
   assert.ok(player.gold < 80);
   assert.equal(player.loopTier, 1);
+});
+
+test('underbuilt act boss challengers die before clearing the full boss loop', () => {
+  room = testApi.createRoom('underbuilt-act-boss', { simulated: true, now: 1000 });
+  const player = testApi.createPlayer('solo', 'Solo', 'night-vagrant');
+  room.players.solo = player;
+  room.status = 'running';
+  player.level = 1;
+  player.hp = player.maxHp;
+  player.power = 7;
+  player.guard = 2;
+  player.laps = testApi.matchTiers[1].minLoops;
+  player.tilesPlaced = 1;
+
+  testApi.checkWinner(room);
+
+  assert.equal(player.bossPhase?.label, 'briar warden');
+  assert.equal(player.deaths, 0);
+
+  for (let attempts = 0; attempts < 4 && player.bossPhase && player.deaths === 0; attempts += 1) {
+    const phaseId = player.bossPhase.id;
+    const tile = player.board.find((item) => item.bossPhaseId === phaseId && bossLoopTileTypes.has(item.type));
+    assert.ok(tile, 'boss phase should expose a live boss tile');
+    player.position = tile.index;
+    testApi.triggerTile(room, player, tile);
+    assert.ok(player.combat, 'boss tile should create visible combat');
+    room.now = player.combat.expiresAt;
+    testApi.runRoomStep(room, { advanceMs: 0 });
+  }
+
+  assert.equal(player.deaths, 1);
+  assert.equal(player.loopTier, 1);
+});
+
+test('underbuilt final boss challengers die to the loop tyrant opener', () => {
+  room = testApi.createRoom('underbuilt-loop-tyrant', { simulated: true, now: 1000 });
+  const player = testApi.createPlayer('solo', 'Solo', 'ember-knight');
+  room.players.solo = player;
+  room.status = 'running';
+  player.loopTier = 3;
+  player.soloGatesCleared = [1, 2];
+  player.level = 1;
+  player.hp = player.maxHp;
+  player.power = 9;
+  player.guard = 5;
+  player.laps = testApi.matchTiers[2].minLoops + 4;
+  player.tierStartLap = testApi.matchTiers[2].minLoops;
+  player.tilesPlaced = 1;
+
+  testApi.checkWinner(room);
+
+  assert.equal(player.bossPhase?.label, 'loop tyrant');
+
+  const tile = player.board.find((item) => item.bossPhaseId === player.bossPhase.id && bossLoopTileTypes.has(item.type));
+  assert.ok(tile, 'loop tyrant should expose a live boss tile');
+  player.position = tile.index;
+  testApi.triggerTile(room, player, tile);
+  assert.ok(player.combat, 'loop tyrant opener should create visible combat');
+  room.now = player.combat.expiresAt;
+  testApi.runRoomStep(room, { advanceMs: 0 });
+
+  assert.equal(player.deaths, 1);
+  assert.equal(player.loopTier, 3);
 });
 
 test('act two progression waits for the crown sentinel before the final act', () => {
@@ -1662,15 +1759,16 @@ test('passive solo runner stalls short of a finished clear', () => {
   assert.ok(player.loopTier < 3 || player.laps < player.tierStartLap + 4);
 });
 
-test('active solo bot can clear when it builds and equips a run', () => {
+test('active solo bot builds into boss gates without a guaranteed clear', () => {
   const result = simulateMatch(5, {
     roster: [{ id: 'night-vagrant', name: 'Night Vagrant' }],
     maxSteps: 9000
   });
 
-  assert.equal(result.finished, true);
-  assert.equal(result.players[0].loopTier, 3);
+  assert.equal(result.finished, false);
+  assert.ok(result.players[0].loopTier >= 2);
   assert.ok(result.players[0].tilesPlaced > 0);
+  assert.ok(result.players[0].deaths > 0);
   assert.ok(result.players[0].power + result.players[0].guard > 35);
 });
 
@@ -1715,17 +1813,22 @@ test('seeded simulations are deterministic', () => {
 
   assert.deepEqual(first.players, second.players);
   assert.equal(first.winnerHero, second.winnerHero);
-  assert.equal(first.finished, true);
+  assert.equal(first.finished, second.finished);
+  assert.ok(first.players.some((player) => player.loopTier >= 3));
 });
 
-test('CPU balance suite keeps heroes inside a playable win-rate band', () => {
+test('CPU balance suite keeps a demanding but finishable win-rate band', () => {
   const report = runBalanceSuite(120);
   const rates = report.heroes.map((hero) => hero.winRate);
+  const deaths = report.heroes.map((hero) => hero.avgDeaths);
+  const loopTiers = report.heroes.map((hero) => hero.avgLoopTier);
 
-  assert.ok(report.finishedRate >= 0.95);
-  assert.ok(report.avgSeconds >= 250 && report.avgSeconds <= 1000);
-  assert.ok(Math.max(...rates) <= 0.4);
-  assert.ok(Math.min(...rates) >= 0.05);
-  assert.ok(report.winRateSpread <= 0.35);
-  assert.ok(report.avgScoreSpread <= 4500);
+  assert.ok(report.finishedRate >= 0.7 && report.finishedRate <= 0.95);
+  assert.ok(report.avgSeconds >= 900 && report.avgSeconds <= 1800);
+  assert.ok(Math.max(...rates) <= 0.45);
+  assert.ok(Math.min(...rates) >= 0.03);
+  assert.ok(report.winRateSpread <= 0.42);
+  assert.ok(report.avgScoreSpread <= 35000);
+  assert.ok(Math.min(...deaths) >= 5);
+  assert.ok(Math.min(...loopTiers) >= 2.8);
 });

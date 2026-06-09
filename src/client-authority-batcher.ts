@@ -106,6 +106,7 @@ export function applyQueuedRoomAuthorityMessages(
     pendingDeltas = [];
 
     for (const delta of orderedDeltas) {
+      if (delta.roomId !== nextState.id) continue;
       const projection = applyDelta(nextState, delta, receivedAt);
       acceptedSeq = Math.max(acceptedSeq, projection.acceptedSeq);
       if (projection.state !== nextState) committed = true;
@@ -129,6 +130,14 @@ export function applyQueuedRoomAuthorityMessages(
     }
 
     drainDeltas();
+    if (nextState && message.payload.id !== nextState.id) {
+      pendingDeltas = [];
+      nextState = withReceivedAt(message.payload, receivedAt);
+      committed = true;
+      acceptedSeq = stateEventSeq(nextState);
+      recovery = null;
+      continue;
+    }
     const incomingSeq = stateEventSeq(message.payload);
     if (incomingSeq < stateEventSeq(nextState) || incomingSeq < acceptedSeq) {
       clearCoveredRecovery();
