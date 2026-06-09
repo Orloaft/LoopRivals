@@ -279,50 +279,53 @@ function sampleBilinear(image, x, y) {
   });
 }
 
-function replacementContentBounds(image) {
-  let minX = image.width;
-  let minY = image.height;
-  let maxX = -1;
+// The generated row-four replacement art carries an ornate frame inset inside a dark
+// stone margin (the margin varies per image, ~14-120px). Detect the frame's bright outer
+// box via a row/column brightness profile (first/last line brighter than half the peak
+// line) so we can crop to the frame edge rather than the dark margin.
+function replacementFrameBounds(image) {
+  const width = image.width;
+  const height = image.height;
+  const brightness = (offset) => (image.pixels[offset] + image.pixels[offset + 1] + image.pixels[offset + 2]) / 3;
+  const rowAverages = new Array(height).fill(0);
+  const columnAverages = new Array(width).fill(0);
+  for (let y = 0; y < height; y += 1) {
+    let sum = 0;
+    for (let x = 0; x < width; x += 1) sum += brightness((y * width + x) * 4);
+    rowAverages[y] = sum / width;
+  }
+  for (let x = 0; x < width; x += 1) {
+    let sum = 0;
+    for (let y = 0; y < height; y += 1) sum += brightness((y * width + x) * 4);
+    columnAverages[x] = sum / height;
+  }
+  const rowThreshold = Math.max(...rowAverages) * 0.5;
+  const columnThreshold = Math.max(...columnAverages) * 0.5;
+  let minY = rowAverages.findIndex((value) => value > rowThreshold);
   let maxY = -1;
-  for (let y = 0; y < image.height; y += 1) {
-    for (let x = 0; x < image.width; x += 1) {
-      const offset = (y * image.width + x) * 4;
-      const red = image.pixels[offset];
-      const green = image.pixels[offset + 1];
-      const blue = image.pixels[offset + 2];
-      const alpha = image.pixels[offset + 3];
-      if (alpha > 0 && red + green + blue > 72) {
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-      }
-    }
-  }
+  for (let y = height - 1; y >= 0; y -= 1) if (rowAverages[y] > rowThreshold) { maxY = y; break; }
+  let minX = columnAverages.findIndex((value) => value > columnThreshold);
+  let maxX = -1;
+  for (let x = width - 1; x >= 0; x -= 1) if (columnAverages[x] > columnThreshold) { maxX = x; break; }
 
-  if (maxX < minX || maxY < minY) {
-    return { minX: 0, minY: 0, maxX: image.width - 1, maxY: image.height - 1 };
+  if (minX < 0 || minY < 0 || maxX < minX || maxY < minY) {
+    return { minX: 0, minY: 0, maxX: width - 1, maxY: height - 1 };
   }
-
   return { minX, minY, maxX, maxY };
 }
 
 function normalizeReplacementSprite(source, plan) {
-  const bounds = replacementContentBounds(source);
-  const boundsWidth = bounds.maxX - bounds.minX + 1;
-  const boundsHeight = bounds.maxY - bounds.minY + 1;
-  const padding = Math.round(Math.max(boundsWidth, boundsHeight) * 0.01);
-  const side = Math.max(boundsWidth, boundsHeight) + padding * 2;
-  const centerX = (bounds.minX + bounds.maxX) / 2;
-  const centerY = (bounds.minY + bounds.maxY) / 2;
-  const sourceLeft = centerX - side / 2;
-  const sourceTop = centerY - side / 2;
+  // Crop to the detected frame box and bilinear-scale it to fill the square output on both
+  // axes, so the frame reaches all four edges flush -- the same standard as atlas tiles.
+  const bounds = replacementFrameBounds(source);
+  const boxWidth = bounds.maxX - bounds.minX + 1;
+  const boxHeight = bounds.maxY - bounds.minY + 1;
   const pixels = Buffer.alloc(plan.outputWidth * plan.outputHeight * 4);
 
   for (let y = 0; y < plan.outputHeight; y += 1) {
-    const sourceY = sourceTop + ((y + 0.5) * side / plan.outputHeight) - 0.5;
+    const sourceY = bounds.minY + ((y + 0.5) * boxHeight / plan.outputHeight) - 0.5;
     for (let x = 0; x < plan.outputWidth; x += 1) {
-      const sourceX = sourceLeft + ((x + 0.5) * side / plan.outputWidth) - 0.5;
+      const sourceX = bounds.minX + ((x + 0.5) * boxWidth / plan.outputWidth) - 0.5;
       const [red, green, blue, alpha] = sampleBilinear(source, sourceX, sourceY);
       const output = (y * plan.outputWidth + x) * 4;
       pixels[output] = red;
