@@ -64,11 +64,29 @@ const comboTransformationSpritePlan = [
   { tileType: 'embergate', base: 'wyrmgate', accent: [226, 118, 50], symbol: 'embergate' }
 ];
 
+// Each atlas cell carries an ornate stone frame, and that frame -- not the cell -- is the
+// alignment reference. The frame does NOT fill its cell: it is inset ~11px on the left,
+// ~11px on the right, and sits at a per-row vertical offset. So we crop each cell to the
+// frame's bright outer box on ALL FOUR sides and bilinear-scale that box to fill the
+// square output. Every tile's frame then reaches all four output edges identically, so
+// the frames seam flush when tiles sit edge-to-edge (no uneven gaps between stacked vs
+// side-by-side tiles). Boxes measured on loopduel-tiles-retro-gothic-v2.png via
+// scripts/frame-rows.mjs (one brightness threshold applied to all four sides):
+//   row  x box           y box            (x is identical for every row/col)
+//   0    11 .. 244       17 .. 278
+//   1    11 .. 244       297 .. 559
+//   2    11 .. 244       577 .. 839
+//   3    11 .. 244       858 .. 1119
+// An earlier plan took the full 256px cell width (leaving the ~11px side margins as dead
+// space) and only scaled Y, which is what produced the uneven seams. Verified by
+// scripts/tile-align-audit.mjs (frame ring cross-correlation to road).
+const frameInsetX = 11;
+const frameWidth = 234;
 const rowCropPlan = [
-  { sourceY: 0, sourceHeight: 256 },
-  { sourceY: 296, sourceHeight: 256 },
-  { sourceY: 577, sourceHeight: 256 },
-  { sourceY: 858, sourceHeight: 256 }
+  { sourceY: 17, sourceHeight: 262 },
+  { sourceY: 297, sourceHeight: 263 },
+  { sourceY: 577, sourceHeight: 263 },
+  { sourceY: 858, sourceHeight: 262 }
 ];
 
 const replacementTileTypes = new Set([
@@ -100,11 +118,10 @@ const tileSpritePlan = tileTypes.map((tileType, index) => {
     tileType,
     index,
     sourceKind: 'atlas',
-    sourceX: col * spriteSize,
+    sourceX: col * spriteSize + frameInsetX,
     sourceY: crop.sourceY,
-    sourceWidth: spriteSize,
+    sourceWidth: frameWidth,
     sourceHeight: crop.sourceHeight,
-    scaleY: false,
     outputWidth: spriteSize,
     outputHeight: spriteSize
   };
@@ -244,15 +261,6 @@ function samplePixel(image, x, y) {
   ];
 }
 
-function sampleVertical(image, x, y) {
-  const y0 = Math.floor(y);
-  const y1 = Math.min(image.height - 1, y0 + 1);
-  const weight = y - y0;
-  const top = samplePixel(image, x, y0);
-  const bottom = samplePixel(image, x, y1);
-  return top.map((channel, index) => Math.round(channel + (bottom[index] - channel) * weight));
-}
-
 function sampleBilinear(image, x, y) {
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
@@ -330,16 +338,13 @@ function normalizeReplacementSprite(source, plan) {
 function cropSprite(atlas, plan) {
   if (plan.sourceKind !== 'atlas') throw new Error(`${plan.tileType} is not an atlas-backed sprite`);
   const pixels = Buffer.alloc(plan.outputWidth * plan.outputHeight * 4);
-  const inset = plan.sourceInset ?? 0;
+  // Bilinear-scale the frame box (sourceX/Y, sourceWidth/Height) to fill the square
+  // output on both axes, so the frame reaches all four output edges flush.
   for (let y = 0; y < plan.outputHeight; y += 1) {
-    const sourceY = plan.scaleY
-      ? plan.sourceY + ((y + 0.5) * plan.sourceHeight / plan.outputHeight) - 0.5
-      : plan.sourceY + Math.max(0, Math.min(plan.sourceHeight - 1, y - inset));
+    const sourceY = plan.sourceY + ((y + 0.5) * plan.sourceHeight / plan.outputHeight) - 0.5;
     for (let x = 0; x < plan.outputWidth; x += 1) {
-      const sourceX = plan.sourceX + Math.max(0, Math.min(plan.sourceWidth - 1, x - inset));
-      const [red, green, blue, alpha] = plan.scaleY
-        ? sampleVertical(atlas, sourceX, sourceY)
-        : samplePixel(atlas, sourceX, sourceY);
+      const sourceX = plan.sourceX + ((x + 0.5) * plan.sourceWidth / plan.outputWidth) - 0.5;
+      const [red, green, blue, alpha] = sampleBilinear(atlas, sourceX, sourceY);
       const output = (y * plan.outputWidth + x) * 4;
       pixels[output] = red;
       pixels[output + 1] = green;

@@ -731,39 +731,50 @@ function App() {
   }
 
   if (!me) {
+    const selectedHero = config.heroes.find((hero) => hero.id === heroId) ?? config.heroes[0];
     return (
-      <main className="lobby-shell">
+      <main className="lobby-shell title-screen">
         <GothicParallaxBackdrop />
-        <section className="brand-panel">
-          <div className="brand-mark">LD</div>
-          <div>
+        <section className="title-stage">
+          <div className="title-copy">
+            <span className="title-kicker">Retro gothic loop combat</span>
             <h1>Loopduel</h1>
-            <p>Fast loop combat for one to four rival adventurers.</p>
+            <p>Shape the road, outlast the boss loop, and break rival runners before the Tyrant answers.</p>
           </div>
+          <aside className="title-hero-showcase" style={{ '--hero-color': selectedHero.color } as CSSProperties}>
+            <span className="title-hero-frame">
+              <img src={heroPortraitUrl(selectedHero.id)} alt="" />
+              <span>{selectedHero.icon}</span>
+            </span>
+            <div>
+              <small>Chosen runner</small>
+              <strong>{selectedHero.name}</strong>
+              <span>{selectedHero.title} · {statLine(selectedHero)}</span>
+              <p>{selectedHero.text}</p>
+            </div>
+          </aside>
         </section>
 
-        <section className="join-panel">
-          <div className="profile-strip" aria-label="Local profile">
-            <span><strong>{profile.matches}</strong> matches</span>
-            <span><strong>{profile.wins}</strong> wins</span>
-            <span><strong>{profile.bestScore}</strong> best</span>
-            <span><strong>{profile.bestLevel}</strong> best level</span>
-          </div>
-          <div className="name-row">
-            <label htmlFor="player-name">Handle</label>
-            <input
-              id="player-name"
-              value={name}
-              maxLength={20}
-              onChange={(event) => setName(event.target.value)}
-            />
-            <label htmlFor="room-code">Room</label>
-            <input
-              id="room-code"
-              value={roomId}
-              maxLength={20}
-              onChange={(event) => setRoomId(event.target.value)}
-            />
+        <section className="join-panel title-control-panel">
+          <div className="name-row title-action-rail">
+            <label className="title-field" htmlFor="player-name">
+              <span>Handle</span>
+              <input
+                id="player-name"
+                value={name}
+                maxLength={20}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </label>
+            <label className="title-field room-field" htmlFor="room-code">
+              <span>Room</span>
+              <input
+                id="room-code"
+                value={roomId}
+                maxLength={20}
+                onChange={(event) => setRoomId(event.target.value)}
+              />
+            </label>
             <button className="primary-action" onClick={join}>
               <Play size={18} />
               Enter
@@ -772,21 +783,29 @@ function App() {
               <HelpCircle size={18} />
               Guided Duel
             </button>
-            <button className="icon-action" onClick={spectate}>
-              <Eye size={18} />
-              Watch
-            </button>
-            <button className="icon-action" onClick={() => copyInvite(roomId)}>
-              <Share2 size={18} />
-              Invite
-            </button>
-            <span className="join-qr" aria-label={`QR invite for room ${roomId}`}>
-              <QRCodeSVG value={inviteUrl(roomId)} size={80} marginSize={1} />
-            </span>
-            <button className="icon-action" onClick={() => setShowHelp(true)}>
-              <HelpCircle size={18} />
-              Rules
-            </button>
+            <div className="title-secondary-actions">
+              <button className="icon-action" onClick={spectate}>
+                <Eye size={18} />
+                Watch
+              </button>
+              <button className="icon-action" onClick={() => copyInvite(roomId)}>
+                <Share2 size={18} />
+                Invite
+              </button>
+              <span className="join-qr" aria-label={`QR invite for room ${roomId}`}>
+                <QRCodeSVG value={inviteUrl(roomId)} size={80} marginSize={1} />
+              </span>
+              <button className="icon-action" onClick={() => setShowHelp(true)}>
+                <HelpCircle size={18} />
+                Rules
+              </button>
+            </div>
+          </div>
+          <div className="profile-strip" aria-label="Local profile">
+            <span><strong>{profile.matches}</strong> matches</span>
+            <span><strong>{profile.wins}</strong> wins</span>
+            <span><strong>{profile.bestScore}</strong> best</span>
+            <span><strong>{profile.bestLevel}</strong> best level</span>
           </div>
 
           <div className="hero-grid">
@@ -1218,7 +1237,7 @@ function App() {
               </button>
               <button className="primary-action" onClick={closeTutorial}>
                 <Play size={18} />
-                Start
+                Continue
               </button>
             </div>
           </div>

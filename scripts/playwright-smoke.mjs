@@ -99,7 +99,7 @@ try {
   assert.equal(await page.locator('.game-shell .mobile-status-bar').count(), 0, 'game top status bar should be removed');
   await page.waitForSelector('.player-panel.active.focused .board');
   await page.waitForSelector('.hand-card');
-  await page.getByRole('button', { name: /^start$/i }).click();
+  await page.getByRole('button', { name: /^continue$/i }).click();
   await page.locator('.mobile-drawer-tab').filter({ hasText: /^Menu$/ }).click();
   await page.getByRole('button', { name: /^start$/i }).click();
 

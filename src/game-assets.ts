@@ -172,6 +172,9 @@ const staticCriticalImageUrls = [
   '/assets/ui/right-dock-loophero-gothic-v4.png',
   '/assets/ui/talent-back-medallion-v1.png',
   '/assets/ui/loopduel-start-button-states-v1.png',
+  '/assets/ui/loopduel-guide-codex-frame-v1.png',
+  '/assets/ui/loopduel-ui-row-plaque-v1.png',
+  '/assets/ui/loopduel-popover-frame-v1.png',
   healthPotionSpriteUrl(),
   '/assets/combat/combat-fx-spritesheet-v1.png',
   ...combatEntryCueFrameUrls,
@@ -239,7 +242,10 @@ function warmCriticalGameImages(config: Pick<GameConfig, 'heroes'> | null | unde
     '/assets/background/loopduel-parallax-sky-v2.png',
     '/assets/background/loopduel-parallax-spires-v2.png',
     '/assets/background/loopduel-parallax-graves-v2.png',
-    '/assets/background/loopduel-parallax-brambles-v2.png'
+    '/assets/background/loopduel-parallax-brambles-v2.png',
+    '/assets/ui/loopduel-title-stage-painterly-v1.png',
+    '/assets/ui/loopduel-guide-codex-frame-v1.png',
+    '/assets/ui/loopduel-ui-row-plaque-v1.png'
   ];
   const urls = phase === 'lobby'
     ? [...heroUrls, ...lobbyUrls]
