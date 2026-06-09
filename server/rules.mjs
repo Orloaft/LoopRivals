@@ -71,6 +71,11 @@ const bossChunkThreatShare = { act: 0.52, loop: 0.72 };
 const bossAttemptPressureCap = { act: 4, loop: 8 };
 const bossCorruptionPressureCap = { act: 5, loop: 8 };
 const bossCombatCorruptionCap = 32;
+// Cap corruption used by normal (non-boss) fights too. Without this, solo
+// corruption is unbounded: each death adds corruption, which raises every
+// fight's threat and enemy HP and cuts lap healing, causing more deaths — a
+// runaway spiral. Capping plateaus the pressure so solo runs stay winnable.
+const combatCorruptionCap = 24;
 const reviveBonusPowerCap = 6;
 const bossTileSides = [
   [2, 1, 3, 4],
@@ -3176,7 +3181,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   const runeMarks = player.heroId === 'rune-archer' ? clamp(player.runeMarkCount ?? 0, 0, 8) : 0;
   const runeWard = runeMarks > 0 && staged.pressure >= 3 ? Math.min(4, 1 + Math.floor(runeMarks / 2)) : 0;
   const bossLabels = ['briar warden', 'crown sentinel', 'loop tyrant'];
-  const corruption = bossLabels.includes(label) ? Math.min(rawCorruption, bossCombatCorruptionCap) : rawCorruption;
+  const corruption = Math.min(rawCorruption, bossLabels.includes(label) ? bossCombatCorruptionCap : combatCorruptionCap);
   const runePower = runeMarks > 0 && (staged.pressure >= 5 || bossLabels.includes(label))
     ? Math.min(2, Math.floor(runeMarks / 3))
     : 0;
@@ -3438,7 +3443,7 @@ function applySoloDeathPenalty(room, player) {
   const deathCount = player.deathsThisTier ?? 1;
   const goldLoss = Math.min(player.gold ?? 0, 18 + deathCount * 7);
   player.gold = Math.max(0, (player.gold ?? 0) - goldLoss);
-  player.soloCorruption = (player.soloCorruption ?? 0) + 4 + Math.min(4, deathCount);
+  player.soloCorruption = (player.soloCorruption ?? 0) + 2 + Math.min(3, deathCount);
   player.scorePenalty = (player.scorePenalty ?? 0) + 120 + deathCount * 35;
   const nextTier = matchTiers[player.loopTier ?? 1];
   const setbackThreshold = nextTier?.minScore ?? ((player.loopTier ?? 1) >= 3 ? roomGoalScore(room) : null);
