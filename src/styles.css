@@ -335,6 +335,18 @@ body::before {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Opt-out, not allow-list: anything new is calmed by default. The runner
+     travel path is JS/RAF transform writes (not CSS animation/transition) so it
+     is unaffected; only decorative motion is neutralized here. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
   .parallax-moon,
   .parallax-clouds,
   .parallax-spires,
@@ -343,21 +355,6 @@ body::before {
   .parallax-brambles {
     animation: none;
     translate: 0 0;
-  }
-
-  .combat-entry-cue,
-  .combat-overlay,
-  .combat-announcement,
-  .combatant img,
-  .enemy-party img,
-  .combat-fx-sprite,
-  .combat-damage-float,
-  .runner-floater,
-  .combat-log li,
-  .combat-log-active::after {
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
   }
 }
 
@@ -1062,6 +1059,14 @@ input:focus {
   border-radius: 6px;
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--hero-color) 20%, rgba(0, 0, 0, 0.8)), rgba(12, 12, 11, 0.9));
+  animation: winner-strip-in 420ms cubic-bezier(0.18, 0.9, 0.2, 1.08) both;
+}
+
+@keyframes winner-strip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.96);
+  }
 }
 
 .winner-strip div {
@@ -1095,6 +1100,7 @@ input:focus {
 }
 
 .summary-card {
+  position: relative;
   display: grid;
   gap: 6px;
   min-width: 0;
@@ -1103,10 +1109,59 @@ input:focus {
   border: 1px solid color-mix(in srgb, var(--hero-color) 34%, rgba(210, 177, 92, 0.16));
   border-radius: 5px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--hero-color) 10%, rgba(0, 0, 0, 0.62)), rgba(15, 14, 12, 0.9));
+  /* Staggered reveal driven by --rank-index set per card in App.tsx. */
+  animation: summary-card-in 360ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+  animation-delay: calc(var(--rank-index, 0) * 70ms);
+}
+
+@keyframes summary-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.9);
+  }
 }
 
 .summary-card.winner {
   border-color: color-mix(in srgb, var(--hero-color) 64%, var(--gold-bright));
+  /* Reveal, then one celebratory scale-punch after the stagger settles. */
+  animation:
+    summary-card-in 360ms cubic-bezier(0.2, 0.8, 0.25, 1) both,
+    winner-card-punch 520ms cubic-bezier(0.2, 0.85, 0.25, 1.1) calc(var(--rank-index, 0) * 70ms + 300ms) both;
+}
+
+.summary-card.winner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 40%, rgba(255, 224, 138, 0.55), transparent 70%);
+  opacity: 0;
+  animation: winner-gold-flash 720ms ease-out calc(var(--rank-index, 0) * 70ms + 300ms) both;
+}
+
+@keyframes winner-card-punch {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes winner-gold-flash {
+  0% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 .summary-rank {
@@ -3770,12 +3825,15 @@ input:focus {
 
 .combat-hp span {
   display: block;
+  width: 100%;
   height: 100%;
   border-radius: inherit;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 52%),
     linear-gradient(90deg, #9f3d35, #e2bc64);
-  transition: width 260ms cubic-bezier(0.2, 0.72, 0.18, 1);
+  transform-origin: left center;
+  /* scaleX instead of width: stays on the compositor, no per-beat layout. */
+  transition: transform 260ms cubic-bezier(0.2, 0.72, 0.18, 1);
 }
 
 .combat-hp small {
@@ -4509,13 +4567,21 @@ input:focus {
     translateY(var(--card-lift))
     rotate(var(--card-tilt));
   transform-origin: 50% 115%;
-  will-change: transform, opacity;
   animation: card-deal-in 280ms cubic-bezier(0.18, 0.92, 0.22, 1.18) both;
   animation-delay: calc(min(var(--card-index), 6) * 26ms);
   transition:
     transform 150ms ease,
     filter 150ms ease,
     box-shadow 150ms ease;
+}
+
+/* Just-in-time compositor hint: only promote a card to its own layer while it
+   is actually moving (hover/select/drag), instead of pinning a layer per card
+   in the whole hand at rest. */
+.hand-card:hover,
+.hand-card.selected,
+.hand-card.dragging {
+  will-change: transform;
 }
 
 .hand-card::before,

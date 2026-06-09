@@ -30,6 +30,7 @@ import {
   HeroStatsDrawer,
   ShopDrawer
 } from './game-ui';
+import { sfx, unlockAudio } from './audio';
 
 function savedPlayerToken() {
   return localStorage.getItem('loopduel.playerToken') ?? '';
@@ -227,6 +228,10 @@ function App() {
   const roomAuthorityBatcherRef = useRef<ReturnType<typeof createRoomAuthorityBatcher> | null>(null);
   const me = game?.players.find((player) => player.id === playerToken) ?? null;
   const assetWarmPhase = me ? 'game' : 'lobby';
+
+  useEffect(() => {
+    unlockAudio();
+  }, []);
 
   useEffect(() => {
     playerTokenRef.current = playerToken;
@@ -446,6 +451,8 @@ function App() {
     if (!game || !me || game.status !== 'finished') return;
     const finishId = `${game.id}:${game.winnerId ?? 'none'}`;
     if (recordedFinishId === finishId) return;
+    if (game.winnerId === me.id) sfx.victory();
+    else sfx.defeat();
     const nextProfile = {
       matches: profile.matches + 1,
       wins: profile.wins + (game.winnerId === me.id ? 1 : 0),
@@ -573,6 +580,7 @@ function App() {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'terrain') return;
     if (!emitAuthoritative('placeCard', { cardId: card.instanceId, tileIndex: tile.index })) return;
+    sfx.cardPlay();
     setSelectedCardId(null);
     setDragCardId(null);
   }
@@ -581,6 +589,7 @@ function App() {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'rival') return;
     if (!emitAuthoritative('playRivalCard', { cardId: card.instanceId, targetId })) return;
+    sfx.cardPlay();
     setSelectedCardId(null);
     setDragCardId(null);
   }
@@ -589,6 +598,7 @@ function App() {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'bonk') return;
     if (!emitAuthoritative('playBonkCard', { cardId: card.instanceId, targetId })) return;
+    sfx.cardPlay();
     setSelectedCardId(null);
     setDragCardId(null);
   }
@@ -597,6 +607,7 @@ function App() {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'rival') return;
     if (!emitAuthoritative('playRivalCard', { cardId: card.instanceId, targetId, tileIndex })) return;
+    sfx.cardPlay();
     setSelectedCardId(null);
     setDragCardId(null);
   }
@@ -908,13 +919,13 @@ function App() {
       {game.status === 'finished' && (
         <section className="match-summary">
           <div className="summary-board">
-            {game.leaderboard.slice(0, 4).map((entry) => {
+            {game.leaderboard.slice(0, 4).map((entry, index) => {
               const player = game.players.find((item) => item.id === entry.id);
               return (
                 <article
                   className={`summary-card ${entry.id === game.winnerId ? 'winner' : ''}`}
                   key={entry.id}
-                  style={{ '--hero-color': player?.color ?? '#d2b15c' } as CSSProperties}
+                  style={{ '--hero-color': player?.color ?? '#d2b15c', '--rank-index': index } as CSSProperties}
                 >
                   <span className="summary-rank">#{entry.rank}</span>
                   <strong>{entry.name}</strong>

@@ -12,6 +12,7 @@ import {
   talentArtUrl,
   talentIconUrl
 } from './game-assets';
+import { sfx, isSfxEnabled, setSfxEnabled } from './audio';
 import { configureGameplayRafMetrics, gameplayRaf, type GameplayRafFrame } from './gameplay-raf';
 import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, pendingCombatStopCursor, playerMotionIsLocked, pointAlongBoard, serverPresentationClock, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, visualSegmentDurationMs, type RunnerPoint } from './movement';
 import { loopduelSmoothnessMetrics } from './smoothness-metrics';
@@ -791,6 +792,25 @@ function MobileRivalStrip({
   );
 }
 
+function SfxToggle() {
+  const [on, setOn] = useState(isSfxEnabled());
+  return (
+    <button
+      className="menu-item"
+      onClick={() => {
+        const next = !on;
+        setSfxEnabled(next);
+        setOn(next);
+        if (next) sfx.cardPlay();
+      }}
+      aria-pressed={on}
+    >
+      {on ? <Volume2 size={20} /> : <VolumeX size={20} />}
+      Effects {on ? 'On' : 'Off'}
+    </button>
+  );
+}
+
 function GameMenu({
   game,
   isHost,
@@ -920,6 +940,7 @@ function GameMenu({
             {bgmOn ? <Volume2 size={20} /> : <VolumeX size={20} />}
             Music {bgmOn ? 'On' : 'Off'}
           </button>
+          <SfxToggle />
           <button className="menu-item" onClick={onRules}>
             <HelpCircle size={20} />
             Rules
@@ -2311,6 +2332,13 @@ const PlayerPanel = memo(function PlayerPanel({
     else if (xpDelta !== 0) addFloater(signed(xpDelta, ' XP'), xpDelta > 0 ? 'xp' : 'loss');
     if (lapDelta > 0) addFloater(`+${lapDelta} loop${lapDelta === 1 ? '' : 's'}`, 'loop');
 
+    // Audio only for the local player's own panel; combat hits are voiced by the
+    // overlay's per-beat sounds, so this layer covers reward moments only.
+    if (active) {
+      if (levelDelta > 0) sfx.levelUp();
+      if (goldDelta > 0) sfx.loot();
+    }
+
     const container = runnerFloatersRef.current;
     if (!container || nextFloaters.length === 0) return;
 
@@ -2328,7 +2356,7 @@ const PlayerPanel = memo(function PlayerPanel({
         container.firstElementChild?.remove();
       }
     });
-  }, [player.gold, player.hp, player.laps, player.level, player.score, player.xp]);
+  }, [active, player.gold, player.hp, player.laps, player.level, player.score, player.xp]);
   const stunSeconds = Math.ceil((player.stunRemainingMs ?? 0) / 1000);
   const compactRival = !active && !focused;
   const impact = eventImpact(player.event);
@@ -2523,19 +2551,19 @@ const PlayerPanel = memo(function PlayerPanel({
             <span>fight!</span>
           </div>
         )}
-        {player.combat && <CombatOverlay key={player.combat.startedAt} player={player} />}
+        {player.combat && <CombatOverlay key={player.combat.startedAt} player={player} audible={active} />}
       </div>
     </article>
   );
 }, playerPanelPropsEqual);
 
-function CombatOverlay({ player }: { player: Player }) {
+function CombatOverlay({ player, audible }: { player: Player; audible: boolean }) {
   const combat = player.combat;
   if (!combat) return null;
-  return <CombatOverlayBody player={player} combat={combat} />;
+  return <CombatOverlayBody player={player} combat={combat} audible={audible} />;
 }
 
-function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat }) {
+function CombatOverlayBody({ player, combat, audible }: { player: Player; combat: Combat; audible: boolean }) {
   const [presentation] = useState(() => ({
     beats: combat.beats?.length ? combat.beats : fallbackCombatBeats(combat),
     durationMs: combat.durationMs,
@@ -2600,6 +2628,12 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
       setPresentationPhase('beat');
       setActiveBeatIndex(index);
       setDisplayHp({ hero: beat.heroHp, enemy: beat.enemyHp });
+      if (audible) {
+        // Finisher (defender dropped to 0) gets the crit sting; others a hit.
+        const defenderHp = beat.attacker === 'enemy' ? beat.heroHp : beat.enemyHp;
+        if (defenderHp <= 0) sfx.crit();
+        else sfx.hit();
+      }
     }, beat.atMs));
     timers.push(window.setTimeout(() => setPresentationPhase('result'), resultAtMs));
     timers.push(window.setTimeout(() => setPresentationPhase('exit'), exitAtMs));
@@ -2608,7 +2642,7 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
     }, resultAtMs));
 
     return () => timers.forEach(window.clearTimeout);
-  }, [presentation, beats, resultAtMs, exitAtMs]);
+  }, [presentation, beats, resultAtMs, exitAtMs, audible]);
 
   return (
     <div className={`combat-overlay phase-${presentationPhase} combat-bg-${combat.backgroundId} combat-effect-${combat.effect} enemy-stage-${largestEnemySize} ${activeBeat ? 'combat-beat-active' : ''} ${logOpen ? 'log-open' : ''}`} style={{
@@ -2769,7 +2803,7 @@ function CombatBar({
   const hpRatio = Math.max(0, Math.min(100, (value / max) * 100));
   return (
     <div className={`combat-hp ${className}`}>
-      <span style={{ width: `${hpRatio}%` }} />
+      <span style={{ transform: `scaleX(${hpRatio / 100})` }} />
       <small>{label ? `${label} ${current}/${max}` : `${current}/${max}`}</small>
     </div>
   );
