@@ -2616,6 +2616,8 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
   }));
   const beats = presentation.beats;
   const [activeBeatIndex, setActiveBeatIndex] = useState(-1);
+  const [hitStop, setHitStop] = useState(false);
+  const hitStopTimerRef = useRef<number | null>(null);
   const [presentationPhase, setPresentationPhase] = useState<'entry' | 'beat' | 'result' | 'exit'>('entry');
   const [logOpen, setLogOpen] = useState(false);
   const [displayHp, setDisplayHp] = useState({
@@ -2672,10 +2674,19 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
       setPresentationPhase('beat');
       setActiveBeatIndex(index);
       setDisplayHp({ hero: beat.heroHp, enemy: beat.enemyHp });
+      // Finisher = the beat that drops the defender to 0.
+      const defenderHp = beat.attacker === 'enemy' ? beat.heroHp : beat.enemyHp;
+      const isFinisher = defenderHp <= 0;
+      // Hit-stop (§2.3): on the focused panel, briefly freeze the overlay's
+      // animations on a finisher so the shake + damage number erupt out of a
+      // held impact frame ("freeze, then erupt"). Skipped under reduced motion.
+      if (isFinisher && audible && !prefersReducedMotion()) {
+        setHitStop(true);
+        if (hitStopTimerRef.current !== null) window.clearTimeout(hitStopTimerRef.current);
+        hitStopTimerRef.current = window.setTimeout(() => setHitStop(false), 110);
+      }
       if (audible) {
-        // Finisher (defender dropped to 0) gets the crit sting; others a hit.
-        const defenderHp = beat.attacker === 'enemy' ? beat.heroHp : beat.enemyHp;
-        if (defenderHp <= 0) sfx.crit();
+        if (isFinisher) sfx.crit();
         else sfx.hit();
       }
     }, beat.atMs));
@@ -2685,11 +2696,14 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
       setDisplayHp({ hero: presentation.heroHpAfter, enemy: presentation.enemyHpAfter });
     }, resultAtMs));
 
-    return () => timers.forEach(window.clearTimeout);
+    return () => {
+      timers.forEach(window.clearTimeout);
+      if (hitStopTimerRef.current !== null) window.clearTimeout(hitStopTimerRef.current);
+    };
   }, [presentation, beats, resultAtMs, exitAtMs, audible]);
 
   return (
-    <div className={`combat-overlay phase-${presentationPhase} combat-bg-${combat.backgroundId} combat-effect-${combat.effect} enemy-stage-${largestEnemySize} ${activeBeat ? 'combat-beat-active' : ''} ${logOpen ? 'log-open' : ''}`} style={{
+    <div className={`combat-overlay phase-${presentationPhase} combat-bg-${combat.backgroundId} combat-effect-${combat.effect} enemy-stage-${largestEnemySize} ${activeBeat ? 'combat-beat-active' : ''} ${hitStop ? 'hit-stop' : ''} ${logOpen ? 'log-open' : ''}`} style={{
       '--combat-bg': `url(${combatBackgroundUrl(combat.backgroundId)})`,
       '--combat-duration': `${visibleDurationMs}ms`,
       '--combat-delay': '0ms'

@@ -3183,6 +3183,16 @@ input:focus {
     combat-stage-hit 180ms cubic-bezier(0.16, 0.86, 0.18, 1) both;
 }
 
+/* Hit-stop (§2.3): freeze the impact frame on a finisher beat for ~110ms, then
+   let every paused animation resume and erupt together. Pure compositor-side
+   (animation-play-state) — no layout, no paint, no main-thread work. */
+.combat-overlay.hit-stop,
+.combat-overlay.hit-stop *,
+.combat-overlay.hit-stop *::before,
+.combat-overlay.hit-stop *::after {
+  animation-play-state: paused !important;
+}
+
 .combat-overlay.phase-entry .combatant,
 .combat-overlay.phase-entry .combat-log {
   opacity: 0.46;
