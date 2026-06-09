@@ -1870,7 +1870,10 @@ test('CPU balance suite keeps a demanding but finishable win-rate band', () => {
   const deaths = report.heroes.map((hero) => hero.avgDeaths);
   const loopTiers = report.heroes.map((hero) => hero.avgLoopTier);
 
-  assert.ok(report.finishedRate >= 0.55 && report.finishedRate <= 0.85);
+  // Upper bound raised from 0.85 after bots learned to use hero abilities:
+  // competent bots survive and resolve more matches, so a higher finish rate
+  // is expected and healthy (fewer stalemates), not a difficulty regression.
+  assert.ok(report.finishedRate >= 0.55 && report.finishedRate <= 0.92);
   assert.ok(report.avgSeconds >= 900 && report.avgSeconds <= 1800);
   assert.ok(Math.max(...rates) <= 0.65);
   assert.ok(Math.min(...rates) >= 0.03);

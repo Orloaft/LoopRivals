@@ -448,12 +448,12 @@ export const heroes = [
       cooldownLoops: 2,
       text: 'Bloom a road ahead into healing terrain and recover HP.'
     },
-    maxHp: 50,
+    maxHp: 47,
     power: 7,
-    guard: 6,
+    guard: 5,
     speed: 5,
-    lapHeal: 4,
-    terrainScore: 6,
+    lapHeal: 2,
+    terrainScore: 4,
     text: 'A resilient shaper whose havens overgrow nearby road and make risky loops survivable.'
   },
   {
@@ -469,9 +469,9 @@ export const heroes = [
       cooldownLoops: 1,
       text: 'Lift extra cards and gold from the loop.'
     },
-    maxHp: 36,
-    power: 7,
-    guard: 2,
+    maxHp: 44,
+    power: 8,
+    guard: 4,
     speed: 5,
     lootLuck: 0.04,
     text: 'A fast looter who can vanish from one lethal hit each tier, paying tempo and coin to race the reset.'
@@ -511,7 +511,7 @@ export const heroes = [
     },
     maxHp: 39,
     power: 9,
-    guard: 2,
+    guard: 4,
     speed: 5,
     revivePower: 1,
     terrainScore: 2,
@@ -2176,8 +2176,8 @@ export function activateHeroAbility(room, player) {
 
   if (player.heroId === 'ember-knight') {
     const heatGain = 1 + Math.floor(strength / 3);
-    const armorGain = 3 + strength;
-    const heal = 4 + strength * 2;
+    const armorGain = 2 + strength;
+    const heal = 2 + strength;
     player.heroHeat = clamp((player.heroHeat ?? 0) + heatGain, 0, 3 + Math.floor(strength / 2));
     player.armor = (player.armor ?? 0) + armorGain;
     player.hp = clamp(player.hp + heal, 0, player.maxHp);
@@ -2188,7 +2188,7 @@ export function activateHeroAbility(room, player) {
     tile.type = strength >= 3 ? 'village' : 'meadow';
     tile.charges = 0;
     tile.expiresOnLap = player.laps + tileLoopLife(player);
-    const heal = 8 + strength * 3;
+    const heal = 3 + strength;
     player.hp = clamp(player.hp + heal, 0, player.maxHp);
     player.wardenOvergrowth = (player.wardenOvergrowth ?? 0) + 1;
     detail = `bloomed tile ${tile.index} into ${tile.type === 'village' ? 'Village' : 'Meadow'} and healed ${heal}`;
@@ -3810,6 +3810,14 @@ function botThink(room, player) {
   if (!player.isBot || room.tick % 3 !== 0 || room.status === 'finished') return;
   if (player.guidedDormant) return;
   if (player.pendingTraits.length > 0) chooseTrait(player, chooseBotTrait(player));
+
+  // Use the hero ability when it's ready. Heal/buff abilities (Ember, Moss)
+  // are held until the bot is hurt so they aren't wasted at full HP; tempo and
+  // disruption abilities (Vagrant, Archer, Grave) fire as soon as they're up.
+  if ((player.abilityReadyLap ?? 0) <= (player.laps ?? 0)) {
+    const healAbility = player.heroId === 'ember-knight' || player.heroId === 'moss-warden';
+    if (!healAbility || player.hp < player.maxHp * 0.85) activateHeroAbility(room, player);
+  }
 
   for (const slot of equipmentSlots) {
     const current = normalizeLoadout(player)[slot];
