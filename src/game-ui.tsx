@@ -14,6 +14,7 @@ import {
 } from './game-assets';
 import { sfx, isSfxEnabled, setSfxEnabled } from './audio';
 import { prefersReducedMotion } from './motion-prefs';
+import { shake, isShakeEnabled, setShakeEnabled } from './screen-shake';
 import { configureGameplayRafMetrics, gameplayRaf, type GameplayRafFrame } from './gameplay-raf';
 import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, pendingCombatStopCursor, playerMotionIsLocked, pointAlongBoard, serverPresentationClock, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, visualSegmentDurationMs, type RunnerPoint } from './movement';
 import { loopduelSmoothnessMetrics } from './smoothness-metrics';
@@ -812,6 +813,26 @@ function SfxToggle() {
   );
 }
 
+function ShakeToggle() {
+  const [on, setOn] = useState(isShakeEnabled());
+  return (
+    <button
+      className="menu-item"
+      onClick={(event) => {
+        const next = !on;
+        setShakeEnabled(next);
+        setOn(next);
+        // Preview the new state on the menu button itself.
+        if (next) shake(event.currentTarget, { magnitude: 1 });
+      }}
+      aria-pressed={on}
+    >
+      <Zap size={20} />
+      Screen shake {on ? 'On' : 'Off'}
+    </button>
+  );
+}
+
 function GameMenu({
   game,
   isHost,
@@ -942,6 +963,7 @@ function GameMenu({
             Music {bgmOn ? 'On' : 'Off'}
           </button>
           <SfxToggle />
+          <ShakeToggle />
           <button className="menu-item" onClick={onRules}>
             <HelpCircle size={20} />
             Rules
@@ -2618,6 +2640,7 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
   const [activeBeatIndex, setActiveBeatIndex] = useState(-1);
   const [hitStop, setHitStop] = useState(false);
   const hitStopTimerRef = useRef<number | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const [presentationPhase, setPresentationPhase] = useState<'entry' | 'beat' | 'result' | 'exit'>('entry');
   const [logOpen, setLogOpen] = useState(false);
   const [displayHp, setDisplayHp] = useState({
@@ -2683,7 +2706,13 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
       if (isFinisher && audible && !prefersReducedMotion()) {
         setHitStop(true);
         if (hitStopTimerRef.current !== null) window.clearTimeout(hitStopTimerRef.current);
-        hitStopTimerRef.current = window.setTimeout(() => setHitStop(false), 110);
+        hitStopTimerRef.current = window.setTimeout(() => {
+          setHitStop(false);
+          // Erupt out of the held frame: a hard, decaying screen-shake the
+          // instant the freeze releases (§2.4). WAAPI ignores animation-play-
+          // state, so it must fire on release, not during the freeze.
+          shake(overlayRef.current, { magnitude: 1.6 });
+        }, 110);
       }
       if (audible) {
         if (isFinisher) sfx.crit();
@@ -2703,7 +2732,7 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
   }, [presentation, beats, resultAtMs, exitAtMs, audible]);
 
   return (
-    <div className={`combat-overlay phase-${presentationPhase} combat-bg-${combat.backgroundId} combat-effect-${combat.effect} enemy-stage-${largestEnemySize} ${activeBeat ? 'combat-beat-active' : ''} ${hitStop ? 'hit-stop' : ''} ${logOpen ? 'log-open' : ''}`} style={{
+    <div ref={overlayRef} className={`combat-overlay phase-${presentationPhase} combat-bg-${combat.backgroundId} combat-effect-${combat.effect} enemy-stage-${largestEnemySize} ${activeBeat ? 'combat-beat-active' : ''} ${hitStop ? 'hit-stop' : ''} ${logOpen ? 'log-open' : ''}`} style={{
       '--combat-bg': `url(${combatBackgroundUrl(combat.backgroundId)})`,
       '--combat-duration': `${visibleDurationMs}ms`,
       '--combat-delay': '0ms'
