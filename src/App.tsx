@@ -863,7 +863,7 @@ function App() {
     : highestScoreRival ? [highestScoreRival] : [];
   const activeCardGuidance = activeCard ? activeCard.combo?.text ?? (
     activeCard.kind === 'terrain'
-      ? 'Place it where the next lap stays legible: haven before peril, engine before a boss push, danger only with recovery nearby.'
+      ? 'Place it so the next lap reads clearly: a haven before a peril, an engine before a boss push, danger only with recovery nearby.'
       : activeCard.kind === 'bonk'
         ? 'Use it when a rival is one beat from payoff, a gate push, or a clean lead.'
         : activeCard.id === 'oblivion'
@@ -1204,8 +1204,8 @@ function App() {
               </article>
               <article>
                 <span><ScrollText size={16} /></span>
-                <strong>Watch omens</strong>
-                <p>When the calendar appears, its status copy is the truth. The board should not need a crown of badges.</p>
+                <strong>Beware the Blood Moon</strong>
+                <p>A Blood Moon tile makes nearby fights stack more enemies. Lean in for bigger rewards only when you have healing close.</p>
               </article>
               <article>
                 <span><RotateCcw size={16} /></span>
@@ -1219,8 +1219,8 @@ function App() {
               </article>
               <article>
                 <span><Sparkles size={16} /></span>
-                <strong>Trust restrained relics</strong>
-                <p>Relics should fire from clear moments. Watch status copy and the log, not hidden hover text.</p>
+                <strong>Chase relic loot</strong>
+                <p>Relics are the rarest loot tier — powerful passive gear. Equip them in the matching slot for a major stat boost.</p>
               </article>
             </div>
             <div className="tutorial-actions">

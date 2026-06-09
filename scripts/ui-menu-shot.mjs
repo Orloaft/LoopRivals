@@ -13,7 +13,7 @@ const server = spawn(process.execPath, ['server/index.mjs'], {
 let log = ''; server.stdout.on('data', (c) => { log += c; }); server.stderr.on('data', (c) => { log += c; });
 async function waitForServer() {
   const deadline = Date.now() + 25000;
-  while (Date.now() < deadline) { try { if ((await fetch(`${baseUrl}/healthz`)).ok) return; } catch {} await delay(250); }
+  while (Date.now() < deadline) { try { if ((await fetch(`${baseUrl}/healthz`)).ok) return; } catch { /* not up yet */ } await delay(250); }
   throw new Error('timeout:\n' + log);
 }
 let browser;

@@ -16,7 +16,7 @@ let log = ''; server.stdout.on('data', (c) => { log += c; }); server.stderr.on('
 async function waitForServer() {
   const deadline = Date.now() + 25000;
   while (Date.now() < deadline) {
-    try { if ((await fetch(`${baseUrl}/healthz`)).ok) return; } catch {}
+    try { if ((await fetch(`${baseUrl}/healthz`)).ok) return; } catch { /* not up yet */ }
     await delay(250);
   }
   throw new Error('server timeout:\n' + log);

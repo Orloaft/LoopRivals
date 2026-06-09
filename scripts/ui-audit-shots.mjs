@@ -1,4 +1,3 @@
-/* global document, window */
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { mkdir } from 'node:fs/promises';
@@ -26,7 +25,7 @@ async function waitForServer(info) {
   const deadline = Date.now() + 25_000;
   while (Date.now() < deadline) {
     if (info.server.exitCode !== null) throw new Error(`Server exited early:\n${info.output()}`);
-    try { if ((await fetch(`${baseUrl}/healthz`)).ok) return; } catch {}
+    try { if ((await fetch(`${baseUrl}/healthz`)).ok) return; } catch { /* not up yet */ }
     await delay(250);
   }
   throw new Error(`Timed out waiting for ${baseUrl}`);

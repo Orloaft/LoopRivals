@@ -261,7 +261,7 @@ function terrainPlacementHint(
   receivedAt?: number,
   authorityPaused = false
 ) {
-  if (combatPlacementBlocked(player, tile, card, serverNow, receivedAt, authorityPaused)) return 'Combat tiles need two visual steps of lead time.';
+  if (combatPlacementBlocked(player, tile, card, serverNow, receivedAt, authorityPaused)) return 'Place combat tiles at least 2 tiles ahead, so you have time to prepare.';
   if (card?.kind === 'terrain') return `Drop ${card.name} here`;
   return undefined;
 }
@@ -408,13 +408,13 @@ const coreMechanicRunes: ProjectedMechanicHint[] = [
     label: 'Combos',
     value: 'shape',
     tone: 'arcane',
-    text: 'Some card pairings can transform the road. Put havens, engines, and peril where their next lap can be read.'
+    text: 'Some card pairings combine into stronger effects. Place a haven before a peril, or an engine before a boss, so each lap sets up the next.'
   },
   {
-    label: 'Omens',
-    value: 'calendar',
-    tone: 'arcane',
-    text: 'When the moon writes a date, follow the status copy. The calendar should teach the turn, not clutter the tiles.'
+    label: 'Blood Moon',
+    value: 'danger aura',
+    tone: 'danger',
+    text: 'A Blood Moon tile is a danger aura: fights placed near it stack more enemies. Bigger risk, bigger payoff — keep recovery close before you lean in.'
   },
   {
     label: 'Purge',
@@ -426,32 +426,48 @@ const coreMechanicRunes: ProjectedMechanicHint[] = [
     label: 'Wager',
     value: 'boss',
     tone: 'danger',
-    text: 'Boss gates ask for an ante in risk, time, or gold. Pay only when your loop can survive the answer.'
+    text: 'A boss fight costs an ante — HP, time, or gold. Only challenge one when your stats and health can survive it.'
   },
   {
     label: 'Relics',
-    value: 'trigger',
+    value: 'best loot',
     tone: 'gold',
-    text: 'Relics should whisper from narrow triggers. Watch the log and status copy instead of hunting for badges.'
+    text: 'Relics are the rarest, strongest loot tier. Equip them in your gear slots for a big stat jump over common and rare drops.'
   }
 ];
 
 function onboardingLesson(onboarding: OnboardingState): CoachLesson {
-  const scripted = guidedLessons[onboarding.completed ? 'debrief' : onboarding.step];
-  if (!scripted) {
-    return {
-      speaker: onboarding.speaker ?? guidedLessons.welcome.speaker,
-      title: onboarding.title || guidedLessons.welcome.title,
-      prompt: onboarding.prompt || guidedLessons.welcome.prompt,
-      detail: onboarding.detail || guidedLessons.welcome.detail
-    };
-  }
+  // Prefer the server's contextual text (tile-specific prompts, the personalized
+  // debrief). The scripted table is only a fallback if the server left a field blank.
+  const scripted = guidedLessons[onboarding.completed ? 'debrief' : onboarding.step] ?? guidedLessons.welcome;
   return {
     speaker: onboarding.speaker ?? scripted.speaker,
-    title: scripted.title,
-    prompt: scripted.prompt,
-    detail: scripted.detail
+    title: onboarding.title || scripted.title,
+    prompt: onboarding.prompt || scripted.prompt,
+    detail: onboarding.detail || scripted.detail
   };
+}
+
+// During the guided run, only surface runes relevant to the current beat so early
+// lessons aren't buried under boss-wager / relic lectures the player can't use yet.
+// `null` = no gating (show everything). The held-card hints are always allowed since
+// they explain the card the player is about to play.
+const guidedRuneAllow: Record<string, Set<string> | null> = {
+  welcome: new Set(),
+  'place-safe': new Set(),
+  'prep-threat': new Set(['Combos', 'Blood Moon']),
+  'build-fork': new Set(['Combos', 'Blood Moon', 'Purge']),
+  rival: new Set(['Combos', 'Blood Moon', 'Purge']),
+  'free-run': null
+};
+const alwaysGuidedRunes = new Set(['Held terrain', 'Held bonk', 'Held rival']);
+
+function gateGuidedMechanics(onboarding: OnboardingState, hints: ProjectedMechanicHint[]): ProjectedMechanicHint[] {
+  if (!onboarding.enabled || onboarding.completed) return hints;
+  if (!(onboarding.step in guidedRuneAllow)) return hints;
+  const allow = guidedRuneAllow[onboarding.step];
+  if (allow === null) return hints;
+  return hints.filter((hint) => allow.has(hint.label) || alwaysGuidedRunes.has(hint.label));
 }
 
 function coreMechanics(config: GameConfig): ProjectedMechanicHint[] {
@@ -479,10 +495,10 @@ function projectedMechanics(player: Player, activeCard: Card | null, config: Gam
     text: `${player.bossPhase.remainingChunks} seal${player.bossPhase.remainingChunks === 1 ? '' : 's'} remain. Treat each attempt as an ante against your whole build.`
   } satisfies ProjectedMechanicHint : null);
   const relicTrigger = player.relicTriggers?.[0] ?? (player.loot.some((item) => item.rarity === 'relic') ? {
-    label: 'Relic trigger',
-    value: 'equipped',
+    label: 'Relic',
+    value: 'best loot',
     tone: 'gold',
-    text: 'Your relics should fire from specific moments. Read the combat log when they stir.'
+    text: "You're carrying relic-grade loot — the strongest tier. Make sure it's equipped in the matching gear slot."
   } satisfies ProjectedMechanicHint : null);
 
   return [
@@ -514,10 +530,10 @@ function OnboardingCoach({
     .filter((tile): tile is Tile => Boolean(tile))
     .map((tile) => tileNames[tile.type] ?? `Tile ${tile.index + 1}`)
     .slice(0, 3);
-  const mechanics = [
+  const mechanics = gateGuidedMechanics(onboarding, [
     ...(onboarding.mechanics ?? []),
     ...projectedMechanics(player, activeCard, config)
-  ].slice(0, 5);
+  ]).slice(0, 5);
   const facts = [
     recommendedNames.length > 0 ? `Marked: ${recommendedNames.join(', ')}` : `Lap ${player.laps}`,
     `${player.hand.length} cards in hand`,
@@ -1929,6 +1945,18 @@ export function HeroStatsDrawer({
     ['Tiles', player.tilesPlaced],
     ['Rival hits', player.rivalHits]
   ];
+  const statHints: Record<string, string> = {
+    HP: 'Health. Hit 0 and you collapse, losing score and time.',
+    Power: 'Attack strength in fights.',
+    Guard: 'Reduces the damage you take in fights.',
+    Speed: 'How fast your runner moves between tiles.',
+    Draw: 'How quickly you draw new cards.',
+    Sabotage: 'Extra damage your rival and bonk cards deal to other runners.',
+    'Loot luck': 'Improves how often and how well loot drops.',
+    'Lap heal': 'HP restored each time you finish a lap.',
+    'Terrain score': 'Bonus score when you place terrain tiles.',
+    Revive: 'Extra power you gain after falling and reviving (once per tier).'
+  };
 
   return (
     <aside
@@ -1958,7 +1986,7 @@ export function HeroStatsDrawer({
 
       <div className="hero-stats-grid">
         {statRows.map(([label, value]) => (
-          <span key={label}>
+          <span key={label} title={statHints[label as string]}>
             <small>{label}</small>
             <strong>{value}</strong>
           </span>
@@ -2776,6 +2804,17 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
           <section>
             <h2>Finale</h2>
             <p>After four completed loops in act III, the Loop Tyrant appears. Corruption rises from laps, act clears, and deaths; dying restarts the current act board and costs gold, tempo, and sometimes loose loot.</p>
+          </section>
+          <section className="help-glossary">
+            <h2>Glossary</h2>
+            <p><b>Blood Moon</b> — a danger aura; fights placed near it stack more enemies.</p>
+            <p><b>Combo</b> — placing terrain beside certain tiles transforms them into stronger versions (e.g. Meadow + Grove → Bloomgrove).</p>
+            <p><b>Corruption</b> — rises from laps, act clears, and deaths; it makes boss fights harder, especially solo.</p>
+            <p><b>Heat</b> — Ember Knight builds Heat from fights to grow stronger across a run.</p>
+            <p><b>Purge</b> — the Oblivion card clears one of your own tiles back to plain road.</p>
+            <p><b>Seal</b> — boss tiles you clear in sequence to bring the boss down.</p>
+            <p><b>Relic</b> — the rarest, strongest tier of loot.</p>
+            <p><b>Boss ante</b> — challenging a boss costs HP, time, or gold; only attempt when you can survive it.</p>
           </section>
         </div>
         <div className="help-lists">

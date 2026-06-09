@@ -1,4 +1,4 @@
-/* global document, window */
+/* global document, getComputedStyle */
 // Drive a real match, place as many terrain cards on the focused board as
 // possible (drawing more over time), and screenshot the populated loop so the
 // tile-frame alignment can be appraised across many tile types in context.
