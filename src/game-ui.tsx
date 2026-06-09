@@ -13,6 +13,7 @@ import {
   talentIconUrl
 } from './game-assets';
 import { sfx, isSfxEnabled, setSfxEnabled } from './audio';
+import { prefersReducedMotion } from './motion-prefs';
 import { configureGameplayRafMetrics, gameplayRaf, type GameplayRafFrame } from './gameplay-raf';
 import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, pendingCombatStopCursor, playerMotionIsLocked, pointAlongBoard, serverPresentationClock, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, visualSegmentDurationMs, type RunnerPoint } from './movement';
 import { loopduelSmoothnessMetrics } from './smoothness-metrics';
@@ -29,7 +30,7 @@ type LocalProfile = {
 
 type RunnerFloater = {
   text: string;
-  tone: 'gain' | 'loss' | 'health' | 'gold' | 'xp' | 'loop';
+  tone: 'gain' | 'loss' | 'health' | 'gold' | 'xp' | 'loop' | 'level';
   lane: number;
 };
 
@@ -1046,6 +1047,7 @@ function HandBar({
           <button
             key={card.instanceId}
             draggable={false}
+            data-card-id={card.instanceId}
             aria-label={`${card.name}: ${card.text}`}
             className={`hand-card ${cardFaceClass(card)} ${selectedId === card.instanceId ? 'selected' : ''} ${draggingId === card.instanceId ? 'dragging' : ''}`}
             style={{
@@ -2277,6 +2279,8 @@ const PlayerPanel = memo(function PlayerPanel({
   const runnerRef = useRef<HTMLSpanElement | null>(null);
   const runnerHighlightRef = useRef<HTMLSpanElement | null>(null);
   const runnerFloatersRef = useRef<HTMLSpanElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const panelHitRef = useRef<HTMLSpanElement | null>(null);
   const [reachedPendingCombatCursor, setReachedPendingCombatCursor] = useState<number | null>(null);
   const previousRunnerStatsRef = useRef<{ hp: number; score: number; gold: number; xp: number; level: number; laps: number } | null>(null);
   const onCombatStopReached = useCallback((cursor: number | null) => {
@@ -2328,7 +2332,7 @@ const PlayerPanel = memo(function PlayerPanel({
     if (hpDelta !== 0) addFloater(signed(hpDelta, ' HP'), hpDelta > 0 ? 'health' : 'loss');
     if (scoreDelta !== 0) addFloater(signed(scoreDelta, ' score'), scoreDelta > 0 ? 'gain' : 'loss');
     if (goldDelta !== 0) addFloater(signed(goldDelta, 'g'), goldDelta > 0 ? 'gold' : 'loss');
-    if (levelDelta > 0) addFloater(`+${levelDelta} Lv`, 'xp');
+    if (levelDelta > 0) addFloater(`+${levelDelta} Lv`, 'level');
     else if (xpDelta !== 0) addFloater(signed(xpDelta, ' XP'), xpDelta > 0 ? 'xp' : 'loss');
     if (lapDelta > 0) addFloater(`+${lapDelta} loop${lapDelta === 1 ? '' : 's'}`, 'loop');
 
@@ -2337,6 +2341,28 @@ const PlayerPanel = memo(function PlayerPanel({
     if (active) {
       if (levelDelta > 0) sfx.levelUp();
       if (goldDelta > 0) sfx.loot();
+    }
+
+    // Taking damage on the open board: a red flash plus a small decaying shake.
+    // WAAPI (not CSS) so React re-renders of the panel className can't clobber
+    // it; reduced-motion drops the shake but keeps a gentle flash.
+    if (hpDelta < 0) {
+      panelHitRef.current?.animate(
+        [{ opacity: 0 }, { opacity: 0.5, offset: 0.3 }, { opacity: 0 }],
+        { duration: 300, easing: 'ease-out' }
+      );
+      if (!prefersReducedMotion()) {
+        panelRef.current?.animate(
+          [
+            { transform: 'translate3d(0,0,0)' },
+            { transform: 'translate3d(-3px,1px,0)' },
+            { transform: 'translate3d(3px,-1px,0)' },
+            { transform: 'translate3d(-2px,0,0)' },
+            { transform: 'translate3d(0,0,0)' }
+          ],
+          { duration: 280, easing: 'ease-out' }
+        );
+      }
     }
 
     const container = runnerFloatersRef.current;
@@ -2351,6 +2377,22 @@ const PlayerPanel = memo(function PlayerPanel({
         node.addEventListener('animationend', () => node.remove(), { once: true });
         container.append(node);
       });
+
+      // Level-up ring: a one-shot expanding ring punch at the runner.
+      if (levelDelta > 0) {
+        const ring = document.createElement('span');
+        ring.className = 'level-up-ring';
+        ring.addEventListener('animationend', () => ring.remove(), { once: true });
+        container.append(ring);
+      }
+      // Loot toss: a glyph that lobs up and settles when gold is gained.
+      if (goldDelta > 0) {
+        const toss = document.createElement('b');
+        toss.className = 'loot-toss';
+        toss.textContent = '◆';
+        toss.addEventListener('animationend', () => toss.remove(), { once: true });
+        container.append(toss);
+      }
 
       while (container.childElementCount > 8) {
         container.firstElementChild?.remove();
@@ -2393,6 +2435,7 @@ const PlayerPanel = memo(function PlayerPanel({
 
   return (
     <article
+      ref={panelRef}
       className={`player-panel ${active ? 'active' : ''} ${focused ? 'focused' : 'dimmed'} ${compactRival ? 'compact-rival' : ''} ${canRivalTarget ? 'rival-drop-target' : ''} ${player.combat ? 'combat-locked' : ''} ${stunSeconds > 0 ? 'stunned' : ''} ${impact ? `event-${impact.tone}` : ''}`}
       data-loopduel-drop={canRivalTarget ? 'rival-target' : undefined}
       data-player-id={canRivalTarget ? player.id : undefined}
@@ -2419,6 +2462,7 @@ const PlayerPanel = memo(function PlayerPanel({
         ref={boardRef}
         className="board"
       >
+        <span ref={panelHitRef} className="panel-hit-flash" aria-hidden="true" />
         {player.board.map((tile) => {
           const placementBlocked = combatPlacementBlocked(player, tile, selectedCard, serverNow, receivedAt, authorityPaused);
           const placementHint = terrainPlacementHint(player, tile, selectedCard, serverNow, receivedAt, authorityPaused);

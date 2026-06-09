@@ -31,9 +31,27 @@ import {
   ShopDrawer
 } from './game-ui';
 import { sfx, unlockAudio } from './audio';
+import { prefersReducedMotion } from './motion-prefs';
 
 function savedPlayerToken() {
   return localStorage.getItem('loopduel.playerToken') ?? '';
+}
+
+// Spend feedback: clone the played card into a fixed-position ghost that burns
+// out where the card sat, so the card "goes somewhere" instead of vanishing.
+// Non-blocking (game state removal proceeds independently) and reduced-motion safe.
+function spawnCardExit(cardId: string) {
+  if (typeof document === 'undefined' || prefersReducedMotion()) return;
+  const source = document.querySelector(`[data-card-id="${cardId}"]`);
+  if (!(source instanceof HTMLElement)) return;
+  const rect = source.getBoundingClientRect();
+  const ghost = source.cloneNode(true) as HTMLElement;
+  ghost.removeAttribute('data-card-id');
+  ghost.classList.add('card-exit-ghost');
+  ghost.style.cssText =
+    `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;margin:0;z-index:60;pointer-events:none;`;
+  ghost.addEventListener('animationend', () => ghost.remove(), { once: true });
+  document.body.append(ghost);
 }
 
 function initialRoomId() {
@@ -581,6 +599,7 @@ function App() {
     if (!card || card.kind !== 'terrain') return;
     if (!emitAuthoritative('placeCard', { cardId: card.instanceId, tileIndex: tile.index })) return;
     sfx.cardPlay();
+    spawnCardExit(card.instanceId);
     setSelectedCardId(null);
     setDragCardId(null);
   }
@@ -590,6 +609,7 @@ function App() {
     if (!card || card.kind !== 'rival') return;
     if (!emitAuthoritative('playRivalCard', { cardId: card.instanceId, targetId })) return;
     sfx.cardPlay();
+    spawnCardExit(card.instanceId);
     setSelectedCardId(null);
     setDragCardId(null);
   }
@@ -599,6 +619,7 @@ function App() {
     if (!card || card.kind !== 'bonk') return;
     if (!emitAuthoritative('playBonkCard', { cardId: card.instanceId, targetId })) return;
     sfx.cardPlay();
+    spawnCardExit(card.instanceId);
     setSelectedCardId(null);
     setDragCardId(null);
   }
@@ -608,6 +629,7 @@ function App() {
     if (!card || card.kind !== 'rival') return;
     if (!emitAuthoritative('playRivalCard', { cardId: card.instanceId, targetId, tileIndex })) return;
     sfx.cardPlay();
+    spawnCardExit(card.instanceId);
     setSelectedCardId(null);
     setDragCardId(null);
   }

@@ -2081,6 +2081,122 @@ input:focus {
   color: #d5efff;
 }
 
+/* Level-up gets a bigger, bolder floater than a plain XP tick. */
+.runner-floater.level {
+  --floater-color: #ffe08a;
+  border-color: rgba(255, 224, 138, 0.7);
+  color: #fff2c2;
+  font-size: 0.9rem;
+  padding: 3px 9px;
+  animation:
+    runner-floater-rise 1.42s cubic-bezier(0.16, 0.86, 0.24, 1) both,
+    level-floater-pop 360ms cubic-bezier(0.2, 0.85, 0.25, 1.25) both;
+}
+
+@keyframes level-floater-pop {
+  0% {
+    transform: translateX(-50%) scale(0.6);
+  }
+  55% {
+    transform: translateX(-50%) scale(1.18);
+  }
+  100% {
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+/* One-shot expanding ring punch at the runner on level-up. */
+.level-up-ring {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  border: 2px solid #ffe08a;
+  box-shadow: 0 0 12px rgba(255, 224, 138, 0.6);
+  pointer-events: none;
+  opacity: 0;
+  animation: level-up-ring 520ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes level-up-ring {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+/* Loot glyph lobs up and settles when gold is gained. */
+.loot-toss {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  color: #ffe08a;
+  font-size: 1rem;
+  line-height: 1;
+  text-shadow:
+    0 0 8px rgba(255, 224, 138, 0.7),
+    0 1px 0 #000;
+  pointer-events: none;
+  opacity: 0;
+  animation: loot-toss 700ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes loot-toss {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0) scale(0.6);
+  }
+  25% {
+    opacity: 1;
+  }
+  45% {
+    transform: translate(-50%, -12px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -4px) scale(0.9);
+  }
+}
+
+/* Board-hit flash overlay; opacity is driven by WAAPI on hpDelta < 0. */
+.panel-hit-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(255, 60, 40, 0.5), rgba(180, 20, 10, 0.16) 68%, transparent);
+}
+
+/* Spent-card ghost: burns/launches out where the card sat. !important beats the
+   .hand-card card-deal-in animation the clone otherwise inherits. */
+.card-exit-ghost {
+  animation: card-burn-exit 260ms cubic-bezier(0.4, 0, 0.8, 0.4) both !important;
+  filter: brightness(1.25);
+}
+
+@keyframes card-burn-exit {
+  0% {
+    transform: translateY(0) scale(0.92, 1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-26px) scale(1.08) rotate(2deg);
+    opacity: 0;
+  }
+}
+
 /* Soft ground shadow under the sprite. */
 .runner-sprite::before {
   content: '';
