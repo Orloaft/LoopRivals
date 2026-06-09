@@ -1234,6 +1234,51 @@ input:focus {
   border-color: color-mix(in srgb, var(--gold-bright) 58%, var(--blue));
 }
 
+/* Collapse control so the guided coach can be tucked away during play. */
+.coach-collapse {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--blue) 46%, var(--line));
+  border-radius: 999px;
+  background: rgba(8, 10, 12, 0.86);
+  color: var(--muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.coach-collapse:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--blue) 70%, var(--line));
+}
+
+/* Collapsed: shrink to a compact pill showing just the lesson title. */
+.game-shell > .onboarding-coach.collapsed {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  right: auto;
+  width: max-content;
+  max-width: min(92vw, 460px);
+  max-height: none;
+  overflow: visible;
+  padding: 7px 14px;
+}
+
+.onboarding-coach.collapsed .coach-collapse {
+  position: static;
+  order: 2;
+}
+
+.onboarding-coach.collapsed .coach-copy {
+  order: 1;
+}
+
 .coach-copy {
   display: grid;
   gap: 3px;
@@ -1663,7 +1708,7 @@ input:focus {
   overflow: visible;
 }
 
-.game-shell:has(.onboarding-coach) .arena-grid {
+.game-shell:has(.onboarding-coach:not(.collapsed)) .arena-grid {
   --top-chrome: 180px;
 }
 

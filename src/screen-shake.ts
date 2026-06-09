@@ -40,11 +40,11 @@ function clamp(value: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, value));
 }
 
-export function shake(el: HTMLElement | null | undefined, options: ShakeOptions = {}): void {
-  if (!el || !enabled || prefersReducedMotion()) return;
-  if (typeof el.animate !== 'function') return;
+export function shake(el: HTMLElement | null | undefined, options: ShakeOptions = {}): Animation | null {
+  if (!el || !enabled || prefersReducedMotion()) return null;
+  if (typeof el.animate !== 'function') return null;
   const magnitude = clamp(options.magnitude ?? 1, 0, 2.5);
-  if (magnitude <= 0) return;
+  if (magnitude <= 0) return null;
   const amplitude = 2.5 + magnitude * 4.5; // px at the first impact
   const duration = options.durationMs ?? Math.round(200 + magnitude * 70);
 
@@ -61,8 +61,12 @@ export function shake(el: HTMLElement | null | undefined, options: ShakeOptions 
   }
 
   try {
-    el.animate(frames, { duration, easing: 'ease-out', fill: 'none' });
+    // Returned so callers on short-lived nodes (e.g. the combat overlay) can
+    // cancel it on unmount instead of leaving an animation running on a
+    // detached element.
+    return el.animate(frames, { duration, easing: 'ease-out', fill: 'none' });
   } catch {
     /* never let a juice effect throw into gameplay */
+    return null;
   }
 }

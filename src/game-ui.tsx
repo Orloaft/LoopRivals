@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, Bot, Coins, Crown, Footprints, Gem, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, ShoppingBag, Sparkles, Swords, UserX, Users, Volume2, VolumeX, Zap } from 'lucide-react';
+import { ArrowLeft, Bot, ChevronDown, ChevronUp, Coins, Crown, Footprints, Gem, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, ShoppingBag, Sparkles, Swords, UserX, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import {
   combatBackgroundUrl,
   combatEnemySize,
@@ -527,6 +527,24 @@ function OnboardingCoach({
   activeCard: Card | null;
   onOpenRules: () => void;
 }) {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('loopduel.coachCollapsed') === 'yes';
+    } catch {
+      return false;
+    }
+  });
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('loopduel.coachCollapsed', next ? 'yes' : 'no');
+      } catch {
+        /* storage unavailable — keep the in-memory value */
+      }
+      return next;
+    });
+  }
   const lesson = onboardingLesson(onboarding);
   const recommendedNames = onboarding.recommendedTileIndexes
     .map((index) => player.board[index])
@@ -544,36 +562,50 @@ function OnboardingCoach({
   ];
 
   return (
-    <section className={`onboarding-coach ${onboarding.completed ? 'debrief' : ''}`} aria-live="polite">
+    <section className={`onboarding-coach ${onboarding.completed ? 'debrief' : ''} ${collapsed ? 'collapsed' : ''}`} aria-live="polite">
+      <button
+        type="button"
+        className="coach-collapse"
+        onClick={toggleCollapsed}
+        aria-expanded={!collapsed}
+        title={collapsed ? 'Show the guide' : 'Hide the guide'}
+      >
+        {collapsed ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        <span>{collapsed ? 'Guide' : 'Hide'}</span>
+      </button>
       <div className="coach-copy">
         <span>{lesson.speaker}</span>
         <strong>{lesson.title}</strong>
-        <p>{lesson.prompt}</p>
-        <small>{lesson.detail}</small>
+        {!collapsed && <p>{lesson.prompt}</p>}
+        {!collapsed && <small>{lesson.detail}</small>}
       </div>
-      <div className="coach-facts" aria-label="Current tutorial status">
-        {facts.map((fact) => <span key={fact}>{fact}</span>)}
-      </div>
-      <div className="coach-runes" aria-label="Loop lessons">
-        {mechanics.map((hint, index) => (
-          <article key={`${hint.label}-${hint.value ?? index}`} className={`coach-rune ${hint.tone ?? 'arcane'}`}>
-            <strong>{hint.label}</strong>
-            {hint.value && <span>{hint.value}</span>}
-            <p>{hint.text}</p>
-          </article>
-        ))}
-      </div>
-      {onboarding.recaps.length > 0 && (
-        <div className="coach-recaps" aria-label="Recent tutorial lessons">
-          {onboarding.recaps.slice(0, 2).map((line) => <span key={line}>{line}</span>)}
-        </div>
+      {!collapsed && (
+        <>
+          <div className="coach-facts" aria-label="Current tutorial status">
+            {facts.map((fact) => <span key={fact}>{fact}</span>)}
+          </div>
+          <div className="coach-runes" aria-label="Loop lessons">
+            {mechanics.map((hint, index) => (
+              <article key={`${hint.label}-${hint.value ?? index}`} className={`coach-rune ${hint.tone ?? 'arcane'}`}>
+                <strong>{hint.label}</strong>
+                {hint.value && <span>{hint.value}</span>}
+                <p>{hint.text}</p>
+              </article>
+            ))}
+          </div>
+          {onboarding.recaps.length > 0 && (
+            <div className="coach-recaps" aria-label="Recent tutorial lessons">
+              {onboarding.recaps.slice(0, 2).map((line) => <span key={line}>{line}</span>)}
+            </div>
+          )}
+          <div className="coach-actions">
+            <button className="icon-action" onClick={onOpenRules}>
+              <HelpCircle size={17} />
+              Rules
+            </button>
+          </div>
+        </>
       )}
-      <div className="coach-actions">
-        <button className="icon-action" onClick={onOpenRules}>
-          <HelpCircle size={17} />
-          Rules
-        </button>
-      </div>
     </section>
   );
 }
@@ -2641,6 +2673,7 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
   const [hitStop, setHitStop] = useState(false);
   const hitStopTimerRef = useRef<number | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
+  const shakeAnimRef = useRef<Animation | null>(null);
   const [presentationPhase, setPresentationPhase] = useState<'entry' | 'beat' | 'result' | 'exit'>('entry');
   const [logOpen, setLogOpen] = useState(false);
   const [displayHp, setDisplayHp] = useState({
@@ -2706,13 +2739,16 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
       if (isFinisher && audible && !prefersReducedMotion()) {
         setHitStop(true);
         if (hitStopTimerRef.current !== null) window.clearTimeout(hitStopTimerRef.current);
+        // The server clears player.combat (unmounting this overlay) ~tailMs+
+        // beatMs-windupMs after the last beat — as little as ~340ms on the
+        // fastest pace. Keep freeze (90ms) + shake (220ms) = 310ms under that
+        // floor so the finisher's zeroed-HP frame and erupt are never clipped.
         hitStopTimerRef.current = window.setTimeout(() => {
           setHitStop(false);
-          // Erupt out of the held frame: a hard, decaying screen-shake the
-          // instant the freeze releases (§2.4). WAAPI ignores animation-play-
-          // state, so it must fire on release, not during the freeze.
-          shake(overlayRef.current, { magnitude: 1.6 });
-        }, 110);
+          // Erupt out of the held frame the instant the freeze releases (§2.4).
+          // WAAPI ignores animation-play-state, so it must fire on release.
+          shakeAnimRef.current = shake(overlayRef.current, { magnitude: 1.6, durationMs: 220 });
+        }, 90);
       }
       if (audible) {
         if (isFinisher) sfx.crit();
@@ -2728,6 +2764,9 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
     return () => {
       timers.forEach(window.clearTimeout);
       if (hitStopTimerRef.current !== null) window.clearTimeout(hitStopTimerRef.current);
+      // Don't leave the erupt animation running on a detached overlay node.
+      shakeAnimRef.current?.cancel();
+      shakeAnimRef.current = null;
     };
   }, [presentation, beats, resultAtMs, exitAtMs, audible]);
 
