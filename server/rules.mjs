@@ -77,6 +77,13 @@ const bossCombatCorruptionCap = 32;
 // runaway spiral. Capping plateaus the pressure so solo runs stay winnable.
 const combatCorruptionCap = 24;
 const reviveBonusPowerCap = 6;
+// Draw-speed talents historically gave 1-7% nudges (drawRate 0.93-0.99) that
+// were imperceptible in realtime. Amplify each talent/item's deviation from 1
+// so a draw-focused build actually feels faster, floored so it can't trivialize
+// the draw clock. Buffs the disruption heroes (who carry the most draw talents)
+// more than the self-heal heroes, nudging the win-rate spread toward parity.
+const drawRelevanceFactor = 2;
+const drawRateFloor = 0.6;
 const bossTileSides = [
   [2, 1, 3, 4],
   [6, 5, 7, 8],
@@ -3020,7 +3027,7 @@ function recalcStats(player) {
   player.power = power + reviveBonusPower;
   player.guard = guard;
   player.speed = speed;
-  player.drawRate = drawRate;
+  player.drawRate = Math.max(drawRateFloor, 1 + (drawRate - 1) * drawRelevanceFactor);
   player.sabotage = sabotage;
   player.lootLuck = lootLuck;
   player.lapHeal = lapHeal;
