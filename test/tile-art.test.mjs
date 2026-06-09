@@ -148,10 +148,10 @@ test('tile art crop plan uses measured atlas rows and explicit row-four replacem
       sourceHeight: plan.sourceHeight
     })),
     [
-      { sourceKind: 'atlas', sourceY: 8, sourceHeight: 240 },
-      { sourceKind: 'atlas', sourceY: 304, sourceHeight: 240 },
-      { sourceKind: 'atlas', sourceY: 585, sourceHeight: 240 },
-      { sourceKind: 'atlas', sourceY: 866, sourceHeight: 240 },
+      { sourceKind: 'atlas', sourceY: 0, sourceHeight: 256 },
+      { sourceKind: 'atlas', sourceY: 296, sourceHeight: 256 },
+      { sourceKind: 'atlas', sourceY: 577, sourceHeight: 256 },
+      { sourceKind: 'atlas', sourceY: 858, sourceHeight: 256 },
       { sourceKind: 'replacement', sourceY: undefined, sourceHeight: undefined }
     ]
   );
@@ -162,9 +162,9 @@ test('tile art crop plan uses measured atlas rows and explicit row-four replacem
     assert.equal(plan.outputHeight, spriteSize, `${plan.tileType} output height should stay board-ready`);
     if (row < 4) {
       assert.equal(plan.sourceKind, 'atlas', `${plan.tileType} should come from the measured atlas rows`);
-      assert.equal(plan.sourceX, (plan.index % 6) * spriteSize + 8, `${plan.tileType} source x should stay inside its atlas column`);
-      assert.equal(plan.sourceWidth, spriteSize - 16, `${plan.tileType} source width should crop away neighboring atlas columns`);
-      assert.equal(plan.sourceHeight, spriteSize - 16, `${plan.tileType} source height should preserve full atlas tile scale`);
+      assert.equal(plan.sourceX, (plan.index % 6) * spriteSize, `${plan.tileType} source x should follow its atlas column`);
+      assert.equal(plan.sourceWidth, spriteSize, `${plan.tileType} source width should preserve the full tile frame`);
+      assert.equal(plan.sourceHeight, spriteSize, `${plan.tileType} source height should preserve the full tile frame`);
       assert.equal(plan.scaleY, false, `${plan.tileType} should not be vertically scaled`);
       if (row > 0) {
         assert.ok(plan.sourceY > row * spriteSize, `${plan.tileType} should not start at the exact overlapped atlas row boundary`);
@@ -176,6 +176,25 @@ test('tile art crop plan uses measured atlas rows and explicit row-four replacem
       assert.equal(plan.scaleY, false, `${plan.tileType} should not use the old vertical stretch fallback`);
       const source = readFileSync(plan.sourcePath);
       assert.equal(source.toString('ascii', 1, 4), 'PNG', `${plan.tileType} replacement source should be a PNG`);
+    }
+  }
+});
+
+test('atlas-backed terrain sprites preserve the source tile frame', () => {
+  const atlas = decodePng(sourceAtlasPath);
+  for (const tileType of ['forge', 'armory', 'wyrmgate', 'tollgate']) {
+    const plan = tileSpritePlan.find((item) => item.tileType === tileType);
+    assert.ok(plan, `${tileType} should have a sprite plan`);
+    assert.equal(plan.sourceKind, 'atlas', `${tileType} should be atlas-backed`);
+    const sprite = decodePng(`public/assets/tiles/v2/${tileType}.png`);
+    for (const [x, y] of [[0, 0], [128, 0], [0, 128], [255, 255]]) {
+      const atlasOffset = ((plan.sourceY + y) * atlas.width + plan.sourceX + x) * 4;
+      const spriteOffset = (y * sprite.width + x) * 4;
+      assert.deepEqual(
+        Array.from(sprite.pixels.subarray(spriteOffset, spriteOffset + 4)),
+        Array.from(atlas.pixels.subarray(atlasOffset, atlasOffset + 4)),
+        `${tileType} should preserve source frame pixel ${x},${y}`
+      );
     }
   }
 });

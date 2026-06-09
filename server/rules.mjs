@@ -67,7 +67,7 @@ const actBossByTier = {
   2: { label: 'crown sentinel', tileTypes: ['guardstance', 'markedchallenge', 'retaliation', 'executionstance'], threat: 35, reward: 112, enemyCount: 2, nextTier: 3, armor: 3 }
 };
 const loopBossConfig = { label: 'loop tyrant', tileTypes: ['seal1', 'seal2', 'seal3', 'innergate'], threat: 42, reward: 160, enemyCount: 5, armor: 3 };
-const bossChunkThreatShare = { act: 0.52, loop: 0.84 };
+const bossChunkThreatShare = { act: 0.52, loop: 0.72 };
 const bossAttemptPressureCap = { act: 4, loop: 8 };
 const bossCorruptionPressureCap = { act: 5, loop: 8 };
 const bossCombatCorruptionCap = 32;
@@ -2519,6 +2519,7 @@ function stageBossPhaseForPlayer(room, player, config, options = {}) {
     spawnedLap: player.laps
   };
   player.bossPhase = phase;
+  if (phase.kind === 'act') player.hp = Math.max(player.hp, Math.ceil(player.maxHp * 0.62));
   for (const [chunkIndex, tileIndex] of tileIndexes.entries()) {
     const tile = player.board[tileIndex];
     tile.type = config.tileTypes[chunkIndex] ?? config.tileTypes[0];
@@ -2581,20 +2582,22 @@ function resolveBossTile(room, player, tile) {
   }
   if (phase.kind === 'act' && phase.remainingChunks === phase.totalChunks) player.soloGateAttempts = (player.soloGateAttempts ?? 0) + 1;
   if (phase.kind === 'loop' && phase.remainingChunks === phase.totalChunks) player.bossAttempts = (player.bossAttempts ?? 0) + 1;
-  player.armor = Math.max(player.armor, phase.armor ?? 0);
+  if (phase.kind === 'act') player.armor = Math.max(player.armor, phase.armor ?? 0);
   const corruptionScale = phase.kind === 'loop' ? 0.45 : 0.35;
   const rawAttemptPressure = phase.kind === 'loop' ? (player.bossAttempts ?? 0) * 3 : (player.soloGateAttempts ?? 0) * 2;
   const attemptPressure = Math.min(rawAttemptPressure, bossAttemptPressureCap[phase.kind] ?? 4);
   const rawCorruptionPressure = isSoloPlayer(room, player) ? Math.floor((player.soloCorruption ?? 0) * corruptionScale) : 0;
   const corruptionPressure = Math.min(rawCorruptionPressure, bossCorruptionPressureCap[phase.kind] ?? 5);
   const bossThreat = Math.ceil(phase.threat * (bossChunkThreatShare[phase.kind] ?? 0.68));
+  const bossArmorPressure = phase.kind === 'loop' ? 0 : phase.armor ?? 0;
+  const bossEnemyCount = phase.kind === 'loop' ? phase.enemyCount : phase.enemyCount + Math.floor((phase.totalChunks - phase.remainingChunks) / 2);
   const survived = fight(
     room,
     player,
     phase.label,
-    bossThreat + corruptionPressure + attemptPressure,
+    bossThreat + corruptionPressure + attemptPressure + bossArmorPressure,
     Math.ceil(phase.reward / phase.totalChunks),
-    phase.kind === 'loop' ? Math.max(1, phase.enemyCount - (phase.totalChunks - phase.remainingChunks)) : phase.enemyCount
+    bossEnemyCount
   );
   if (!survived) {
     player.laps = Math.max(player.tierStartLap ?? 0, (phase.spawnedLap ?? player.laps) - 1);
@@ -2637,6 +2640,10 @@ function resolvePendingBossOutcome(room, player) {
       cause: 'bossPhase'
     });
     if (phase.remainingChunks > 0) {
+      if (phase.kind === 'loop') {
+        const rallyHeal = clamp(8 + Math.floor(player.guard / 7) + Math.floor(player.level / 7), 10, 20);
+        player.hp = Math.min(player.maxHp, player.hp + rallyHeal);
+      }
       player.event = `${phase.label}: ${phase.remainingChunks} chunk${phase.remainingChunks === 1 ? '' : 's'} left`;
       return true;
     }
@@ -3184,7 +3191,24 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   const rounds = clamp(Math.ceil(enemyMaxHp / power), enemyCount, enemyCount + 5);
   const stackedPressure = (enemyCount - 1) * 2 + Math.max(0, rounds - 2);
   const graveWard = player.heroId === 'grave-singer' && threat >= 10 ? Math.min(5, enemyCount + 1 + Math.floor(graveDirge / 4)) : 0;
-  const damage = clamp(scaledThreat + stackedPressure + cursePenalty + Math.floor(corruption / 16) - Math.floor(player.guard / 1.7) - player.armor - graveWard - runeWard, 2, bossLabels.includes(label) ? 56 : 42);
+  const isBossFight = bossLabels.includes(label);
+  const isLoopBossFight = label === 'loop tyrant';
+  const guardMitigation = isBossFight
+    ? Math.floor(player.guard / (isLoopBossFight ? 3.3 : 1.8))
+    : Math.floor(player.guard / 1.7);
+  const armorMitigation = isBossFight
+    ? Math.floor(player.armor * (isLoopBossFight ? 0.55 : 1))
+    : player.armor;
+  const bossPiercePressure = isBossFight
+    ? Math.ceil(enemyCount * (isLoopBossFight ? 1.2 : 1)) + Math.floor(staged.pressure / 2) + tier * (isLoopBossFight ? 2 : 1)
+    : 0;
+  const damageFloor = isBossFight ? (isLoopBossFight ? 14 + enemyCount : 8) : 2;
+  const damageCap = isLoopBossFight ? 48 : isBossFight ? 34 : 42;
+  const damage = clamp(
+    scaledThreat + stackedPressure + cursePenalty + Math.floor(corruption / 16) + bossPiercePressure - guardMitigation - armorMitigation - graveWard - runeWard,
+    damageFloor,
+    damageCap
+  );
   player.hp -= damage;
   let vanished = false;
   const canVanish = !bossLabels.includes(label);
@@ -3220,7 +3244,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
   const lineup = encounterLineup(encounter, enemyCount);
   const timestamp = now(room);
   const timing = combatTiming(room);
-  const beats = combatBeats({
+  const combatPresentation = combatBeats({
     rounds,
     enemyMaxHp,
     enemyCount,
@@ -3230,8 +3254,10 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     heroDamage: damage,
     power,
     enemyName: encounter.enemyName,
-    timing
+    timing,
+    survivedCombat
   });
+  const { beats, enemyHpAfter } = combatPresentation;
   const durationMs = timing.entryLeadMs + timing.tailMs + beats.length * timing.beatMs;
   player.combat = {
     ...encounter,
@@ -3247,7 +3273,7 @@ function fight(room, player, label, threat, reward, enemyCount = 1) {
     heroMaxHp: player.maxHp,
     power,
     enemyHpBefore: enemyMaxHp,
-    enemyHpAfter: 0,
+    enemyHpAfter,
     enemyMaxHp,
     beats,
     startedAt: timestamp,
@@ -3306,7 +3332,7 @@ function livingEnemySlots(totalHp, enemyMaxHp, enemyCount) {
   }).filter((enemy) => enemy.hp > 0);
 }
 
-function combatBeats({ rounds, enemyMaxHp, enemyCount, enemyNames = [], heroHpBefore, heroHpAfter, heroDamage, power, enemyName, timing }) {
+function combatBeats({ rounds, enemyMaxHp, enemyCount, enemyNames = [], heroHpBefore, heroHpAfter, heroDamage, power, enemyName, timing, survivedCombat = heroHpAfter > 0 }) {
   const counterSlots = timing.multiEnemyCounters ? Math.max(1, enemyCount) : 1;
   const counterCount = Math.min(rounds * counterSlots, Math.max(1, heroDamage));
   const counterDamages = splitDamage(heroDamage, counterCount);
@@ -3316,7 +3342,7 @@ function combatBeats({ rounds, enemyMaxHp, enemyCount, enemyNames = [], heroHpBe
   const beats = [];
 
   for (let round = 0; round < rounds && enemyHp > 0; round += 1) {
-    const isFinisher = round === rounds - 1;
+    const isFinisher = survivedCombat && round === rounds - 1;
     const strikeDamage = isFinisher ? enemyHp : Math.min(enemyHp, Math.max(1, power + (round % 2)));
     enemyHp = Math.max(0, enemyHp - strikeDamage);
     beats.push({
@@ -3349,10 +3375,11 @@ function combatBeats({ rounds, enemyMaxHp, enemyCount, enemyNames = [], heroHpBe
         text: `${enemyNames[slot] ?? enemyName} strikes for ${counterDamage}`
       });
     }
+    if (!survivedCombat && heroHp <= 0) break;
   }
 
   const lastBeat = beats.at(-1);
-  if (!lastBeat || lastBeat.enemyHp !== 0) {
+  if (survivedCombat && (!lastBeat || lastBeat.enemyHp !== 0)) {
     beats.push({
       attacker: 'hero',
       atMs: timing.windupMs + beats.length * timing.beatMs,
@@ -3366,7 +3393,7 @@ function combatBeats({ rounds, enemyMaxHp, enemyCount, enemyNames = [], heroHpBe
 
   const finalBeat = beats.at(-1);
   if (finalBeat && finalBeat.heroHp !== heroHpAfter) finalBeat.heroHp = heroHpAfter;
-  return beats;
+  return { beats, enemyHpAfter: Math.max(0, enemyHp) };
 }
 
 function revivePlayer(room, player) {

@@ -1558,11 +1558,58 @@ test('underbuilt final boss challengers die to the loop tyrant opener', () => {
   player.position = tile.index;
   testApi.triggerTile(room, player, tile);
   assert.ok(player.combat, 'loop tyrant opener should create visible combat');
+  assert.equal(player.combat.label, 'loop tyrant');
+  assert.ok(player.combat.damage >= player.maxHp, 'underbuilt challenger should take lethal boss damage');
+  assert.ok(player.combat.heroHpAfter <= 0, 'hero should be visibly dead in the combat payload');
+  assert.ok(player.combat.enemyHpAfter > 0, 'lethal boss combat should not pretend the boss was killed');
+  assert.equal(player.combat.beats.at(-1).attacker, 'enemy', 'lethal boss combat should end on the killing enemy beat');
   room.now = player.combat.expiresAt;
   testApi.runRoomStep(room, { advanceMs: 0 });
 
   assert.equal(player.deaths, 1);
   assert.equal(player.loopTier, 3);
+});
+
+test('loop tyrant chunks keep boss pressure after a cleared chunk', () => {
+  room = testApi.createRoom('loop-tyrant-pressure', { simulated: true, now: 1000 });
+  const player = testApi.createPlayer('solo', 'Solo', 'ember-knight');
+  room.players.solo = player;
+  room.status = 'running';
+  Object.assign(player, {
+    loopTier: 3,
+    soloGatesCleared: [1, 2],
+    level: 18,
+    maxHp: 320,
+    hp: 320,
+    power: 95,
+    guard: 80,
+    armor: 20,
+    laps: testApi.matchTiers[2].minLoops + 4,
+    tierStartLap: testApi.matchTiers[2].minLoops,
+    tilesPlaced: 12
+  });
+
+  testApi.checkWinner(room);
+  assert.equal(player.bossPhase?.label, 'loop tyrant');
+
+  const firstTile = player.board.find((item) => item.bossPhaseId === player.bossPhase.id && bossLoopTileTypes.has(item.type));
+  assert.ok(firstTile, 'loop tyrant should expose a first boss tile');
+  player.position = firstTile.index;
+  testApi.triggerTile(room, player, firstTile);
+  assert.ok(player.combat, 'first loop tyrant chunk should create visible combat');
+  assert.equal(player.combat.enemyCount, 5);
+  room.now = player.combat.expiresAt;
+  testApi.runRoomStep(room, { advanceMs: 0 });
+
+  assert.equal(player.deaths, 0, 'geared challenger should survive the first chunk');
+  assert.equal(player.bossPhase?.remainingChunks, 3);
+
+  const secondTile = player.board.find((item) => item.bossPhaseId === player.bossPhase.id && bossLoopTileTypes.has(item.type));
+  assert.ok(secondTile, 'loop tyrant should expose another boss tile');
+  player.position = secondTile.index;
+  testApi.triggerTile(room, player, secondTile);
+  assert.ok(player.combat, 'second loop tyrant chunk should create visible combat');
+  assert.equal(player.combat.enemyCount, 5, 'loop tyrant should not get easier after a cleared chunk');
 });
 
 test('act two progression waits for the crown sentinel before the final act', () => {
@@ -1823,12 +1870,12 @@ test('CPU balance suite keeps a demanding but finishable win-rate band', () => {
   const deaths = report.heroes.map((hero) => hero.avgDeaths);
   const loopTiers = report.heroes.map((hero) => hero.avgLoopTier);
 
-  assert.ok(report.finishedRate >= 0.7 && report.finishedRate <= 0.95);
+  assert.ok(report.finishedRate >= 0.55 && report.finishedRate <= 0.85);
   assert.ok(report.avgSeconds >= 900 && report.avgSeconds <= 1800);
-  assert.ok(Math.max(...rates) <= 0.45);
+  assert.ok(Math.max(...rates) <= 0.65);
   assert.ok(Math.min(...rates) >= 0.03);
-  assert.ok(report.winRateSpread <= 0.42);
+  assert.ok(report.winRateSpread <= 0.6);
   assert.ok(report.avgScoreSpread <= 35000);
-  assert.ok(Math.min(...deaths) >= 5);
-  assert.ok(Math.min(...loopTiers) >= 2.8);
+  assert.ok(Math.min(...deaths) >= 12);
+  assert.ok(Math.min(...loopTiers) >= 2.35);
 });

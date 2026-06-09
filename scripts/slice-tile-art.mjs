@@ -9,7 +9,6 @@ const sourceAtlasPath = 'dev-assets/source/assets/tiles/loopduel-tiles-retro-got
 const replacementTileSourceDir = 'dev-assets/source/assets/tiles/v2-row4-generated-v1';
 const outputDir = 'public/assets/tiles/v2';
 const spriteSize = 256;
-const sourceTileInset = 8;
 const sourceAtlasWidth = 1536;
 const sourceAtlasHeight = 1124;
 
@@ -97,18 +96,15 @@ const tileSpritePlan = tileTypes.map((tileType, index) => {
       outputHeight: spriteSize
     };
   }
-  const inset = Math.min(sourceTileInset, Math.floor((crop.sourceHeight - 1) / 2));
-  const sourceHeight = crop.sourceHeight - inset * 2;
   return {
     tileType,
     index,
     sourceKind: 'atlas',
-    sourceX: col * spriteSize + sourceTileInset,
-    sourceY: crop.sourceY + inset,
-    sourceWidth: spriteSize - sourceTileInset * 2,
-    sourceHeight,
-    sourceInset: sourceTileInset,
-    scaleY: sourceHeight < spriteSize - sourceTileInset * 2,
+    sourceX: col * spriteSize,
+    sourceY: crop.sourceY,
+    sourceWidth: spriteSize,
+    sourceHeight: crop.sourceHeight,
+    scaleY: false,
     outputWidth: spriteSize,
     outputHeight: spriteSize
   };
