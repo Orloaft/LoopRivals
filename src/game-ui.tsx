@@ -2638,6 +2638,9 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
       <div className={`combatant hero-combat ${activeBeat?.attacker === 'hero' ? 'combat-attacking' : ''} ${activeBeat?.attacker === 'enemy' ? 'combat-taking-hit' : ''}`}>
         <div className="combat-ground-shadow" aria-hidden="true" />
         <img src={heroSpriteUrl(player.heroId)} alt="" />
+        {activeBeat?.attacker === 'enemy' && (
+          <div key={`fx-hero-${activeBeatIndex}`} className={`${combatFxClass(combat.effect)} combat-fx-on-hero`} aria-hidden="true" />
+        )}
         <div className="combat-nameplate">
           <div className="combat-name-row">
             <span className="combat-side-label">Hero</span>
@@ -2651,7 +2654,6 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
         </div>
       </div>
       <div className="combat-banner">
-        {activeBeat && <div key={`fx-${activeBeatIndex}`} className={combatFxClass(combat.effect)} aria-hidden="true" />}
         <em>{impactMeta}</em>
         <strong>{impactTitle}</strong>
         <span>{impactValue}</span>
@@ -2685,6 +2687,9 @@ function CombatOverlayBody({ player, combat }: { player: Player; combat: Combat 
             />
           ))}
         </div>
+        {activeBeat?.attacker === 'hero' && (
+          <div key={`fx-enemy-${activeBeatIndex}`} className={`${combatFxClass(combat.effect)} combat-fx-on-enemy combat-fx-flip`} aria-hidden="true" />
+        )}
         <div className="combat-nameplate">
           <div className="combat-name-row">
             <span className="combat-side-label">Enemy</span>

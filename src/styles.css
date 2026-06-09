@@ -3517,8 +3517,8 @@ input:focus {
 .combat-fx-sprite {
   position: absolute;
   left: 50%;
-  top: 50%;
-  z-index: -1;
+  top: 46%;
+  z-index: 6;
   width: clamp(74px, 24vw, 112px);
   aspect-ratio: 1;
   pointer-events: none;
@@ -3531,6 +3531,24 @@ input:focus {
   transform: translate(-50%, -50%) scale(0.82);
   will-change: opacity, transform;
   animation: combat-fx-sheet 220ms steps(7, end) both;
+}
+
+/* Drop the slash to the sprite's center mass (the cell includes the nameplate
+   below, so 46% lands near the head). */
+.combat-fx-on-hero {
+  top: 56%;
+}
+
+.combat-fx-on-enemy {
+  top: 54%;
+}
+
+/* Hero-thrown slashes mirror so the arc reads as coming from the hero on the
+   left toward the enemy. The mirror lives inside the animated transform (as the
+   innermost scale) so the centering translate is unaffected and the sprite
+   stays on the enemy. */
+.combat-fx-flip {
+  animation-name: combat-fx-sheet-flip;
 }
 
 .combat-fx-sword {
@@ -4094,6 +4112,30 @@ input:focus {
     opacity: 0;
     background-position-x: 100%;
     transform: translate(-42%, -58%) scale(1.04);
+  }
+}
+
+/* Mirror of combat-fx-sheet: same motion, but the element is flipped on X via a
+   negative inner scale so the slash reads as thrown by the hero toward the
+   enemy. Centering (the outer translate) is identical, so it stays on target. */
+@keyframes combat-fx-sheet-flip {
+  0%,
+  12% {
+    opacity: 0;
+    background-position-x: 0%;
+    transform: translate(-58%, -44%) scale(-0.72, 0.72);
+  }
+
+  18%,
+  62% {
+    opacity: 1;
+  }
+
+  82%,
+  100% {
+    opacity: 0;
+    background-position-x: 100%;
+    transform: translate(-42%, -58%) scale(-1.04, 1.04);
   }
 }
 
