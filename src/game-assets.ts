@@ -1,3 +1,4 @@
+import { prebakeSprites } from './sprite-bake';
 import type { GameConfig, Hero } from './types';
 
 function heroPortraitUrl(heroId: string) {
@@ -162,10 +163,10 @@ const combatEnemyIds = [
 ] as const;
 
 const staticCriticalImageUrls = [
-  '/assets/background/loopduel-parallax-sky-v2.png',
-  '/assets/background/loopduel-parallax-spires-v2.png',
-  '/assets/background/loopduel-parallax-graves-v2.png',
-  '/assets/background/loopduel-parallax-brambles-v2.png',
+  '/assets/background/loopduel-parallax-sky-v3.png',
+  '/assets/background/loopduel-parallax-spires-v3.png',
+  '/assets/background/loopduel-parallax-graves-v3.png',
+  '/assets/background/loopduel-parallax-brambles-v3.png',
   ...tileArtIds.map(tileArtUrl),
   '/assets/tiles/loopduel-tiles-retro-gothic-v1.png',
   '/assets/roads/loopduel-road-tiles-retro-gothic-dirt-v2.png',
@@ -239,10 +240,10 @@ function warmCriticalGameImages(config: Pick<GameConfig, 'heroes'> | null | unde
       : [heroPortraitUrl(hero.id), heroSpriteUrl(hero.id), talentIconUrl(hero.id)]
   )) ?? [];
   const lobbyUrls = [
-    '/assets/background/loopduel-parallax-sky-v2.png',
-    '/assets/background/loopduel-parallax-spires-v2.png',
-    '/assets/background/loopduel-parallax-graves-v2.png',
-    '/assets/background/loopduel-parallax-brambles-v2.png',
+    '/assets/background/loopduel-parallax-sky-v3.png',
+    '/assets/background/loopduel-parallax-spires-v3.png',
+    '/assets/background/loopduel-parallax-graves-v3.png',
+    '/assets/background/loopduel-parallax-brambles-v3.png',
     '/assets/ui/loopduel-title-stage-painterly-v1.png',
     '/assets/ui/loopduel-guide-codex-frame-v1.png',
     '/assets/ui/loopduel-ui-row-plaque-v1.png'
@@ -250,6 +251,16 @@ function warmCriticalGameImages(config: Pick<GameConfig, 'heroes'> | null | unde
   const urls = phase === 'lobby'
     ? [...heroUrls, ...lobbyUrls]
     : [...heroUrls, ...staticCriticalImageUrls];
+
+  // Combat overlay imgs render filter-baked bitmaps (sprite-bake.ts); warm
+  // those during idle time too so the first combat doesn't pay decode+bake+
+  // src-swap mid-fight.
+  if (phase === 'game') {
+    prebakeSprites([
+      ...(config?.heroes.map((hero) => heroSpriteUrl(hero.id)) ?? []),
+      ...combatEnemyIds.map(combatEnemyUrl)
+    ]);
+  }
 
   for (const url of urls) {
     if (warmedImageUrls.has(url)) continue;

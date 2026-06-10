@@ -1,6 +1,6 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type CSSProperties, type RefObject } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { ArrowLeft, Bot, ChevronDown, ChevronUp, Coins, Crown, Footprints, Gem, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, ShoppingBag, Sparkles, Swords, UserX, Users, Volume2, VolumeX, Zap } from 'lucide-react';
+import { ArrowLeft, Bot, ChevronDown, ChevronUp, Coins, Crown, Footprints, Gauge, Gem, Hand, HardHat, HelpCircle, Play, RotateCcw, ScrollText, Settings, Shield, Shirt, ShoppingBag, Sparkles, Swords, UserX, Users, Volume2, VolumeX, Zap } from 'lucide-react';
 import {
   combatBackgroundUrl,
   combatEnemySize,
@@ -15,6 +15,8 @@ import {
 import { sfx, isSfxEnabled, setSfxEnabled } from './audio';
 import { prefersReducedMotion } from './motion-prefs';
 import { shake, isShakeEnabled, setShakeEnabled } from './screen-shake';
+import { getQualityPref, setQualityPref, type QualityPref } from './quality-mode';
+import { useBakedSprite, spriteBakeUnsupported } from './sprite-bake';
 import { configureGameplayRafMetrics, gameplayRaf, type GameplayRafFrame } from './gameplay-raf';
 import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, pendingCombatStopCursor, playerMotionIsLocked, pointAlongBoard, serverPresentationClock, tileCenter, visualCursorForPlayer, visualFrameCursorForPlayer, visualSegmentDurationMs, type RunnerPoint } from './movement';
 import { loopduelSmoothnessMetrics } from './smoothness-metrics';
@@ -30,10 +32,29 @@ type LocalProfile = {
 };
 
 type RunnerFloater = {
-  text: string;
+  value: number;
+  suffix: string;
   tone: 'gain' | 'loss' | 'health' | 'gold' | 'xp' | 'loop' | 'level';
   lane: number;
 };
+
+type LiveFloater = {
+  node: HTMLElement;
+  value: number;
+  suffix: string;
+  at: number;
+};
+
+// Rapid same-tone floaters merge into one node instead of stacking new ones —
+// every extra floater is a fresh animated, shadowed layer, and bursts of them
+// were the single worst frame-spike source on weak machines (see
+// docs/frame-consistency-appraisal.md).
+const floaterMergeWindowMs = 900;
+const maxFloaterNodes = 4;
+
+function formatFloaterText(value: number, suffix: string) {
+  return `${value > 0 ? '+' : ''}${value}${suffix}`;
+}
 
 const equipmentSlots: EquipmentSlot[] = ['weapon', 'shield', 'helm', 'armor', 'gloves', 'boots', 'ring', 'charm'];
 const equipmentLabels: Record<EquipmentSlot, string> = {
@@ -896,6 +917,32 @@ function ShakeToggle() {
   );
 }
 
+const qualityLabels: Record<QualityPref, string> = {
+  auto: 'Auto',
+  high: 'High',
+  low: 'Low'
+};
+
+function QualityToggle() {
+  const [pref, setPref] = useState<QualityPref>(getQualityPref());
+  return (
+    <button
+      className="menu-item"
+      onClick={() => {
+        const order: QualityPref[] = ['auto', 'high', 'low'];
+        const next = order[(order.indexOf(pref) + 1) % order.length];
+        setQualityPref(next);
+        setPref(next);
+      }}
+      aria-pressed={pref === 'low'}
+      title="Auto drops to low when this machine can't hold the frame rate"
+    >
+      <Gauge size={20} />
+      Render quality {qualityLabels[pref]}
+    </button>
+  );
+}
+
 function GameMenu({
   game,
   isHost,
@@ -1027,6 +1074,7 @@ function GameMenu({
           </button>
           <SfxToggle />
           <ShakeToggle />
+          <QualityToggle />
           <button className="menu-item" onClick={onRules}>
             <HelpCircle size={20} />
             Rules
@@ -2364,6 +2412,7 @@ const PlayerPanel = memo(function PlayerPanel({
   const runnerRef = useRef<HTMLSpanElement | null>(null);
   const runnerHighlightRef = useRef<HTMLSpanElement | null>(null);
   const runnerFloatersRef = useRef<HTMLSpanElement | null>(null);
+  const liveFloatersRef = useRef(new Map<RunnerFloater['tone'], LiveFloater>());
   const panelRef = useRef<HTMLElement | null>(null);
   const panelHitRef = useRef<HTMLSpanElement | null>(null);
   const [reachedPendingCombatCursor, setReachedPendingCombatCursor] = useState<number | null>(null);
@@ -2399,14 +2448,14 @@ const PlayerPanel = memo(function PlayerPanel({
     if (!previous) return;
 
     const nextFloaters: RunnerFloater[] = [];
-    const addFloater = (text: string, tone: RunnerFloater['tone']) => {
+    const addFloater = (value: number, suffix: string, tone: RunnerFloater['tone']) => {
       nextFloaters.push({
-        text,
+        value,
+        suffix,
         tone,
         lane: nextFloaters.length % 3
       });
     };
-    const signed = (value: number, suffix: string) => `${value > 0 ? '+' : ''}${value}${suffix}`;
     const hpDelta = current.hp - previous.hp;
     const scoreDelta = current.score - previous.score;
     const goldDelta = current.gold - previous.gold;
@@ -2414,12 +2463,12 @@ const PlayerPanel = memo(function PlayerPanel({
     const levelDelta = current.level - previous.level;
     const lapDelta = current.laps - previous.laps;
 
-    if (hpDelta !== 0) addFloater(signed(hpDelta, ' HP'), hpDelta > 0 ? 'health' : 'loss');
-    if (scoreDelta !== 0) addFloater(signed(scoreDelta, ' score'), scoreDelta > 0 ? 'gain' : 'loss');
-    if (goldDelta !== 0) addFloater(signed(goldDelta, 'g'), goldDelta > 0 ? 'gold' : 'loss');
-    if (levelDelta > 0) addFloater(`+${levelDelta} Lv`, 'level');
-    else if (xpDelta !== 0) addFloater(signed(xpDelta, ' XP'), xpDelta > 0 ? 'xp' : 'loss');
-    if (lapDelta > 0) addFloater(`+${lapDelta} loop${lapDelta === 1 ? '' : 's'}`, 'loop');
+    if (hpDelta !== 0) addFloater(hpDelta, ' HP', hpDelta > 0 ? 'health' : 'loss');
+    if (scoreDelta !== 0) addFloater(scoreDelta, ' score', scoreDelta > 0 ? 'gain' : 'loss');
+    if (goldDelta !== 0) addFloater(goldDelta, 'g', goldDelta > 0 ? 'gold' : 'loss');
+    if (levelDelta > 0) addFloater(levelDelta, ' Lv', 'level');
+    else if (xpDelta !== 0) addFloater(xpDelta, ' XP', xpDelta > 0 ? 'xp' : 'loss');
+    if (lapDelta > 0) addFloater(lapDelta, lapDelta === 1 ? ' loop' : ' loops', 'loop');
 
     // Audio only for the local player's own panel; combat hits are voiced by the
     // overlay's per-beat sounds, so this layer covers reward moments only.
@@ -2454,12 +2503,29 @@ const PlayerPanel = memo(function PlayerPanel({
     if (!container || nextFloaters.length === 0) return;
 
     window.requestAnimationFrame(() => {
+      const live = liveFloatersRef.current;
       nextFloaters.forEach((floater) => {
+        const existing = live.get(floater.tone);
+        if (existing && existing.node.isConnected && performance.now() - existing.at < floaterMergeWindowMs) {
+          existing.value += floater.value;
+          existing.at = performance.now();
+          existing.node.textContent = formatFloaterText(existing.value, existing.suffix);
+          // Restart the rise so the merged total stays readable.
+          existing.node.style.animation = 'none';
+          void existing.node.offsetWidth;
+          existing.node.style.animation = '';
+          return;
+        }
         const node = document.createElement('b');
         node.className = `runner-floater ${floater.tone}`;
-        node.textContent = floater.text;
+        node.textContent = formatFloaterText(floater.value, floater.suffix);
         node.style.setProperty('--float-lane', String(floater.lane));
-        node.addEventListener('animationend', () => node.remove(), { once: true });
+        const entry: LiveFloater = { node, value: floater.value, suffix: floater.suffix, at: performance.now() };
+        live.set(floater.tone, entry);
+        node.addEventListener('animationend', () => {
+          node.remove();
+          if (live.get(floater.tone)?.node === node) live.delete(floater.tone);
+        }, { once: true });
         container.append(node);
       });
 
@@ -2479,7 +2545,7 @@ const PlayerPanel = memo(function PlayerPanel({
         container.append(toss);
       }
 
-      while (container.childElementCount > 8) {
+      while (container.childElementCount > maxFloaterNodes) {
         container.firstElementChild?.remove();
       }
     });
@@ -2827,8 +2893,9 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
         </span>
       </div>
       <div className={`combatant hero-combat ${activeBeat?.attacker === 'hero' ? 'combat-attacking' : ''} ${activeBeat?.attacker === 'enemy' ? 'combat-taking-hit' : ''}`}>
+        <div className="combatant-glow" aria-hidden="true" />
         <div className="combat-ground-shadow" aria-hidden="true" />
-        <img src={heroSpriteUrl(player.heroId)} alt="" />
+        <CombatSpriteImg src={heroSpriteUrl(player.heroId)} alt="" />
         {activeBeat?.attacker === 'enemy' && (
           <div key={`fx-hero-${activeBeatIndex}`} className={`${combatFxClass(combat.effect)} combat-fx-on-hero`} aria-hidden="true" />
         )}
@@ -2866,10 +2933,11 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
         </ol>
       )}
       <div className={`combatant enemy-combat enemy-combat-${largestEnemySize} ${activeBeat?.attacker === 'enemy' ? 'combat-attacking' : ''} ${activeBeat?.attacker === 'hero' ? 'combat-taking-hit' : ''}`}>
+        <div className="combatant-glow" aria-hidden="true" />
         <div className="combat-ground-shadow" aria-hidden="true" />
         <div className={`enemy-party enemy-party-${enemyLineup.length} enemy-party-max-${largestEnemySize}`} aria-hidden="true">
           {enemyLineup.map((enemy, index) => (
-            <img
+            <CombatSpriteImg
               key={`enemy-${index}-${enemy.id}`}
               data-enemy-slot={index}
               className={`enemy-size-${enemy.size} enemy-kind-${enemy.id} ${index === activeEnemyIndex ? 'active-enemy' : ''}`}
@@ -2942,6 +3010,17 @@ function fallbackCombatBeats(combat: Combat): CombatBeat[] {
     }
   ];
   return beats.filter((beat) => beat.damage > 0);
+}
+
+// Combat sprite with the constant brightness/saturate filter baked into the
+// bitmap (sprite-bake.ts) so the scale-animated img carries no live filter —
+// a live filter re-rasters every strike-animation frame (frame-consistency
+// appraisal). Browsers without canvas filters get the same look via a CSS
+// filter class on the img instead.
+function CombatSpriteImg({ src, className, ...rest }: { src: string } & Omit<ComponentProps<'img'>, 'src'>) {
+  const bakedSrc = useBakedSprite(src);
+  const fallback = spriteBakeUnsupported() ? ' sprite-filter-fallback' : '';
+  return <img src={bakedSrc} className={`${className ?? ''}${fallback}`} {...rest} />;
 }
 
 function CombatBar({
