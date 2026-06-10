@@ -30,10 +30,10 @@ const strictFrameGap = /^(1|true|yes)$/i.test(process.env.LOOPDUEL_AUTOPSY_STRIC
 const maxActionAckP95Ms = Number(process.env.LOOPDUEL_AUTOPSY_MAX_ACTION_ACK_P95_MS ?? 900);
 const expectedPlayers = 4;
 const backgroundAssets = [
-  '/assets/background/loopduel-parallax-sky-v2.png',
-  '/assets/background/loopduel-parallax-spires-v2.png',
-  '/assets/background/loopduel-parallax-graves-v2.png',
-  '/assets/background/loopduel-parallax-brambles-v2.png'
+  '/assets/background/loopduel-parallax-sky-v3.png',
+  '/assets/background/loopduel-parallax-spires-v3.png',
+  '/assets/background/loopduel-parallax-graves-v3.png',
+  '/assets/background/loopduel-parallax-brambles-v3.png'
 ];
 
 function percentile(values, pct) {
@@ -163,6 +163,9 @@ async function newInstrumentedPage(browser, {
     localStorage.clear();
     localStorage.setItem('loopduel.tutorialSeen', 'yes');
     localStorage.setItem('loopduel.smoothnessDebug', '1');
+    // Pin full quality: the headless compositor can dip below the auto
+    // low-quality threshold, and the gate should measure worst-case visuals.
+    localStorage.setItem('loopduel.quality', 'high');
   });
   await page.reload();
   return { page, telemetry };

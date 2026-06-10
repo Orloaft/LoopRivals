@@ -9,14 +9,15 @@
     "build": "tsc -b && vite build",
     "assets:tiles": "node scripts/slice-tile-art.mjs",
     "preview": "NODE_ENV=production node server/index.mjs",
-    "lint": "eslint .",
+    "lint": "eslint . && node scripts/check-keyframe-purity.mjs",
     "test": "NODE_ENV=test node --test",
     "test:e2e": "node scripts/playwright-smoke.mjs",
     "test:e2e:autopsy": "npm run build && node scripts/playwright-autopsy.mjs",
     "test:motion": "node scripts/playwright-motion-audit.mjs",
+    "test:jank": "npm run build && node scripts/jank-gate.mjs",
     "test:balance": "node scripts/balance-sim.mjs",
     "test:ws-load": "node scripts/ws-load.mjs",
-    "verify": "npm run lint && npm run test && npm run build && npm run test:e2e && npm run test:motion && npm run test:balance -- 80 && npm run test:ws-load -- --rooms=4 --players=4 --duration-ms=8000"
+    "verify": "npm run lint && npm run test && npm run build && npm run test:e2e && npm run test:motion && node scripts/jank-gate.mjs && npm run test:balance -- 80 && npm run test:ws-load -- --rooms=4 --players=4 --duration-ms=8000"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
