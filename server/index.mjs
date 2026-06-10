@@ -28,6 +28,7 @@ import {
   updateRoomSettings
 } from './rules.mjs';
 import { createRoomRuntime, eventsRequireSnapshot, roomEventBroadcastPolicy } from './runtime.mjs';
+import { cleanId, cleanTileIndex, resolveJoinIdentity } from './security.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
@@ -41,6 +42,7 @@ const persistencePath = process.env.LOOPDUEL_PERSISTENCE_PATH
   ? path.resolve(root, process.env.LOOPDUEL_PERSISTENCE_PATH)
   : null;
 const persistenceFlushIntervalMs = Number(process.env.LOOPDUEL_PERSISTENCE_FLUSH_INTERVAL_MS ?? 2000);
+const maxRooms = Number(process.env.LOOPDUEL_MAX_ROOMS ?? 500);
 const buildVersion = readPackageVersion();
 const buildSha = process.env.LOOPDUEL_BUILD_SHA ?? process.env.GITHUB_SHA ?? null;
 
@@ -166,6 +168,17 @@ function getRoom(roomId = 'main') {
 
 function findRoom(roomId = 'main') {
   return rooms.get(cleanRoomId(roomId)) ?? null;
+}
+
+// Join/spectate go through here: auto-creating a room is only allowed while
+// the server has capacity, so clients can't grow the room map unboundedly.
+function getRoomWithCapacity(roomId = 'main') {
+  const id = cleanRoomId(roomId);
+  if (!rooms.has(id) && rooms.size >= maxRooms) {
+    logEvent('warn', 'room_capacity_reached', { requestedRoomId: id, rooms: rooms.size });
+    return null;
+  }
+  return getRoom(id);
 }
 
 function getRuntime(room) {
@@ -381,16 +394,40 @@ function onPlayerAction(socket, eventName, handler) {
       sendAck(ack, rejectedActionAck(socket, eventName, 'rate-limited', { commandId: payload?.commandId ?? null }));
       return;
     }
-    handler(payload, ack);
+    try {
+      handler(payload, ack);
+    } catch (error) {
+      // One bad payload or logic bug must never take the process (and every
+      // room) down with it. Reject the action, log with stack, keep serving.
+      logEvent('error', 'action_handler_failed', {
+        eventName,
+        socketId: socket.id,
+        roomId: socket.data.roomId ?? null,
+        playerId: socket.data.playerId ?? null,
+        message: error?.message ?? String(error),
+        stack: error?.stack ?? null
+      });
+      socket.emit('notice', 'Something went wrong handling that action.');
+      sendAck(ack, rejectedActionAck(socket, eventName, 'server-error', { commandId: payload?.commandId ?? null }));
+    }
   });
 }
 
+function rejectInvalidPayload(socket, eventName, ack, commandId = null) {
+  sendAck(ack, rejectedActionAck(socket, eventName, 'invalid-payload', { commandId }));
+}
+
 function cleanupRooms(io) {
-  const cutoff = Date.now() - roomIdleTtlMs;
+  const nowMs = Date.now();
+  const cutoff = nowMs - roomIdleTtlMs;
+  // Rooms that never got a human player (typo'd codes, probing) don't earn
+  // the full idle TTL — reap them quickly so they can't pile up.
+  const emptyCutoff = nowMs - Math.min(roomIdleTtlMs, 5 * 60 * 1000);
   for (const [roomId, room] of rooms.entries()) {
     if (roomId === 'main') continue;
     if (hasConnectedHuman(room)) continue;
-    if ((room.lastActivityAt ?? room.startedAt) > cutoff) continue;
+    const neverHadHumans = !Object.values(room.players).some((player) => !player.isBot);
+    if ((room.lastActivityAt ?? room.startedAt) > (neverHadHumans ? emptyCutoff : cutoff)) continue;
     io.to(room.id).emit('notice', 'Room expired after being idle.');
     rooms.delete(roomId);
     runtimes.delete(roomId);
@@ -404,7 +441,10 @@ async function startServer() {
   const app = express();
   const server = http.createServer(app);
   const io = new Server(server, {
-    cors: { origin: corsOrigin }
+    cors: { origin: corsOrigin },
+    // Game payloads are tiny (ids + small settings objects); anything close
+    // to this cap is abuse, not gameplay.
+    maxHttpBufferSize: 100 * 1024
   });
 
   app.get('/healthz', (_req, res) => {
@@ -453,7 +493,12 @@ async function startServer() {
     socket.emit('state', getRuntime(mainRoom).snapshot('connect'));
 
     onPlayerAction(socket, 'spectate', ({ roomId } = {}, ack) => {
-      const room = getRoom(roomId);
+      const room = getRoomWithCapacity(roomId);
+      if (!room) {
+        socket.emit('notice', 'The server is at room capacity right now. Try again soon.');
+        sendAck(ack, rejectedActionAck(socket, 'spectate', 'server-full', {}));
+        return;
+      }
       if (socket.data.roomId && socket.data.roomId !== room.id) socket.leave(socket.data.roomId);
       socket.join(room.id);
       socket.data.roomId = room.id;
@@ -514,8 +559,17 @@ async function startServer() {
     });
 
     onPlayerAction(socket, 'join', ({ name, heroId, roomId, playerToken, guidedRun = false, commandId = null } = {}, ack) => {
-      const room = getRoom(roomId);
-      const playerId = String(playerToken || crypto.randomUUID());
+      const room = getRoomWithCapacity(roomId);
+      if (!room) {
+        socket.emit('notice', 'The server is at room capacity right now. Try again soon.');
+        sendAck(ack, rejectedActionAck(socket, 'join', 'server-full', { commandId }));
+        return;
+      }
+      // Identity is server-issued: the public player id is not a credential.
+      // A supplied token only reclaims a seat when it matches that seat's
+      // server-issued secret (see server/security.mjs).
+      const identity = resolveJoinIdentity(room, playerToken);
+      const playerId = identity.playerId;
       const mutation = getRuntime(room).commitCommand('join', {
         playerId,
         commandId,
@@ -538,7 +592,10 @@ async function startServer() {
       socket.data.roomId = room.id;
       socket.data.playerId = playerId;
       claimPlayerSocket(socket, room.id, playerId);
-      socket.emit('session', { playerToken: playerId, roomId: room.id });
+      room.playerSecrets[playerId] = identity.secret;
+      // playerToken is the reconnect secret (store it, send it on join);
+      // playerId is the public identity to look yourself up in room state.
+      socket.emit('session', { playerToken: identity.secret, playerId, roomId: room.id });
       markPersistenceDirty();
       const broadcast = mutation.duplicate
         ? { snapshotRequired: mutation.snapshotRequired, snapshotEmitted: false, deltaEmitted: false }
@@ -613,7 +670,12 @@ async function startServer() {
         rejectUnauthorizedHost(socket, 'kickPlayer', ack, { room, player, commandId });
         return;
       }
-      if (String(targetId) === player.id) {
+      const kickTarget = cleanId(targetId);
+      if (!kickTarget) {
+        rejectInvalidPayload(socket, 'kickPlayer', ack, commandId);
+        return;
+      }
+      if (kickTarget === player.id) {
         socket.emit('notice', 'The host cannot kick themselves.');
         sendAck(ack, rejectedActionAck(socket, 'kickPlayer', 'cannot-kick-self', {
           roomId: room.id,
@@ -625,9 +687,9 @@ async function startServer() {
       commitRoomCommand(io, room, 'kickPlayer', {
         playerId: player.id,
         commandId,
-        payload: { targetId }
+        payload: { targetId: kickTarget }
       }, () => {
-        const kicked = kickPlayer(room, String(targetId));
+        const kicked = kickPlayer(room, kickTarget);
         if (kicked) markPersistenceDirty();
         return kicked;
       }, ack);
@@ -639,12 +701,18 @@ async function startServer() {
         rejectMissingPlayer(socket, 'placeCard', ack, commandId);
         return;
       }
+      const card = cleanId(cardId);
+      const tile = cleanTileIndex(tileIndex, player.board);
+      if (!card || tile === null) {
+        rejectInvalidPayload(socket, 'placeCard', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'placeCard', {
         playerId: player.id,
         commandId,
-        payload: { cardId, tileIndex }
+        payload: { cardId: card, tileIndex: tile }
       }, () => {
-        const played = playTerrain(room, player, cardId, Number(tileIndex));
+        const played = playTerrain(room, player, card, tile);
         if (played) touchRoom(room);
         return played;
       }, ack);
@@ -656,12 +724,21 @@ async function startServer() {
         rejectMissingPlayer(socket, 'playRivalCard', ack, commandId);
         return;
       }
+      const card = cleanId(cardId);
+      const target = cleanId(targetId);
+      if (!card || !target || !room.players[target]) {
+        rejectInvalidPayload(socket, 'playRivalCard', ack, commandId);
+        return;
+      }
+      const tile = tileIndex === null || tileIndex === undefined
+        ? null
+        : cleanTileIndex(tileIndex, room.players[target].board);
       commitRoomCommand(io, room, 'playRivalCard', {
         playerId: player.id,
         commandId,
-        payload: { cardId, targetId, tileIndex }
+        payload: { cardId: card, targetId: target, tileIndex: tile }
       }, () => {
-        const played = playRival(room, player, cardId, targetId, Number.isFinite(Number(tileIndex)) ? Number(tileIndex) : null);
+        const played = playRival(room, player, card, target, tile);
         if (played) touchRoom(room);
         return played;
       }, ack);
@@ -673,12 +750,20 @@ async function startServer() {
         rejectMissingPlayer(socket, 'playBonkCard', ack, commandId);
         return;
       }
+      const card = cleanId(cardId);
+      // targetId is optional (auto-target bonks); when present it must be a
+      // sane id, but existence is the rules' call (targetMode decides).
+      const target = targetId === null || targetId === undefined ? null : cleanId(targetId);
+      if (!card || (targetId !== null && targetId !== undefined && !target)) {
+        rejectInvalidPayload(socket, 'playBonkCard', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'playBonkCard', {
         playerId: player.id,
         commandId,
-        payload: { cardId, targetId }
+        payload: { cardId: card, targetId: target }
       }, () => {
-        const played = playBonk(room, player, cardId, targetId);
+        const played = playBonk(room, player, card, target);
         if (played) touchRoom(room);
         return played;
       }, ack);
@@ -690,12 +775,17 @@ async function startServer() {
         rejectMissingPlayer(socket, 'sellCard', ack, commandId);
         return;
       }
+      const card = cleanId(cardId);
+      if (!card) {
+        rejectInvalidPayload(socket, 'sellCard', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'sellCard', {
         playerId: player.id,
         commandId,
-        payload: { cardId }
+        payload: { cardId: card }
       }, () => {
-        const sold = sellCard(room, player, cardId);
+        const sold = sellCard(room, player, card);
         if (sold) touchRoom(room);
         return sold;
       }, ack);
@@ -707,12 +797,17 @@ async function startServer() {
         rejectMissingPlayer(socket, 'sellLoot', ack, commandId);
         return;
       }
+      const item = cleanId(itemId);
+      if (!item) {
+        rejectInvalidPayload(socket, 'sellLoot', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'sellLoot', {
         playerId: player.id,
         commandId,
-        payload: { itemId }
+        payload: { itemId: item }
       }, () => {
-        const sold = sellLoot(room, player, itemId);
+        const sold = sellLoot(room, player, item);
         if (sold) touchRoom(room);
         return sold;
       }, ack);
@@ -724,12 +819,17 @@ async function startServer() {
         rejectMissingPlayer(socket, 'buyShopOffer', ack, commandId);
         return;
       }
+      const offer = cleanId(offerId);
+      if (!offer) {
+        rejectInvalidPayload(socket, 'buyShopOffer', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'buyShopOffer', {
         playerId: player.id,
         commandId,
-        payload: { offerId }
+        payload: { offerId: offer }
       }, () => {
-        const bought = buyShopOffer(room, player, offerId);
+        const bought = buyShopOffer(room, player, offer);
         if (bought) touchRoom(room);
         return bought;
       }, ack);
@@ -758,12 +858,17 @@ async function startServer() {
         rejectMissingPlayer(socket, 'equip', ack, commandId);
         return;
       }
+      const item = cleanId(itemId);
+      if (!item) {
+        rejectInvalidPayload(socket, 'equip', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'equip', {
         playerId: player.id,
         commandId,
-        payload: { itemId }
+        payload: { itemId: item }
       }, () => {
-        const equipped = equip(player, itemId, room);
+        const equipped = equip(player, item, room);
         if (equipped) touchRoom(room);
         return equipped;
       }, ack);
@@ -775,12 +880,17 @@ async function startServer() {
         rejectMissingPlayer(socket, 'chooseTrait', ack, commandId);
         return;
       }
+      const trait = cleanId(traitId);
+      if (!trait) {
+        rejectInvalidPayload(socket, 'chooseTrait', ack, commandId);
+        return;
+      }
       commitRoomCommand(io, room, 'chooseTrait', {
         playerId: player.id,
         commandId,
-        payload: { traitId }
+        payload: { traitId: trait }
       }, () => {
-        const chosen = chooseTrait(player, traitId, room);
+        const chosen = chooseTrait(player, trait, room);
         if (chosen) touchRoom(room);
         return chosen;
       }, ack);
@@ -818,14 +928,35 @@ async function startServer() {
     const elapsedMs = currentSimulationAt - lastSimulationAt;
     lastSimulationAt = currentSimulationAt;
     for (const room of rooms.values()) {
-      const events = getRuntime(room).step(elapsedMs, simulationIntervalMs);
-      broadcastRoomEvents(io, room, events, 'simulation');
+      // One broken room must not freeze the simulation of every other room.
+      try {
+        const events = getRuntime(room).step(elapsedMs, simulationIntervalMs);
+        broadcastRoomEvents(io, room, events, 'simulation');
+      } catch (error) {
+        logEvent('error', 'room_simulation_failed', {
+          roomId: room.id,
+          message: error?.message ?? String(error),
+          stack: error?.stack ?? null
+        });
+      }
     }
     if (rooms.size > 0) markPersistenceDirty();
   }, simulationIntervalMs);
 
-  setInterval(() => cleanupRooms(io), cleanupIntervalMs);
-  setInterval(() => savePersistedRooms(), persistenceFlushIntervalMs);
+  setInterval(() => {
+    try {
+      cleanupRooms(io);
+    } catch (error) {
+      logEvent('error', 'room_cleanup_failed', { message: error?.message ?? String(error), stack: error?.stack ?? null });
+    }
+  }, cleanupIntervalMs);
+  setInterval(() => {
+    try {
+      savePersistedRooms();
+    } catch (error) {
+      logEvent('error', 'persistence_flush_failed', { message: error?.message ?? String(error), stack: error?.stack ?? null });
+    }
+  }, persistenceFlushIntervalMs);
 
   process.once('SIGTERM', () => {
     savePersistedRooms({ force: true });
@@ -836,6 +967,21 @@ async function startServer() {
     savePersistedRooms({ force: true });
     process.exit(0);
   });
+
+  // Last-resort containment: log, save what we can, and exit so the process
+  // manager restarts us with persisted rooms — never die silently.
+  const crashOut = (event) => (cause) => {
+    try {
+      logEvent('error', event, {
+        message: cause?.message ?? String(cause),
+        stack: cause?.stack ?? null
+      });
+      savePersistedRooms({ force: true });
+    } catch { /* nothing left to do */ }
+    process.exit(1);
+  };
+  process.on('uncaughtException', crashOut('uncaught_exception'));
+  process.on('unhandledRejection', crashOut('unhandled_rejection'));
 
   server.listen(port, '0.0.0.0', () => {
     logEvent('info', 'server_listening', {

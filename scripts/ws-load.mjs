@@ -251,7 +251,7 @@ function recordDelta(client, delta) {
 function chooseAction(client) {
   const state = client.latestState;
   if (!state || state.status !== 'running') return null;
-  const me = state.players.find((player) => player.id === client.playerToken);
+  const me = state.players.find((player) => player.id === client.playerId);
   if (!me) return null;
 
   if (me.pendingTraits.length > 0) {
@@ -290,6 +290,7 @@ async function connectClient(roomIndex, playerIndex) {
   });
 
   socket.playerToken = playerToken;
+  socket.playerId = null; // server-issued public id, captured from `session`
   socket.latestState = null;
   socket.lastStateAt = 0;
   socket.lastLiveAt = 0;
@@ -323,7 +324,8 @@ async function connectClient(roomIndex, playerIndex) {
 
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`session timeout for ${playerToken}`)), 10_000);
-    socket.once('session', () => {
+    socket.once('session', ({ playerId } = {}) => {
+      socket.playerId = playerId ?? socket.playerToken;
       clearTimeout(timeout);
       sessionLatencies.push(Date.now() - sessionStartedAt);
       resolve();

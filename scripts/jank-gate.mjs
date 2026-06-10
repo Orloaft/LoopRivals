@@ -13,9 +13,13 @@ import { spawn } from 'node:child_process';
 
 const env = (name, fallback) => Number(process.env[name] ?? fallback);
 
+// fps is gated on the MEDIAN 5s-window fps, not the overall average: a single
+// host-level stall on a busy CI machine tanks the average while every other
+// window is clean, whereas real burst-delivery pathology (the failure mode
+// fps gating exists to catch) drags all windows down.
 const BUDGETS = {
   low: {
-    fpsAvgMin: env('JANK_LOW_FPS_MIN', 54),
+    windowFpsMedianMin: env('JANK_LOW_FPS_MIN', 54),
     gapP99MaxMs: env('JANK_LOW_P99_MAX_MS', 35),
     spikesPerMinuteMax: env('JANK_LOW_SPIKES_MAX', 12),
     longTasksMax: env('JANK_LOW_LONGTASKS_MAX', 5),
@@ -24,7 +28,7 @@ const BUDGETS = {
     // Post sprite-filter conversion (2026-06-10) full quality measures
     // ~59fps / 11 spikes/min on software GL; budgets leave run-to-run
     // headroom (every probe run is a different live match).
-    fpsAvgMin: env('JANK_HIGH_FPS_MIN', 48),
+    windowFpsMedianMin: env('JANK_HIGH_FPS_MIN', 48),
     inCombatP50MaxMs: env('JANK_HIGH_COMBAT_P50_MAX_MS', 26),
     spikesPerMinuteMax: env('JANK_HIGH_SPIKES_MAX', 60),
     longTasksMax: env('JANK_HIGH_LONGTASKS_MAX', 5),
@@ -60,11 +64,12 @@ for (const mode of modes) {
   if (!budget) { console.error(`unknown gate mode "${mode}" (use low,high)`); process.exit(2); }
   console.log(`[jank-gate] probing quality=${mode} (60s forced-combat match, software GL)…`);
   const report = await runProbe(mode);
-  console.log(`  fpsAvg=${report.fpsAvg} p50=${report.gapMs.p50} p95=${report.gapMs.p95} p99=${report.gapMs.p99} spikes/min=${report.spikesPerMinute} inCombatP50=${report.inCombatGapMs.p50} longTasks=${report.longTasks} combatShare=${report.combatShareOfFrames}`);
+  console.log(`  fpsAvg=${report.fpsAvg} windowFpsMedian=${report.windowFps?.median} (min=${report.windowFps?.min}) p50=${report.gapMs.p50} p95=${report.gapMs.p95} p99=${report.gapMs.p99} spikes/min=${report.spikesPerMinute} inCombatP50=${report.inCombatGapMs.p50} longTasks=${report.longTasks} combatShare=${report.combatShareOfFrames}`);
   if (report.combatShareOfFrames < 0.05) {
     console.warn(`  [${mode}] WARNING: combat covered <5% of frames — sample barely exercised the expensive path; treat this run as weak evidence`);
   }
-  check(mode, `fpsAvg >= ${budget.fpsAvgMin}`, report.fpsAvg, report.fpsAvg >= budget.fpsAvgMin);
+  const windowFpsMedian = report.windowFps?.median ?? report.fpsAvg;
+  check(mode, `window fps median >= ${budget.windowFpsMedianMin}`, windowFpsMedian, windowFpsMedian >= budget.windowFpsMedianMin);
   check(mode, `spikes/min <= ${budget.spikesPerMinuteMax}`, report.spikesPerMinute, report.spikesPerMinute <= budget.spikesPerMinuteMax);
   check(mode, `longTasks <= ${budget.longTasksMax}`, report.longTasks, report.longTasks <= budget.longTasksMax);
   if (budget.gapP99MaxMs !== undefined) {

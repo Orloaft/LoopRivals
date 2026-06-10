@@ -32,9 +32,18 @@ import {
 } from './game-ui';
 import { sfx, unlockAudio } from './audio';
 import { prefersReducedMotion } from './motion-prefs';
+import protocol from '../protocol.json';
 
+// playerToken is the server-issued reconnect secret (a credential — only ever
+// sent back to the server in join payloads); playerId is the public identity
+// used to find ourselves in broadcast room state. The server splits these so
+// that knowing someone's public id grants nothing.
 function savedPlayerToken() {
   return localStorage.getItem('loopduel.playerToken') ?? '';
+}
+
+function savedPlayerId() {
+  return localStorage.getItem('loopduel.playerId') ?? '';
 }
 
 // Spend feedback: clone the played card into a fixed-position ghost that burns
@@ -213,13 +222,16 @@ function App() {
   const bgmRef = useRef<HTMLAudioElement | null>(null);
   const shouldAutoReconnect = import.meta.env.PROD;
   const [playerToken, setPlayerToken] = useState(() => shouldAutoReconnect ? savedPlayerToken() : '');
+  const [playerId, setPlayerId] = useState(() => shouldAutoReconnect ? savedPlayerId() : '');
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
   const gameRef = useRef<GameState | null>(null);
   const playerTokenRef = useRef(playerToken);
+  const playerIdRef = useRef(playerId);
   const authorityPausedRef = useRef(false);
   const lastRoomEventSeqRef = useRef(0);
   const [socketConnected, setSocketConnected] = useState(() => socket.connected);
+  const [versionSkew, setVersionSkew] = useState(false);
   const authorityStateStaleRef = useRef(false);
   const [authorityStateStale, setAuthorityStateStale] = useState(false);
   const [name, setName] = useState(() => `Player ${Math.floor(Math.random() * 900 + 100)}`);
@@ -244,7 +256,7 @@ function App() {
   const [mobileDrawer, setMobileDrawer] = useState<'loot' | 'talents' | 'log' | 'menu' | null>(null);
   const commandTransportRef = useRef<ReturnType<typeof createClientCommandTransport> | null>(null);
   const roomAuthorityBatcherRef = useRef<ReturnType<typeof createRoomAuthorityBatcher> | null>(null);
-  const me = game?.players.find((player) => player.id === playerToken) ?? null;
+  const me = game?.players.find((player) => player.id === playerId) ?? null;
   const assetWarmPhase = me ? 'game' : 'lobby';
 
   useEffect(() => {
@@ -254,6 +266,10 @@ function App() {
   useEffect(() => {
     playerTokenRef.current = playerToken;
   }, [playerToken]);
+
+  useEffect(() => {
+    playerIdRef.current = playerId;
+  }, [playerId]);
 
   useEffect(() => {
     gameRef.current = game;
@@ -270,7 +286,7 @@ function App() {
         if (ack) socket.emit(eventName, payload, ack);
         else socket.emit(eventName, payload);
       },
-      getPlayerId: () => playerTokenRef.current || null,
+      getPlayerId: () => playerIdRef.current || null,
       onNotice: setNotice,
       shouldRetry: () => !authorityPausedRef.current
     });
@@ -323,6 +339,12 @@ function App() {
       }
     });
     socket.on('config', (payload: GameConfig) => {
+      // A stale bundle talking to a redeployed server fails in confusing ways;
+      // detect the protocol skew up front and ask for a refresh instead.
+      if (typeof payload.protocolVersion === 'number' && payload.protocolVersion !== protocol.version) {
+        setVersionSkew(true);
+        return;
+      }
       setConfig(payload);
       setHeroId(payload.heroes[0]?.id ?? 'ember-knight');
     });
@@ -347,11 +369,15 @@ function App() {
         return projection.state;
       });
     });
-    socket.on('session', ({ playerToken: nextToken, roomId: nextRoomId }: { playerToken: string; roomId: string }) => {
+    socket.on('session', ({ playerToken: nextToken, playerId: nextPlayerId, roomId: nextRoomId }: { playerToken: string; playerId?: string; roomId: string }) => {
+      const resolvedPlayerId = nextPlayerId ?? nextToken;
       localStorage.setItem('loopduel.playerToken', nextToken);
+      localStorage.setItem('loopduel.playerId', resolvedPlayerId);
       localStorage.setItem('loopduel.roomId', nextRoomId);
       playerTokenRef.current = nextToken;
+      playerIdRef.current = resolvedPlayerId;
       setPlayerToken(nextToken);
+      setPlayerId(resolvedPlayerId);
       setRoomId(nextRoomId);
       setSpectatorRoomId(null);
     });
@@ -720,6 +746,16 @@ function App() {
     setSelectedCardId(null);
     setDragCardId(null);
     setDragLootId(null);
+  }
+
+  if (versionSkew) {
+    return (
+      <div className="boot version-skew" role="alert">
+        <strong>Loopduel was updated</strong>
+        <span>Refresh to load the new version and rejoin your room.</span>
+        <button className="primary-action" onClick={() => window.location.reload()}>Refresh now</button>
+      </div>
+    );
   }
 
   if (!config || !game) {

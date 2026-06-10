@@ -46,6 +46,21 @@ Production serves `dist/` from the same Express process as Socket.IO. Useful env
 
 Health checks can use `GET /healthz`. The response includes service status, version, build SHA, environment, uptime, live room/player counts, configured runtime limits, and persistence status when enabled.
 
+### Docker
+
+```bash
+docker build -t loopduel .
+docker run -p 4173:4173 \
+  -e LOOPDUEL_ALLOWED_ORIGINS=https://your.domain \
+  -e LOOPDUEL_PERSISTENCE_PATH=/data/rooms.json \
+  -v loopduel-data:/data \
+  loopduel
+```
+
+The image is multi-stage (build → slim runtime), serves the built client from
+the Node server, and health-checks `/healthz`. Mount a volume for
+`LOOPDUEL_PERSISTENCE_PATH` or rooms are lost when the container stops.
+
 ### Deployment Checklist
 
 - Build with Node 22 or newer.

@@ -309,6 +309,30 @@ h1 {
   color: var(--gold-bright);
 }
 
+/* Full-screen stop states: stale-bundle prompt + render-crash fallback. */
+.boot.version-skew,
+.boot.app-crash {
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+.boot.version-skew span,
+.boot.app-crash span {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--parchment);
+}
+
+.boot.version-skew button,
+.boot.app-crash button {
+  font-size: 1rem;
+  padding: 10px 26px;
+  cursor: pointer;
+}
+
 .lobby-shell {
   display: grid;
   min-height: 100vh;

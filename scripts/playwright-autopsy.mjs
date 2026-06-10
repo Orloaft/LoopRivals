@@ -185,6 +185,8 @@ function createSocketClient({ name, playerToken, heroId }) {
   const client = {
     name,
     playerToken,
+    sessionToken: playerToken, // replaced by the server-issued secret on join
+    playerId: null,            // server-issued public id from `session`
     latestState: null,
     states: [],
     deltas: [],
@@ -226,6 +228,10 @@ function createSocketClient({ name, playerToken, heroId }) {
     }
   });
   client.socket.on('notice', (notice) => client.notices.push(notice));
+  client.socket.on('session', ({ playerToken: secret, playerId } = {}) => {
+    client.sessionToken = secret ?? client.sessionToken;
+    client.playerId = playerId ?? secret ?? client.playerToken;
+  });
 
   client.ready = new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`socket connect timeout for ${playerToken}`)), 10_000);
@@ -286,7 +292,7 @@ async function placeFirstTerrainByUi(page, label) {
 
 async function placeFirstTerrainBySocket(client) {
   const state = await waitForState(client, (payload) => payload.status === 'running', `${client.playerToken} running state`);
-  const me = state.players.find((player) => player.id === client.playerToken);
+  const me = state.players.find((player) => player.id === client.playerId);
   assert.ok(me, `${client.playerToken} should exist in state`);
   const safeTiles = new Set(['meadow', 'village', 'forge', 'shrine', 'mire', 'orchard', 'chapel', 'watchtower', 'market', 'armory', 'waystone', 'scriptorium']);
   const card = me.hand.find((item) => item.kind === 'terrain' && safeTiles.has(item.tile)) ??
@@ -547,7 +553,9 @@ function assertSocketConsistency(clients) {
 async function reconnectSocketClient(original) {
   const reconnected = createSocketClient({
     name: `${original.name} Back`,
-    playerToken: original.playerToken,
+    // Reconnection rights come from the server-issued secret, not the
+    // original self-chosen token.
+    playerToken: original.sessionToken,
     heroId: 'rune-archer'
   });
   await reconnected.ready;
@@ -556,7 +564,7 @@ async function reconnectSocketClient(original) {
   await waitForState(reconnected, (state) => (
     state.id === roomCode &&
     state.players.length === expectedPlayers &&
-    state.players.some((player) => player.id === original.playerToken && player.connected)
+    state.players.some((player) => player.id === original.playerId && player.connected)
   ), `${original.playerToken} reconnect`);
   return reconnected;
 }

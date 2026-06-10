@@ -56,10 +56,12 @@ async function waitForServer() {
 function createSocketClient({ name, playerToken, heroId }) {
   const client = {
     playerToken,
+    playerId: null, // server-issued public id, captured from `session`
     latestState: null,
     socket: io(baseUrl, { transports: ['websocket'], reconnection: false, forceNew: true, timeout: 8000 })
   };
   client.socket.on('state', (state) => { client.latestState = state; });
+  client.socket.on('session', ({ playerId } = {}) => { client.playerId = playerId ?? client.playerToken; });
   client.ready = new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`connect timeout ${playerToken}`)), 10_000);
     client.socket.once('connect', () => {
@@ -126,7 +128,7 @@ try {
   const placer = setInterval(() => {
     for (const client of sockets) {
       const state = client.latestState;
-      const me = state?.players?.find((p) => p.id === client.playerToken);
+      const me = state?.players?.find((p) => p.id === client.playerId);
       if (!me || me.combat) continue;
       const card = me.hand?.find((c) => c.kind === 'terrain' && !SAFE.has(c.tile)) ?? me.hand?.find((c) => c.kind === 'terrain');
       if (!card) continue;
@@ -203,6 +205,18 @@ try {
   const outCombat = trace.frames.filter((f) => !f.combat).slice(1).map((f) => f.gap).sort((a, b) => a - b);
   const combatShare = trace.frames.filter((f) => f.combat).length / trace.frames.length;
 
+  // Per-window fps: the median is robust to isolated host stalls (CI machine
+  // hiccups hit one or two windows), while sustained burst-delivery pathology
+  // (compositor delivering rAF in clumps at low real fps) drags every window
+  // down. The gate uses the median; overall fpsAvg stays as reported context.
+  const windowMs = 5000;
+  const windowFpsValues = [];
+  for (let windowStart = 0; windowStart + windowMs <= sampleMs; windowStart += windowMs) {
+    const count = trace.frames.filter((f) => f.t >= windowStart && f.t < windowStart + windowMs).length;
+    windowFpsValues.push(count / (windowMs / 1000));
+  }
+  const sortedWindowFps = [...windowFpsValues].sort((a, b) => a - b);
+
   console.log(JSON.stringify({
     jank: {
       gl: useGl ? 'swiftshader' : 'none',
@@ -210,6 +224,10 @@ try {
       quality: probeQuality,
       sampleMs,
       fpsAvg: Number((gaps.length / seconds).toFixed(1)),
+      windowFps: {
+        median: Number(percentile(sortedWindowFps, 0.5).toFixed(1)),
+        min: Number((sortedWindowFps[0] ?? 0).toFixed(1))
+      },
       gapMs: {
         p50: Number(percentile(sorted, 0.5).toFixed(1)),
         p90: Number(percentile(sorted, 0.9).toFixed(1)),

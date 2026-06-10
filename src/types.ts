@@ -335,6 +335,7 @@ export type Player = {
 export type LeaderboardEntry = Pick<Player, 'id' | 'name' | 'heroId' | 'color' | 'score' | 'rank' | 'hp' | 'maxHp' | 'level' | 'laps'>;
 
 export type GameConfig = {
+  protocolVersion?: number;
   heroes: Hero[];
   cards: Omit<Card, 'instanceId'>[];
   boardPath: [number, number][];

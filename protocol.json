@@ -1,0 +1,4 @@
+{
+  "comment": "Client/server protocol version. Bump on any breaking change to socket payloads (join/session shape, state snapshot fields the client depends on, command acks). The server sends it in the `config` event; a client built against a different version shows a refresh prompt instead of failing silently.",
+  "version": 2
+}

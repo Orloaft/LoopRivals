@@ -1,3 +1,5 @@
+import protocol from '../protocol.json' with { type: 'json' };
+
 export const maxPlayers = 4;
 export const goalScore = 12600;
 export const roomSettingOptions = {
@@ -836,7 +838,7 @@ export const boardPath = [
 ];
 
 export function publicConfig() {
-  return { heroes, cards: [...terrainCards, ...rivalCards, ...bonkCards], boardPath, traits, talentTrees, maxPlayers, goalScore, matchTiers, roomSettingOptions };
+  return { protocolVersion: protocol.version, heroes, cards: [...terrainCards, ...rivalCards, ...bonkCards], boardPath, traits, talentTrees, maxPlayers, goalScore, matchTiers, roomSettingOptions };
 }
 
 function normalizeRoomSettings(settings = {}, fallback = defaultRoomSettings) {
@@ -1040,7 +1042,11 @@ export function createRoom(id, options = {}) {
     tier: matchTiers[0],
     claim: null,
     authorityPause: null,
-    guidedRun: options.guidedRun ? createGuidedRun(startTime) : null
+    guidedRun: options.guidedRun ? createGuidedRun(startTime) : null,
+    // playerId -> server-issued reconnect secret. Never included in client
+    // snapshots (roomSnapshot lists its fields explicitly); persisted so
+    // seats survive restarts. See server/security.mjs.
+    playerSecrets: {}
   };
 }
 
@@ -1091,7 +1097,10 @@ export function restoreRoom(snapshot, options = {}) {
     claim: raw.claim && typeof raw.claim === 'object' ? cloneJson(raw.claim) : null,
     authorityPause: null,
     guidedRun: raw.guidedRun && typeof raw.guidedRun === 'object' ? cloneJson(raw.guidedRun) : null,
-    players: {}
+    players: {},
+    playerSecrets: raw.playerSecrets && typeof raw.playerSecrets === 'object'
+      ? cloneJson(raw.playerSecrets)
+      : {}
   });
 
   const rawPlayers = raw.players && typeof raw.players === 'object' ? raw.players : {};
@@ -1122,8 +1131,12 @@ export function resetRoom(room) {
   const id = room.id;
   const hostId = room.hostId;
   const settings = room.settings;
+  // Secrets survive the rematch reset so returning sockets reclaim the same
+  // player id (and with it host status) when they auto-rejoin.
+  const playerSecrets = room.playerSecrets ?? {};
   Object.assign(room, createRoom(id, { seed: room.rngState, simulated: room.simulated, now: now(room), settings }));
   room.hostId = hostId;
+  room.playerSecrets = playerSecrets;
   emitRuleEvent(room, 'roomReset', { hostId });
 }
 
@@ -1576,6 +1589,8 @@ export function kickPlayer(room, targetId) {
   const target = room.players[targetId];
   if (!target || target.id === room.hostId) return false;
   delete room.players[target.id];
+  // Revoke the reconnect secret too — a kicked player rejoining starts fresh.
+  if (room.playerSecrets) delete room.playerSecrets[target.id];
   room.lastActivityAt = now(room);
   if (room.winnerId === target.id) room.winnerId = null;
   if (room.claim?.playerId === target.id) room.claim = null;
