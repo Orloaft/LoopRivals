@@ -8543,7 +8543,10 @@ body.loot-drag-active * {
     grid-area: arena;
     grid-template-columns: minmax(0, 1fr);
     grid-auto-rows: auto;
-    align-self: start;
+    /* Center the board in the tall arena row instead of pinning it to the
+       viewport top; `safe` falls back to start when space runs out so the
+       top tile row can never be pushed offscreen. */
+    align-self: safe center;
     justify-items: center;
     gap: 0;
   }
