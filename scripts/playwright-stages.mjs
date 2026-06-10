@@ -63,6 +63,9 @@ async function freshPage(browser, viewport, mobile) {
     localStorage.clear();
     localStorage.setItem('loopduel.tutorialSeen', 'yes');
     localStorage.setItem('loopduel.smoothnessDebug', '1');
+    // Pin full quality: these shots judge appearance, and the headless
+    // software rasterizer would otherwise trip the auto low-quality fallback.
+    localStorage.setItem('loopduel.quality', 'high');
   });
   await page.reload();
   return page;
@@ -104,8 +107,13 @@ try {
   await desktop.waitForTimeout(400);
   await shot(desktop, '02-desktop-solo-board.png');
 
+  // Host controls (Fill CPU / Start) live behind the gear menu now.
+  await clickByName(desktop, /settings and room menu/i);
+  await desktop.waitForTimeout(300);
   await clickByName(desktop, /fill cpu match/i);
   await desktop.waitForTimeout(700);
+  await desktop.keyboard.press('Escape');
+  await desktop.waitForTimeout(300);
   await shot(desktop, '03-desktop-lobby-filled.png');
 
   await clickByName(desktop, /start match/i);
@@ -143,9 +151,9 @@ try {
   const menuTab = mobile.locator('.mobile-drawer-tab').filter({ hasText: /^Menu$/ });
   if (await menuTab.count().catch(() => 0)) await menuTab.first().click().catch(() => {});
   await mobile.waitForTimeout(300);
-  await clickByName(mobile, /fill cpu match/i);
+  await clickByName(mobile, /fill cpu( match)?/i);
   await mobile.waitForTimeout(600);
-  await clickByName(mobile, /start match/i);
+  await clickByName(mobile, /^start( match)?$/i);
   await mobile.waitForTimeout(600);
   // close the drawer so the live board is visible
   await clickByName(mobile, /^close$/i);
