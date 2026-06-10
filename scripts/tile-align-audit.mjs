@@ -327,7 +327,7 @@ async function runMetricB() {
       hasTouch: true
     });
 
-    await page.goto(baseUrl);
+    await page.goto(baseUrl + '/?skiptitle=1');
     await page.evaluate(() => {
       localStorage.clear();
       localStorage.setItem('loopduel.tutorialSeen', 'yes');

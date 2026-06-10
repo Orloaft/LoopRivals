@@ -83,7 +83,7 @@ async function stopServer(server) {
 }
 
 async function joinAndStart(page) {
-  await page.goto(baseUrl);
+  await page.goto(baseUrl + '/?skiptitle=1');
   await page.evaluate(() => {
     localStorage.clear();
     localStorage.setItem('loopduel.tutorialSeen', 'yes');

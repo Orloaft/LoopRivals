@@ -58,7 +58,7 @@ async function freshPage(browser, viewport, mobile) {
   const page = await browser.newPage({
     viewport, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile
   });
-  await page.goto(baseUrl);
+  await page.goto(baseUrl + '/?skiptitle=1');
   await page.evaluate(() => {
     localStorage.clear();
     localStorage.setItem('loopduel.tutorialSeen', 'yes');

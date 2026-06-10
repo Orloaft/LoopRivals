@@ -37,7 +37,7 @@ try {
   await waitForServer(info);
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1366, height: 1024 }, deviceScaleFactor: 3 });
-  await page.goto(baseUrl); // same-origin so the canvas scan isn't tainted
+  await page.goto(baseUrl + '/?skiptitle=1'); // same-origin so the canvas scan isn't tainted
 
   // 1) Scan the dock PNG for the painted socket bar.
   const scan = await page.evaluate(async (url) => {
@@ -86,7 +86,7 @@ try {
   console.log('PAINTED SOCKET SCAN:', JSON.stringify(scan, null, 2));
 
   // 2) Enter a game and measure current button geometry relative to the dock.
-  await page.goto(baseUrl);
+  await page.goto(baseUrl + '/?skiptitle=1');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.fill('#player-name', 'Probe');

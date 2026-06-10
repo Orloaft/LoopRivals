@@ -88,7 +88,7 @@ try {
     hasTouch: true
   });
 
-  await page.goto(baseUrl);
+  await page.goto(baseUrl + '/?skiptitle=1');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.fill('#player-name', 'Smoke');

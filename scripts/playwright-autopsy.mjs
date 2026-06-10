@@ -158,7 +158,7 @@ async function newInstrumentedPage(browser, {
     if (url.startsWith(baseUrl)) telemetry.failedRequests.push(`${request.method()} ${url}: ${failure?.errorText ?? 'failed'}`);
   });
 
-  await page.goto(baseUrl);
+  await page.goto(baseUrl + '/?skiptitle=1');
   await page.evaluate(() => {
     localStorage.clear();
     localStorage.setItem('loopduel.tutorialSeen', 'yes');

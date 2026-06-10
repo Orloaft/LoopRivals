@@ -243,6 +243,12 @@ function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showTutorial, setShowTutorial] = useState(() => localStorage.getItem('loopduel.tutorialSeen') !== 'yes');
+  const [showTitle, setShowTitle] = useState(() => {
+    // Invite links (?room=) and e2e harnesses (?skiptitle=1) land straight
+    // on the join screen; everyone else gets the title screen.
+    const params = new URLSearchParams(window.location.search);
+    return !params.has('room') && !params.has('skiptitle');
+  });
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [dragCardId, setDragCardId] = useState<string | null>(null);
   const [dragLootId, setDragLootId] = useState<string | null>(null);
@@ -431,6 +437,20 @@ function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [showHelp]);
+
+  // Title screen: Enter advances to the lobby unless a menu button has focus
+  // (the focused button's own activation already handles it).
+  useEffect(() => {
+    if (!showTitle) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== 'Enter') return;
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && (active.tagName === 'BUTTON' || active.tagName === 'INPUT')) return;
+      setShowTitle(false);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showTitle]);
 
   const selectedCard = me?.hand.find((card) => card.instanceId === selectedCardId) ?? null;
   const draggedCard = me?.hand.find((card) => card.instanceId === dragCardId) ?? null;
@@ -751,7 +771,7 @@ function App() {
   if (versionSkew) {
     return (
       <div className="boot version-skew" role="alert">
-        <strong>Loopduel was updated</strong>
+        <strong>Loop Rivals was updated</strong>
         <span>Refresh to load the new version and rejoin your room.</span>
         <button className="primary-action" onClick={() => window.location.reload()}>Refresh now</button>
       </div>
@@ -759,7 +779,7 @@ function App() {
   }
 
   if (!config || !game) {
-    return <div className="boot">Loopduel</div>;
+    return <div className="boot">Loop Rivals</div>;
   }
 
   if (!me && spectatorRoomId && game.id === spectatorRoomId) {
@@ -817,6 +837,51 @@ function App() {
     );
   }
 
+  if (!me && showTitle) {
+    return (
+      <main className="lobby-shell title-screen title-front">
+        <GothicParallaxBackdrop />
+        <section className="title-front-stage">
+          <div className="title-copy title-front-copy">
+            <span className="title-kicker">Retro gothic loop combat</span>
+            <h1>Loop Rivals</h1>
+            <p>Shape the road, outlast the boss loop, and break rival runners before the Tyrant answers.</p>
+          </div>
+          <nav
+            className="title-menu"
+            aria-label="Main menu"
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+              event.preventDefault();
+              const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button'));
+              const at = items.indexOf(document.activeElement as HTMLButtonElement);
+              const next = event.key === 'ArrowDown' ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
+              items[next]?.focus();
+            }}
+          >
+            <button className="primary-action title-menu-item" autoFocus onClick={() => setShowTitle(false)}>
+              Enter the Loop
+            </button>
+            <button className="primary-action title-menu-item" onClick={() => { setShowTitle(false); startGuidedDuel(); }}>
+              Guided Duel
+            </button>
+            <button className="primary-action title-menu-item" onClick={() => { setShowTitle(false); spectate(); }}>
+              Spectate
+            </button>
+            <button className="primary-action title-menu-item" onClick={() => setShowHelp(true)}>
+              Rules
+            </button>
+          </nav>
+          <span className="title-press-hint" aria-hidden="true">Press Enter</span>
+          <small className="title-front-footer">
+            {profile.matches} matches · {profile.wins} wins · {profile.bestScore} best score
+          </small>
+        </section>
+        {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}
+      </main>
+    );
+  }
+
   if (!me) {
     const selectedHero = config.heroes.find((hero) => hero.id === heroId) ?? config.heroes[0];
     return (
@@ -825,7 +890,7 @@ function App() {
         <section className="title-stage">
           <div className="title-copy">
             <span className="title-kicker">Retro gothic loop combat</span>
-            <h1>Loopduel</h1>
+            <h1>Loop Rivals</h1>
             <p>Shape the road, outlast the boss loop, and break rival runners before the Tyrant answers.</p>
           </div>
           <aside className="title-hero-showcase" style={{ '--hero-color': selectedHero.color } as CSSProperties}>
@@ -1274,7 +1339,7 @@ function App() {
               <div>
                 <span>The Warden speaks</span>
                 <strong>First Run</strong>
-                <p>Learn the road by changing it. Loopduel is a race, a duel, and a bargain with the board.</p>
+                <p>Learn the road by changing it. Loop Rivals is a race, a duel, and a bargain with the board.</p>
               </div>
               <button className="icon-action" onClick={closeTutorial}>Close</button>
             </div>

@@ -10,7 +10,7 @@
     "assets:tiles": "node scripts/slice-tile-art.mjs",
     "preview": "NODE_ENV=production node server/index.mjs",
     "lint": "eslint . && node scripts/check-keyframe-purity.mjs",
-    "test": "NODE_ENV=test node --test",
+    "test": "NODE_ENV=test node --test test/*.test.mjs",
     "test:e2e": "node scripts/playwright-smoke.mjs",
     "test:e2e:autopsy": "npm run build && node scripts/playwright-autopsy.mjs",
     "test:motion": "node scripts/playwright-motion-audit.mjs",

@@ -1,6 +1,6 @@
-# Loopduel
+# Loop Rivals
 
-Loopduel is a realtime multiplayer loop-runner prototype. Players choose a hero, run an automatic 16-tile loop, place terrain on their own board, sabotage rivals with rival cards, collect loot, level up, and choose traits.
+Loop Rivals (repo: `loopduel`) is a realtime multiplayer loop-runner prototype. Players choose a hero, run an automatic 16-tile loop, place terrain on their own board, sabotage rivals with rival cards, collect loot, level up, and choose traits.
 
 ## Current Status
 

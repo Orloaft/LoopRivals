@@ -410,6 +410,69 @@ h1 {
   line-height: 1.32;
 }
 
+/* Front title screen (traditional RPG): wordmark centered over the painterly
+   stage, vertical menu, blinking press-enter hint. */
+.lobby-shell.title-screen.title-front {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.title-front-stage {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: clamp(14px, 3vh, 30px);
+  width: min(1320px, 100%);
+  margin: 0 auto;
+  padding: clamp(20px, 4vh, 48px) 16px;
+  text-align: center;
+}
+
+.title-front-copy {
+  align-content: center;
+  justify-items: center;
+  padding-bottom: 0;
+  text-align: center;
+}
+
+.title-front-copy p {
+  margin: 0 auto;
+}
+
+.title-menu {
+  display: grid;
+  gap: clamp(8px, 1.6vh, 14px);
+  width: min(330px, 86vw);
+  margin-top: clamp(4px, 1.6vh, 14px);
+}
+
+.title-menu .title-menu-item {
+  justify-content: center;
+  font-size: clamp(1rem, 1.5vw, 1.16rem);
+  letter-spacing: 0.05em;
+}
+
+.title-press-hint {
+  color: var(--gold-bright);
+  font-size: clamp(0.78rem, 1.15vw, 0.92rem);
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  animation: title-hint-blink 1.5s steps(2, jump-none) infinite;
+}
+
+@keyframes title-hint-blink {
+  0% { opacity: 1; }
+  100% { opacity: 0.22; }
+}
+
+.title-front-footer {
+  color: var(--parchment-strong);
+  opacity: 0.72;
+  font-weight: 700;
+}
+
 .title-hero-showcase {
   display: grid;
   grid-template-columns: minmax(86px, 0.45fr) minmax(0, 1fr);
@@ -8380,10 +8443,9 @@ body.loot-drag-active * {
     height: 100svh;
     min-height: 0;
     overflow: hidden;
-    padding-bottom: calc(142px + env(safe-area-inset-bottom));
-  }
-
-  .game-shell:has(.mobile-card-counsel) {
+    /* Constant reserve that already includes the card-counsel panel. It used
+       to grow 142px -> 196px only while a card was active, but that resized
+       the arena row and made the (centered) board jump on select/drag. */
     padding-bottom: calc(196px + env(safe-area-inset-bottom));
   }
 

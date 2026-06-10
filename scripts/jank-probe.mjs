@@ -87,7 +87,7 @@ try {
     args: useGl ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-gl=angle', '--use-angle=swiftshader'] : []
   });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-  await page.goto(baseUrl);
+  await page.goto(baseUrl + '/?skiptitle=1');
   await page.evaluate((quality) => {
     localStorage.clear();
     localStorage.setItem('loopduel.tutorialSeen', 'yes');
