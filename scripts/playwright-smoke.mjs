@@ -16,6 +16,7 @@ function startServer() {
       ...process.env,
       PORT: String(port),
       LOOPDUEL_VITE_HMR_PORT: String(hmrPort),
+      LOOPDUEL_E2E_PLACE_CARD_DELAY_MS: '900',
       NODE_ENV: 'development'
     },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -62,6 +63,26 @@ function assertCustomCursor(cursor, label) {
   assert.match(cursor, /cursor-hand(?:-large)?-v1\.png/, `${label} should keep the bespoke cursor`);
 }
 
+async function expectLives(page, expectedLabel) {
+  const labels = await page.locator('.rail-lives').evaluateAll((elements) => (
+    elements.map((element) => element.getAttribute('aria-label'))
+  ));
+  assert.ok(labels.includes(expectedLabel), `expected a lives rail labeled "${expectedLabel}", got ${JSON.stringify(labels)}`);
+}
+
+function tileTypeFromClassName(className) {
+  return className
+    .split(/\s+/)
+    .find((name) => name && ![
+      'card-tile-preview',
+      'tile',
+      'placement-available',
+      'rival-tile-target',
+      'placement-blocked',
+      'coach-recommended'
+    ].includes(name)) ?? null;
+}
+
 async function travelState(page) {
   return page.evaluate(() => {
     const runner = document.querySelector('.player-panel.active.focused .runner');
@@ -104,12 +125,13 @@ try {
   await page.getByRole('button', { name: /^start$/i }).click();
 
   assert.equal(await page.locator('.hand-card.rival').count(), 0, 'solo opening hand should not contain rival cards');
+  await expectLives(page, '3 of 3 lives left');
   assertCustomCursor(
     await page.locator('.player-panel.active.focused .tile').first().evaluate((element) => window.getComputedStyle(element).cursor),
     'disabled board tiles'
   );
 
-  const beforeCardCount = await page.locator('.hand-card').count();
+  const beforeCardCount = await page.locator('.hand-bar .hand-card').count();
   const dragStability = await page.evaluate(() => {
     const board = document.querySelector('.player-panel.active.focused .board')?.getBoundingClientRect();
     const card = document.querySelector('.hand-card')?.getBoundingClientRect();
@@ -135,13 +157,18 @@ try {
   if (await page.locator('.hand-card.selected').count() === 0) {
     await page.locator('.hand-card.terrain').first().click();
   }
+  const expectedTileType = tileTypeFromClassName(await page.locator('.hand-card.selected .card-tile-preview').first().evaluate((element) => element.className));
+  assert.ok(expectedTileType, 'selected terrain card should expose its tile preview class');
   const armedTileStyles = await page.locator('.player-panel.active.focused .tile.placement-available').first().evaluate((element) => {
     const styles = window.getComputedStyle(element);
     return { cursor: styles.cursor, outlineStyle: styles.outlineStyle };
   });
   assertCustomCursor(armedTileStyles.cursor, 'armed board tiles');
   assert.equal(armedTileStyles.outlineStyle, 'none', 'armed board tiles should not use bright outline styling');
-  const dropTarget = await page.locator('.player-panel.active.focused .tile.placement-available').first().boundingBox();
+  const dropTargetLocator = page.locator('.player-panel.active.focused .tile.placement-available').first();
+  const dropTargetTileIndex = await dropTargetLocator.getAttribute('data-tile-index');
+  assert.ok(dropTargetTileIndex, 'available tile should expose a tile index for smoke targeting');
+  const dropTarget = await dropTargetLocator.boundingBox();
   const selectedCardBox = await page.locator('.hand-card.selected').first().boundingBox();
   assert.ok(dropTarget, 'available tile should have a drop target box');
   assert.ok(selectedCardBox, 'selected hand card should have a drag source box');
@@ -149,7 +176,15 @@ try {
   await page.mouse.down();
   await page.mouse.move(dropTarget.x + dropTarget.width / 2, dropTarget.y + dropTarget.height / 2, { steps: 12 });
   await page.mouse.up();
-  await page.waitForFunction((count) => document.querySelectorAll('.hand-card').length < count, beforeCardCount);
+  const targetedTileSelector = `.player-panel.active.focused .tile[data-tile-index="${dropTargetTileIndex}"]`;
+  await page.waitForFunction(({ selector, expected }) => {
+    const tile = document.querySelector(selector);
+    return tile?.classList.contains(expected);
+  }, { selector: targetedTileSelector, expected: expectedTileType }, { timeout: 400 });
+  assert.equal(await page.locator('.hand-bar .hand-card').count(), beforeCardCount, 'authority-delayed optimistic placement should leave the hand authoritative until server confirmation');
+  await expectLives(page, '3 of 3 lives left');
+  assert.equal(await page.locator('.winner-strip.defeat-strip').count(), 0, 'optimistic placement should not trigger the all-lives-spent defeat strip');
+  await page.waitForFunction((count) => document.querySelectorAll('.hand-bar .hand-card').length < count, beforeCardCount);
 
   const metrics = await page.evaluate(() => {
     const board = document.querySelector('.player-panel.active.focused .board')?.getBoundingClientRect();

@@ -43,6 +43,9 @@ const persistencePath = process.env.LOOPDUEL_PERSISTENCE_PATH
   : null;
 const persistenceFlushIntervalMs = Number(process.env.LOOPDUEL_PERSISTENCE_FLUSH_INTERVAL_MS ?? 2000);
 const maxRooms = Number(process.env.LOOPDUEL_MAX_ROOMS ?? 500);
+const e2ePlaceCardDelayMs = isProduction
+  ? 0
+  : Math.max(0, Number(process.env.LOOPDUEL_E2E_PLACE_CARD_DELAY_MS ?? 0));
 const buildVersion = readPackageVersion();
 const buildSha = process.env.LOOPDUEL_BUILD_SHA ?? process.env.GITHUB_SHA ?? null;
 
@@ -707,7 +710,7 @@ async function startServer() {
         rejectInvalidPayload(socket, 'placeCard', ack, commandId);
         return;
       }
-      commitRoomCommand(io, room, 'placeCard', {
+      const commit = () => commitRoomCommand(io, room, 'placeCard', {
         playerId: player.id,
         commandId,
         payload: { cardId: card, tileIndex: tile }
@@ -716,6 +719,11 @@ async function startServer() {
         if (played) touchRoom(room);
         return played;
       }, ack);
+      if (e2ePlaceCardDelayMs > 0) {
+        setTimeout(commit, e2ePlaceCardDelayMs);
+        return;
+      }
+      commit();
     });
 
     onPlayerAction(socket, 'playRivalCard', ({ cardId, targetId, tileIndex, commandId = null } = {}, ack) => {

@@ -2279,7 +2279,7 @@ const BoardTileButton = memo(function BoardTileButton({
       className={`tile ${tile.type} ${canPlaceTerrain ? 'placement-available' : ''} ${canPlaceRivalTile ? 'rival-tile-target' : ''} ${placementBlocked ? 'placement-blocked' : ''} ${recommended ? 'coach-recommended' : ''}`}
       data-loopduel-drop={canPlaceTerrain ? 'terrain-tile' : canPlaceRivalTile ? 'rival-tile' : undefined}
       data-player-id={canPlaceTerrain || canPlaceRivalTile ? playerId : undefined}
-      data-tile-index={canPlaceTerrain || canPlaceRivalTile ? tile.index : undefined}
+      data-tile-index={tile.index}
       style={{
         gridColumn: tile.coord[0] + 1,
         gridRow: tile.coord[1] + 1
