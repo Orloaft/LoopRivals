@@ -1087,6 +1087,11 @@ input:focus {
   color: #d5c394;
 }
 
+.winner-strip.defeat-strip {
+  --hero-color: #7a1f23;
+  border-color: color-mix(in srgb, var(--blood) 65%, var(--gold));
+}
+
 .match-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);
@@ -6578,6 +6583,26 @@ body.loot-drag-active * {
   font-size: 0.72rem;
   font-weight: 950;
   line-height: 1;
+}
+
+.rail-lives {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 22px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.rail-lives .life-pip.alive {
+  color: var(--blood);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--blood) 55%, transparent);
+}
+
+.rail-lives .life-pip.spent {
+  color: rgba(213, 195, 148, 0.28);
 }
 
 .rail-stat-grid {

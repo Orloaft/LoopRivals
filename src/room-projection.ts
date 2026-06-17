@@ -199,12 +199,14 @@ function applyPlayerProjection(player: Player, payload: Record<string, unknown>)
   const gold = numberValue(payload.gold);
   const armor = numberValue(payload.armor);
   const curse = numberValue(payload.curse);
+  const livesLeft = numberValue(payload.livesLeft);
   return {
     ...player,
     hp: hp ?? player.hp,
     score: score ?? player.score,
     level: level ?? player.level,
     deaths: deaths ?? player.deaths,
+    livesLeft: livesLeft ?? player.livesLeft,
     laps: laps ?? player.laps,
     xp: xp ?? player.xp,
     gold: gold ?? player.gold,
@@ -399,6 +401,20 @@ function applyRoomEvent(state: GameState, event: RoomEvent) {
       stunnedUntil: null,
       stunnedBy: null,
       stunRemainingMs: 0
+    }));
+    return;
+  }
+
+  if (event.type === 'playerEliminated') {
+    replacePlayer(state, playerId, (player) => ({
+      ...applyPlayerProjection(player, payload),
+      eliminated: true,
+      hp: 0,
+      position: numberValue(payload.position) ?? player.position,
+      laps: numberValue(payload.laps) ?? player.laps,
+      nextMovement: null,
+      arrivalMovement: null,
+      combat: null
     }));
     return;
   }

@@ -268,6 +268,8 @@ export type Player = {
   cardsPlayed: number;
   tilesPlaced: number;
   deaths: number;
+  eliminated: boolean;
+  livesLeft: number;
   loopTier: number;
   tierStartScore: number;
   tierStartLap: number;
@@ -372,6 +374,7 @@ export type GameState = {
   receivedAt?: number;
   log: string[];
   maxPlayers: number;
+  maxLives: number;
   goalScore: number;
   settings: RoomSettings;
   tier: MatchTier;

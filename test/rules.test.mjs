@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
-import { terrainCards, testApi } from '../server/rules.mjs';
+import { maxLives, terrainCards, testApi } from '../server/rules.mjs';
 import { runBalanceSuite, simulateMatch } from '../scripts/balance-sim.mjs';
 
 let room;
@@ -76,6 +76,61 @@ test('rival damage that drops a player to zero immediately revives them at camp'
   assert.equal(target.position, 0);
   assert.equal(target.hp, Math.ceil(target.maxHp * 0.58));
   assert.equal(attacker.hand.length, 0);
+});
+
+test('the third collapse eliminates the runner and hands the duel to the survivor', () => {
+  room.status = 'running';
+  const attacker = testApi.createPlayer('attacker', 'Attacker', 'rune-archer');
+  const target = testApi.createPlayer('target', 'Target', 'night-vagrant');
+  const meteor = {
+    id: 'meteor',
+    instanceId: 'meteor-final',
+    name: 'Meteor',
+    kind: 'rival',
+    icon: '☄',
+    text: 'Damages a rival and scorches a tile.'
+  };
+
+  attacker.hand = [meteor];
+  target.deaths = maxLives - 1;
+  target.hp = 5;
+  room.players.attacker = attacker;
+  room.players.target = target;
+
+  testApi.playRival(room, attacker, meteor.instanceId, target.id);
+
+  assert.equal(target.deaths, maxLives);
+  assert.equal(target.eliminated, true);
+  assert.equal(target.hp, 0);
+  assert.equal(room.status, 'finished');
+  assert.equal(room.winnerId, attacker.id);
+});
+
+test('eliminated runners cannot act and cannot be targeted', () => {
+  room.status = 'running';
+  const attacker = testApi.createPlayer('attacker', 'Attacker', 'rune-archer');
+  const ghost = testApi.createPlayer('ghost', 'Ghost', 'night-vagrant');
+  const bystander = testApi.createPlayer('bystander', 'Bystander', 'moss-warden');
+  const meteor = {
+    id: 'meteor',
+    instanceId: 'meteor-ghost',
+    name: 'Meteor',
+    kind: 'rival',
+    icon: '☄',
+    text: 'Damages a rival and scorches a tile.'
+  };
+
+  ghost.eliminated = true;
+  ghost.hp = 0;
+  ghost.deaths = maxLives;
+  ghost.hand = [{ ...meteor, instanceId: 'meteor-from-ghost' }];
+  attacker.hand = [meteor];
+  room.players.attacker = attacker;
+  room.players.ghost = ghost;
+  room.players.bystander = bystander;
+
+  assert.equal(testApi.playRival(room, attacker, meteor.instanceId, ghost.id), false);
+  assert.equal(testApi.playRival(room, ghost, 'meteor-from-ghost', attacker.id), false);
 });
 
 test('rival cards can be armed on unoccupied enemy road tiles only', () => {
@@ -1790,7 +1845,7 @@ test('tier three marks the leader before the boss race', () => {
   assert.equal(player.marked, true);
 });
 
-test('passive solo runner stalls short of a finished clear', () => {
+test('passive solo runner burns all three lives and loses the run', () => {
   room = testApi.createRoom('passive-solo', { simulated: true, now: 0, seed: 123 });
   const player = testApi.createPlayer('solo', 'Solo', 'night-vagrant', false, room);
   room.players.solo = player;
@@ -1800,22 +1855,23 @@ test('passive solo runner stalls short of a finished clear', () => {
     testApi.runRoomStep(room, { advanceMs: 260 });
   }
 
-  assert.equal(room.status, 'running');
+  assert.equal(room.status, 'finished');
+  assert.equal(room.winnerId, null);
+  assert.equal(player.eliminated, true);
+  assert.equal(player.deaths, maxLives);
   assert.ok(player.soloCorruption > 0);
-  assert.ok(player.deaths > 0);
-  assert.ok(player.loopTier < 3 || player.laps < player.tierStartLap + 4);
 });
 
-test('active solo bot builds into boss gates without a guaranteed clear', () => {
+test('active solo bot builds into boss gates but the life pool still ends the run', () => {
   const result = simulateMatch(5, {
     roster: [{ id: 'night-vagrant', name: 'Night Vagrant' }],
     maxSteps: 9000
   });
 
-  assert.equal(result.finished, false);
+  assert.equal(result.finished, true);
+  assert.equal(result.players[0].deaths, maxLives);
   assert.ok(result.players[0].loopTier >= 2);
   assert.ok(result.players[0].tilesPlaced > 0);
-  assert.ok(result.players[0].deaths > 0);
   assert.ok(result.players[0].power + result.players[0].guard > 35);
 });
 
@@ -1861,7 +1917,7 @@ test('seeded simulations are deterministic', () => {
   assert.deepEqual(first.players, second.players);
   assert.equal(first.winnerHero, second.winnerHero);
   assert.equal(first.finished, second.finished);
-  assert.ok(first.players.some((player) => player.loopTier >= 3));
+  assert.ok(first.players.some((player) => player.loopTier >= 2));
 });
 
 test('CPU balance suite keeps a demanding but finishable win-rate band', () => {
@@ -1870,15 +1926,16 @@ test('CPU balance suite keeps a demanding but finishable win-rate band', () => {
   const deaths = report.heroes.map((hero) => hero.avgDeaths);
   const loopTiers = report.heroes.map((hero) => hero.avgLoopTier);
 
-  // Upper bound raised from 0.85 after bots learned to use hero abilities:
-  // competent bots survive and resolve more matches, so a higher finish rate
-  // is expected and healthy (fewer stalemates), not a difficulty regression.
-  assert.ok(report.finishedRate >= 0.55 && report.finishedRate <= 0.92);
-  assert.ok(report.avgSeconds >= 900 && report.avgSeconds <= 1800);
-  assert.ok(Math.max(...rates) <= 0.65);
+  // The three-lives rule reshaped match flow: every match now terminates
+  // (elimination or tyrant kill), runs are much shorter than the old
+  // corruption-spiral marathons, and deaths are capped by the life pool.
+  assert.ok(report.finishedRate >= 0.9);
+  assert.ok(report.avgSeconds >= 180 && report.avgSeconds <= 900);
+  assert.ok(Math.max(...rates) <= 0.5);
   assert.ok(Math.min(...rates) >= 0.03);
-  assert.ok(report.winRateSpread <= 0.6);
-  assert.ok(report.avgScoreSpread <= 35000);
-  assert.ok(Math.min(...deaths) >= 12);
-  assert.ok(Math.min(...loopTiers) >= 2.35);
+  assert.ok(report.winRateSpread <= 0.45);
+  assert.ok(report.avgScoreSpread <= 20000);
+  assert.ok(Math.min(...deaths) >= 1.2);
+  assert.ok(Math.max(...deaths) <= maxLives);
+  assert.ok(Math.min(...loopTiers) >= 1.3);
 });

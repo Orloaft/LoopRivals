@@ -9,6 +9,13 @@ import { createClientCommandTransport } from './client-command-transport';
 import { heroPortraitUrl, statLine, warmCriticalGameImages } from './game-assets';
 import { gameplayRaf, type GameplayRafFrame } from './gameplay-raf';
 import { authoritativeCursor, clampCursorAtMovementStop, combatEngageIsPending, maxVisualFrameStepMs, playerMotionIsLocked, visualCursorForPlayer, visualFrameCursorForPlayer, visualSegmentDurationMs } from './movement';
+import {
+  applyPendingTerrainPlacement,
+  createPendingTerrainPlacement,
+  optimisticTerrainPlacementTimeoutMs,
+  roomDeltaClearsPendingTerrainPlacement,
+  type PendingTerrainPlacement
+} from './optimistic-placement';
 import { applyRoomDelta } from './room-projection';
 import { measureDeltaApply, recordSocketEvent } from './smoothness-metrics';
 import type { GameConfig, GameState, Loot, RoomDelta, RoomSettings, ShopOffer, Tile } from './types';
@@ -90,6 +97,10 @@ const commandAckEvents = new Set([
   'equip',
   'chooseTrait'
 ]);
+
+function currentTimeMs() {
+  return Date.now();
+}
 
 function setParallaxLayerProgress(
   layers: {
@@ -260,6 +271,7 @@ function App() {
   const [profile, setProfile] = useState(loadProfile);
   const [recordedFinishId, setRecordedFinishId] = useState<string | null>(null);
   const [mobileDrawer, setMobileDrawer] = useState<'loot' | 'talents' | 'log' | 'menu' | null>(null);
+  const [pendingTerrainPlacement, setPendingTerrainPlacement] = useState<PendingTerrainPlacement | null>(null);
   const commandTransportRef = useRef<ReturnType<typeof createClientCommandTransport> | null>(null);
   const roomAuthorityBatcherRef = useRef<ReturnType<typeof createRoomAuthorityBatcher> | null>(null);
   const me = game?.players.find((player) => player.id === playerId) ?? null;
@@ -294,6 +306,12 @@ function App() {
       },
       getPlayerId: () => playerIdRef.current || null,
       onNotice: setNotice,
+      onCommandResult: (result) => {
+        if (result.status === 'accepted') return;
+        setPendingTerrainPlacement((pending) => (
+          pending?.commandId === result.commandId ? null : pending
+        ));
+      },
       shouldRetry: () => !authorityPausedRef.current
     });
     const roomAuthorityBatcher = createRoomAuthorityBatcher({
@@ -356,6 +374,7 @@ function App() {
     });
     socket.on('state', (payload: GameState) => {
       recordSocketEvent('state', payload, 'inbound');
+      setPendingTerrainPlacement(null);
       const batcher = roomAuthorityBatcherRef.current;
       if (batcher) batcher.enqueueState(payload);
       else setGame({ ...payload, receivedAt: Date.now() });
@@ -363,6 +382,9 @@ function App() {
     socket.on('room:delta', (payload: RoomDelta) => {
       recordSocketEvent('room:delta', payload, 'inbound');
       commandTransportRef.current?.observeRoomDelta(payload);
+      setPendingTerrainPlacement((pending) => (
+        pending && roomDeltaClearsPendingTerrainPlacement(pending, payload) ? null : pending
+      ));
       const batcher = roomAuthorityBatcherRef.current;
       if (batcher) {
         batcher.enqueueDelta(payload);
@@ -423,6 +445,18 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  useEffect(() => {
+    if (!pendingTerrainPlacement) return undefined;
+    const elapsedMs = Date.now() - pendingTerrainPlacement.createdAt;
+    const remainingMs = Math.max(0, optimisticTerrainPlacementTimeoutMs - elapsedMs);
+    const timer = window.setTimeout(() => {
+      setPendingTerrainPlacement((pending) => (
+        pending?.commandId === pendingTerrainPlacement.commandId ? null : pending
+      ));
+    }, remainingMs);
+    return () => window.clearTimeout(timer);
+  }, [pendingTerrainPlacement]);
+
   // Esc toggles the game menu (and closes the rules overlay first if it's open).
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -469,12 +503,20 @@ function App() {
   const authorityPauseDetail = !socketConnected
     ? 'Movement is paused until the authoritative room connection returns.'
     : 'Movement is paused until a fresh authoritative snapshot arrives.';
+  const displayMe = me ? applyPendingTerrainPlacement(me, pendingTerrainPlacement, pendingTerrainPlacement?.createdAt ?? 0) : null;
+  const displayGame = game && displayMe && displayMe !== me
+    ? {
+      ...game,
+      players: game.players.map((player) => player.id === displayMe.id ? displayMe : player),
+      winner: game.winner?.id === displayMe.id ? displayMe : game.winner
+    }
+    : game;
 
   useEffect(() => {
     authorityPausedRef.current = authorityPaused;
   }, [authorityPaused]);
 
-  function emitAuthoritative(eventName: string, payload?: unknown) {
+  function emitAuthoritative(eventName: string, payload?: unknown): string | true | false {
     if (authorityPaused) {
       setNotice(`${authorityPauseTitle}. Actions are paused for sync.`);
       return false;
@@ -487,7 +529,7 @@ function App() {
       recordSocketEvent(eventName, payload, 'outbound');
       socket.emit(eventName, payload);
     }
-    return true;
+    return sent ?? true;
   }
 
   function closeTutorial() {
@@ -661,7 +703,11 @@ function App() {
   function placeCard(tile: Tile, cardId = activeCard?.instanceId) {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'terrain') return;
-    if (!emitAuthoritative('placeCard', { cardId: card.instanceId, tileIndex: tile.index })) return;
+    const commandId = emitAuthoritative('placeCard', { cardId: card.instanceId, tileIndex: tile.index });
+    if (!commandId) return;
+    if (me && typeof commandId === 'string') {
+      setPendingTerrainPlacement(createPendingTerrainPlacement(me, card, tile, commandId, currentTimeMs()));
+    }
     sfx.cardPlay();
     spawnCardExit(card.instanceId);
     setSelectedCardId(null);
@@ -989,29 +1035,31 @@ function App() {
 
   // Exactly one board is focused (full size); the rest render at 50%. Default is your
   // own board; clicking a board focuses it (clicking it again returns focus to you).
-  const meId = me.id;
-  const focusedPlayerId = focusedId && game.players.some((player) => player.id === focusedId)
+  const renderedGame = displayGame ?? game;
+  const renderedMe = displayMe ?? me;
+  const meId = renderedMe.id;
+  const focusedPlayerId = focusedId && renderedGame.players.some((player) => player.id === focusedId)
     ? focusedId
     : meId;
   function focusBoard(id: string) {
     setFocusedId(id === focusedPlayerId && id !== meId ? meId : id);
   }
-  const focusedPlayer = game.players.find((player) => player.id === focusedPlayerId);
+  const focusedPlayer = renderedGame.players.find((player) => player.id === focusedPlayerId);
   const arrangedPlayers = focusedPlayer
-    ? [focusedPlayer, ...game.players.filter((player) => player.id !== focusedPlayer.id)]
-    : game.players;
+    ? [focusedPlayer, ...renderedGame.players.filter((player) => player.id !== focusedPlayer.id)]
+    : renderedGame.players;
   const purgeTargetCard = activeCard?.kind === 'rival' && activeCard.id === 'oblivion' ? activeCard : null;
   const rivalTargetCard = activeCard?.kind === 'rival' && activeCard.id !== 'oblivion' ? activeCard : null;
   const bonkTargetCard = activeCard?.kind === 'bonk' ? activeCard : null;
-  const highestScoreRival = game.players
-    .filter((player) => player.id !== me.id)
+  const highestScoreRival = renderedGame.players
+    .filter((player) => player.id !== renderedMe.id)
     .sort((a, b) => {
       const scoreDiff = b.score - a.score;
       if (scoreDiff !== 0) return scoreDiff;
       return a.name.localeCompare(b.name);
     })[0] ?? null;
   const bonkTargets = bonkTargetCard?.targetMode === 'chosen'
-    ? game.players.filter((player) => player.id !== me.id)
+    ? renderedGame.players.filter((player) => player.id !== renderedMe.id)
     : highestScoreRival ? [highestScoreRival] : [];
   const activeCardGuidance = activeCard ? activeCard.combo?.text ?? (
     activeCard.kind === 'terrain'
@@ -1023,17 +1071,17 @@ function App() {
         : 'Aim at a rival plan you can see: a payoff tile, a greedy road, or the leader about to cash out.'
   ) : '';
   const showOnboardingCoach = Boolean(
-    game.onboarding?.enabled &&
-    (!game.onboarding.playerId || game.onboarding.playerId === me.id)
+    renderedGame.onboarding?.enabled &&
+    (!renderedGame.onboarding.playerId || renderedGame.onboarding.playerId === renderedMe.id)
   );
 
   return (
     <main className={`game-shell ${authorityPaused ? 'authority-paused' : ''}`}>
       <GothicParallaxBackdrop
-        player={me}
-        gameStatus={game.status}
-        serverNow={game.now}
-        receivedAt={game.receivedAt}
+        player={renderedMe}
+        gameStatus={renderedGame.status}
+        serverNow={renderedGame.now}
+        receivedAt={renderedGame.receivedAt}
         authorityPaused={authorityPaused}
       />
       <audio ref={bgmRef} src="/assets/audio/crypt-of-neon-glass.m4a" preload="none" loop />
@@ -1045,11 +1093,11 @@ function App() {
         </section>
       )}
 
-      {game.status === 'finished' && game.winner && (
-        <section className="winner-strip" style={{ '--hero-color': game.winner.color } as CSSProperties}>
+      {renderedGame.status === 'finished' && renderedGame.winner && (
+        <section className="winner-strip" style={{ '--hero-color': renderedGame.winner.color } as CSSProperties}>
           <div>
-            <strong>{game.winner.name} claimed the loop</strong>
-            <span>{game.winner.score} points · Lv {game.winner.level} · {game.winner.laps} laps</span>
+            <strong>{renderedGame.winner.name} {renderedGame.winner.eliminated === false && renderedGame.players.some((player) => player.eliminated) ? 'is the last runner standing' : 'claimed the loop'}</strong>
+            <span>{renderedGame.winner.score} points · Lv {renderedGame.winner.level} · {renderedGame.winner.laps} laps</span>
           </div>
           <button className="primary-action" onClick={resetRoom} disabled={!isHost}>
             <RotateCcw size={18} />
@@ -1057,14 +1105,26 @@ function App() {
           </button>
         </section>
       )}
-      {game.status === 'finished' && (
+      {renderedGame.status === 'finished' && !renderedGame.winner && (
+        <section className="winner-strip defeat-strip">
+          <div>
+            <strong>The loop wins — all {renderedGame.maxLives ?? 3} lives spent</strong>
+            <span>Every collapse costs a life; lose them all and the run ends.</span>
+          </div>
+          <button className="primary-action" onClick={resetRoom} disabled={!isHost}>
+            <RotateCcw size={18} />
+            Run it back
+          </button>
+        </section>
+      )}
+      {renderedGame.status === 'finished' && (
         <section className="match-summary">
           <div className="summary-board">
-            {game.leaderboard.slice(0, 4).map((entry, index) => {
-              const player = game.players.find((item) => item.id === entry.id);
+            {renderedGame.leaderboard.slice(0, 4).map((entry, index) => {
+              const player = renderedGame.players.find((item) => item.id === entry.id);
               return (
                 <article
-                  className={`summary-card ${entry.id === game.winnerId ? 'winner' : ''}`}
+                  className={`summary-card ${entry.id === renderedGame.winnerId ? 'winner' : ''}`}
                   key={entry.id}
                   style={{ '--hero-color': player?.color ?? '#d2b15c', '--rank-index': index } as CSSProperties}
                 >
@@ -1083,14 +1143,14 @@ function App() {
           </div>
           <div className="summary-log">
             <strong>Final turns</strong>
-            {game.log.slice(0, 4).map((line) => <span key={line}>{line}</span>)}
+            {renderedGame.log.slice(0, 4).map((line) => <span key={line}>{line}</span>)}
           </div>
         </section>
       )}
-      {showOnboardingCoach && game.onboarding && (
+      {showOnboardingCoach && renderedGame.onboarding && (
         <OnboardingCoach
-          onboarding={game.onboarding}
-          player={me}
+          onboarding={renderedGame.onboarding}
+          player={renderedMe}
           config={config}
           activeCard={activeCard}
           onOpenRules={() => setShowHelp(true)}
@@ -1098,44 +1158,44 @@ function App() {
       )}
 
       <section className="play-layout">
-        <section className={`arena-grid ${focusedPlayerId !== me.id ? 'has-focus' : ''}`}>
+        <section className={`arena-grid ${focusedPlayerId !== renderedMe.id ? 'has-focus' : ''}`}>
           {arrangedPlayers.map((player) => (
             <PlayerPanel
               key={player.id}
               player={player}
-              gameStatus={game.status}
-              serverNow={game.now}
-              receivedAt={game.receivedAt}
+              gameStatus={renderedGame.status}
+              serverNow={renderedGame.now}
+              receivedAt={renderedGame.receivedAt}
               authorityPaused={authorityPaused}
               rank={player.rank}
-              active={player.id === me.id}
+              active={player.id === renderedMe.id}
               isHost={isHost}
               focused={player.id === focusedPlayerId}
-              selectedCard={player.id === me.id ? activeCard : null}
-              draggingCard={player.id === me.id ? activeCard : null}
-              rivalTargetCard={player.id === me.id && purgeTargetCard
+              selectedCard={player.id === renderedMe.id ? activeCard : null}
+              draggingCard={player.id === renderedMe.id ? activeCard : null}
+              rivalTargetCard={player.id === renderedMe.id && purgeTargetCard
                 ? purgeTargetCard
-                : player.id !== me.id && (!bonkTargetCard || bonkTargetCard.targetMode === 'chosen' || player.id === highestScoreRival?.id)
+                : player.id !== renderedMe.id && (!bonkTargetCard || bonkTargetCard.targetMode === 'chosen' || player.id === highestScoreRival?.id)
                   ? rivalTargetCard ?? bonkTargetCard
                   : null}
-              recommendedTileIndexes={player.id === me.id ? game.onboarding?.recommendedTileIndexes ?? [] : []}
-              onTile={player.id === me.id ? placeCard : undefined}
-              onRivalTarget={player.id !== me.id ? (cardId) => {
+              recommendedTileIndexes={player.id === renderedMe.id ? renderedGame.onboarding?.recommendedTileIndexes ?? [] : []}
+              onTile={player.id === renderedMe.id ? placeCard : undefined}
+              onRivalTarget={player.id !== renderedMe.id ? (cardId) => {
                 const card = me.hand.find((item) => item.instanceId === cardId) ?? activeCard;
                 if (card?.kind === 'bonk') playBonk(player.id, cardId);
                 else playRival(player.id, cardId);
               } : undefined}
-              onRivalTile={(player.id === me.id && purgeTargetCard) || (player.id !== me.id && rivalTargetCard)
+              onRivalTile={(player.id === renderedMe.id && purgeTargetCard) || (player.id !== renderedMe.id && rivalTargetCard)
                 ? (tileIndex, cardId) => playRivalOnTile(player.id, tileIndex, cardId)
                 : undefined}
               onStartRoom={startRoom}
-              onActivateAbility={player.id === me.id ? activateHeroAbility : undefined}
+              onActivateAbility={player.id === renderedMe.id ? activateHeroAbility : undefined}
               onFocus={() => focusBoard(player.id)}
             />
           ))}
         </section>
         <MobileRivalStrip
-          players={bonkTargetCard ? bonkTargets : game.players.filter((player) => player.id !== me.id)}
+          players={bonkTargetCard ? bonkTargets : renderedGame.players.filter((player) => player.id !== renderedMe.id)}
           focusedId={focusedPlayerId}
           activeCard={rivalTargetCard ?? bonkTargetCard}
           onFocus={focusBoard}
@@ -1143,7 +1203,7 @@ function App() {
         />
         <section className="control-dock">
           <RivalIntel
-            players={game.players.filter((player) => player.id !== me.id)}
+            players={renderedGame.players.filter((player) => player.id !== renderedMe.id)}
             focusedId={focusedPlayerId}
             onFocus={focusBoard}
           />
@@ -1197,7 +1257,7 @@ function App() {
           {(rivalTargetCard || bonkTargetCard) && (
             <div className="target-row">
               <span className="target-label">{bonkTargetCard ? 'bonk' : 'strike'}</span>
-              {(bonkTargetCard ? bonkTargets : game.players.filter((player) => player.id !== me.id)).map((target) => (
+              {(bonkTargetCard ? bonkTargets : renderedGame.players.filter((player) => player.id !== renderedMe.id)).map((target) => (
                 <button
                   key={target.id}
                   className="target-chip"
@@ -1230,10 +1290,10 @@ function App() {
           )}
         </section>
         <PlayerSideDock
-          player={me}
+          player={renderedMe}
           config={config}
-          game={game}
-          lines={game.log}
+          game={renderedGame}
+          lines={renderedGame.log}
           onEquip={equip}
           onChoose={chooseTrait}
           onLootDragStart={(id, point) => {
@@ -1253,10 +1313,10 @@ function App() {
             setShopOpen((open) => !open);
           }}
           aria-label={shopOpen ? 'Close shop' : 'Open shop'}
-          style={{ '--hero-color': me.color } as CSSProperties}
+          style={{ '--hero-color': renderedMe.color } as CSSProperties}
         >
           <ShoppingBag size={20} />
-          <span>{me.gold ?? 0}g</span>
+          <span>{renderedMe.gold ?? 0}g</span>
           <InfoPopover
             title="Loop Market"
             eyebrow={shopOpen ? 'Shop open' : 'Personal shop'}
@@ -1272,7 +1332,7 @@ function App() {
           }}
           aria-label={heroStatsOpen ? 'Close hero stats' : 'Open hero stats'}
           aria-expanded={heroStatsOpen}
-          style={{ '--hero-color': me.color } as CSSProperties}
+          style={{ '--hero-color': renderedMe.color } as CSSProperties}
         >
           <Activity size={20} />
           <span>Stats</span>
@@ -1284,23 +1344,23 @@ function App() {
         </button>
         <ShopDrawer
           open={shopOpen}
-          player={me}
+          player={renderedMe}
           onClose={() => setShopOpen(false)}
           onDrop={handleSellDrop}
           onBuy={buyShopOffer}
         />
         <HeroStatsDrawer
           open={heroStatsOpen}
-          player={me}
+          player={renderedMe}
           config={config}
           onClose={() => setHeroStatsOpen(false)}
         />
         <MobileDrawer
           mode={mobileDrawer}
-          player={me}
+          player={renderedMe}
           config={config}
-          game={game}
-          lines={game.log}
+          game={renderedGame}
+          lines={renderedGame.log}
           onClose={() => setMobileDrawer(null)}
           onEquip={equip}
           onChoose={chooseTrait}
@@ -1327,12 +1387,12 @@ function App() {
       </div>
       <SellZone
         active={Boolean(dragCardId || dragLootId)}
-        player={me}
+        player={renderedMe}
         onDrop={handleSellDrop}
         onBuy={buyShopOffer}
       />
       {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}
-      {showTutorial && game.status !== 'finished' && (
+      {showTutorial && renderedGame.status !== 'finished' && (
         <section className="tutorial-overlay" role="dialog" aria-modal="true">
           <div className="tutorial-panel">
             <div className="tutorial-head">

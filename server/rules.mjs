@@ -79,6 +79,9 @@ const bossCombatCorruptionCap = 32;
 // runaway spiral. Capping plateaus the pressure so solo runs stay winnable.
 const combatCorruptionCap = 24;
 const reviveBonusPowerCap = 6;
+// Each runner gets a fixed pool of lives. Hitting 0 HP spends one; spending
+// the last one eliminates the runner instead of reviving them.
+export const maxLives = 3;
 // Draw-speed talents historically gave 1-7% nudges (drawRate 0.93-0.99) that
 // were imperceptible in realtime. Amplify each talent/item's deviation from 1
 // so a draw-focused build actually feels faster, floored so it can't trivialize
@@ -838,7 +841,7 @@ export const boardPath = [
 ];
 
 export function publicConfig() {
-  return { protocolVersion: protocol.version, heroes, cards: [...terrainCards, ...rivalCards, ...bonkCards], boardPath, traits, talentTrees, maxPlayers, goalScore, matchTiers, roomSettingOptions };
+  return { protocolVersion: protocol.version, heroes, cards: [...terrainCards, ...rivalCards, ...bonkCards], boardPath, traits, talentTrees, maxPlayers, maxLives, goalScore, matchTiers, roomSettingOptions };
 }
 
 function normalizeRoomSettings(settings = {}, fallback = defaultRoomSettings) {
@@ -1384,6 +1387,7 @@ export function roomSnapshot(room) {
       remainingMs: Math.max(0, player.shop.rotatesAt - now(room))
     } : null,
     score: score(player),
+    livesLeft: Math.max(0, maxLives - (player.deaths ?? 0)),
     stunRemainingMs: player.stunnedUntil ? Math.max(0, player.stunnedUntil - now(room)) : 0
   }));
   const ranked = [...scoredPlayers].sort((a, b) => {
@@ -1415,6 +1419,7 @@ export function roomSnapshot(room) {
     },
     log: room.log,
     maxPlayers: roomMaxPlayers(room),
+    maxLives,
     goalScore: roomGoalScore(room),
     settings: room.settings,
     hostId: room.hostId,
@@ -1492,6 +1497,7 @@ export function createPlayer(id, name, heroId, isBot = false, room = null) {
     cardsPlayed: 0,
     tilesPlaced: 0,
     deaths: 0,
+    eliminated: false,
     loopTier: 1,
     tierStartScore: 0,
     tierStartLap: 0,
@@ -1694,6 +1700,7 @@ function applyTerrainCombos(room, player, placedTile) {
 
 export function playTerrain(room, player, cardInstanceId, tileIndex) {
   if (room.status !== 'running') return false;
+  if (player?.eliminated) return false;
   if (isStunned(room, player)) return false;
   settleDueMovementBeforeTerrainPlacement(room, player);
   if (isStunned(room, player) || isCombatLocked(room, player)) return false;
@@ -1876,10 +1883,11 @@ function playOblivion(room, player, card, cardInstanceId, target, tileIndex) {
 
 export function playRival(room, player, cardInstanceId, targetId, tileIndex = null) {
   if (room.status !== 'running') return false;
+  if (player?.eliminated) return false;
   if (isStunned(room, player)) return false;
   const card = player.hand.find((item) => item.instanceId === cardInstanceId);
   const target = room.players[targetId];
-  if (!card || card.kind !== 'rival' || !target) return false;
+  if (!card || card.kind !== 'rival' || !target || target.eliminated) return false;
   if (card.id === 'oblivion') return playOblivion(room, player, card, cardInstanceId, target, tileIndex);
   if (target.id === player.id) return false;
   const hasTileTarget = Number.isInteger(tileIndex);
@@ -2012,7 +2020,7 @@ export function playRival(room, player, cardInstanceId, targetId, tileIndex = nu
 
 function highestScoreRival(room, player) {
   return Object.values(room.players)
-    .filter((candidate) => candidate.id !== player.id)
+    .filter((candidate) => candidate.id !== player.id && !candidate.eliminated)
     .sort((a, b) => {
       const scoreDiff = score(b) - score(a);
       if (scoreDiff !== 0) return scoreDiff;
@@ -2022,6 +2030,7 @@ function highestScoreRival(room, player) {
 
 export function playBonk(room, player, cardInstanceId, targetId = null) {
   if (room.status !== 'running') return false;
+  if (player?.eliminated) return false;
   if (isStunned(room, player)) return false;
   const card = player.hand.find((item) => item.instanceId === cardInstanceId);
   if (!card || card.kind !== 'bonk') return false;
@@ -2029,7 +2038,7 @@ export function playBonk(room, player, cardInstanceId, targetId = null) {
   const target = card.targetMode === 'chosen'
     ? room.players[targetId]
     : highestScoreRival(room, player);
-  if (!target || target.id === player.id) return false;
+  if (!target || target.id === player.id || target.eliminated) return false;
 
   const durationMs = Math.round((card.stunSeconds ?? 4) * 1000);
   const queuedForCombat = isCombatLocked(room, target);
@@ -2132,7 +2141,7 @@ export function sellLoot(room, player, itemId) {
 }
 
 export function buyShopOffer(room, player, offerId) {
-  if (!player || room.status !== 'running') return false;
+  if (!player || player.eliminated || room.status !== 'running') return false;
   refreshShop(room, player);
   const shop = player.shop;
   const offer = shop?.offers.find((item) => item.id === offerId);
@@ -2186,7 +2195,7 @@ function setAbilityCooldown(player, hero, strength) {
 }
 
 export function activateHeroAbility(room, player) {
-  if (!player || room.status !== 'running') return false;
+  if (!player || player.eliminated || room.status !== 'running') return false;
   if (isStunned(room, player) || isCombatLocked(room, player)) return false;
   const hero = heroes.find((item) => item.id === player.heroId);
   if (!hero?.ability) return false;
@@ -2325,6 +2334,7 @@ export function runRoomStep(room, options = {}) {
   if (room.simulated || options.advanceMs) room.now += options.advanceMs ?? 260;
   room.tick += 1;
   for (const player of Object.values(room.players)) {
+    if (player.eliminated) continue;
     refreshShop(room, player);
     clearExpiredCombat(room, player);
     clearExpiredStun(room, player);
@@ -2358,6 +2368,7 @@ export function checkWinner(room) {
 
 function leader(room) {
   return Object.values(room.players)
+    .filter((player) => !player.eliminated)
     .sort((a, b) => {
       const scoreDiff = score(b) - score(a);
       if (scoreDiff !== 0) return scoreDiff;
@@ -2406,6 +2417,7 @@ function finishClaim(room, player) {
 function updateEndgame(room) {
   if (room.status !== 'running') return null;
   for (const player of Object.values(room.players)) {
+    if (player.eliminated) continue;
     if (player.pendingBossOutcome && !player.combat) resolvePendingBossOutcome(room, player);
     if (!promotePlayerIfReady(room, player)) maybeSpawnStageBoss(room, player);
   }
@@ -3447,6 +3459,7 @@ function revivePlayer(room, player) {
   emitRuleEvent(room, 'playerDefeated', {
     playerId: player.id,
     deaths: player.deaths,
+    livesLeft: Math.max(0, maxLives - player.deaths),
     loopTier: player.loopTier ?? 1,
     hp: player.hp,
     position: player.position,
@@ -3486,8 +3499,66 @@ function applySoloDeathPenalty(room, player) {
 
 function resolveDefeat(room, player) {
   if (player.hp > 0) return false;
+  if (player.eliminated) return true;
+  if ((player.deaths ?? 0) + 1 >= maxLives) {
+    eliminatePlayer(room, player);
+    return true;
+  }
   revivePlayer(room, player);
   return true;
+}
+
+function eliminatePlayer(room, player) {
+  player.deaths += 1;
+  player.deathsThisTier = (player.deathsThisTier ?? 0) + 1;
+  player.hp = 0;
+  player.eliminated = true;
+  player.combat = null;
+  player.bossPhase = null;
+  player.pendingBossOutcome = null;
+  player.nextMovement = null;
+  player.arrivalMovement = null;
+  player.marked = false;
+  player.event = 'out of lives';
+  player.message = 'out of lives';
+  player.lastEventAt = now(room);
+  addLog(room, `${player.name} fell for the final time. No lives remain.`);
+  emitRuleEvent(room, 'playerEliminated', {
+    playerId: player.id,
+    deaths: player.deaths,
+    livesLeft: 0,
+    hp: 0,
+    position: player.position,
+    laps: player.laps,
+    nextMovement: null,
+    arrivalMovement: null
+  });
+  if (isGuidedHuman(room, player)) {
+    pushGuidedRecap(room, `All ${maxLives} lives are spent. Each collapse costs one — keep healing terrain ahead of danger stacks to protect the pool.`);
+    updateGuidedRun(room);
+  }
+  finishIfMatchDecided(room);
+}
+
+function finishIfMatchDecided(room) {
+  if (room.status !== 'running') return;
+  const survivors = Object.values(room.players).filter((rival) => !rival.eliminated);
+  if (survivors.length === 1 && Object.keys(room.players).length > 1) {
+    const winner = survivors[0];
+    room.status = 'finished';
+    room.finishedAt = now(room);
+    room.winnerId = winner.id;
+    winner.marked = false;
+    winner.event = 'last runner standing';
+    addLog(room, `${winner.name} wins as the last runner with lives remaining.`);
+    emitRuleEvent(room, 'matchFinished', { winnerId: winner.id, score: score(winner) });
+  } else if (survivors.length === 0) {
+    room.status = 'finished';
+    room.finishedAt = now(room);
+    room.winnerId = null;
+    addLog(room, 'The loop claimed every runner. The run is lost.');
+    emitRuleEvent(room, 'matchFinished', { winnerId: null, score: null });
+  }
 }
 
 function resolveDefeatAfterVisibleCombat(room, player) {
@@ -3821,7 +3892,7 @@ function chooseBotTerrainTile(room, player, card) {
 }
 
 function chooseRivalTarget(room, player) {
-  const rivals = Object.values(room.players).filter((candidate) => candidate.id !== player.id);
+  const rivals = Object.values(room.players).filter((candidate) => candidate.id !== player.id && !candidate.eliminated);
   if (rivals.length === 0) return null;
   return rivals
     .map((candidate) => ({ candidate, value: score(candidate) + (candidate.hp / candidate.maxHp) * 80 - candidate.deaths * 40 }))

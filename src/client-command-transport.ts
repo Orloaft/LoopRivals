@@ -45,6 +45,7 @@ type TimerApi = {
 type CreateClientCommandTransportOptions = {
   emit: (eventName: string, payload: Record<string, unknown>, ack?: (payload: unknown) => void) => void;
   onNotice?: (message: string) => void;
+  onCommandResult?: (result: ClientCommandResult) => void;
   shouldRetry?: () => boolean;
   getPlayerId?: () => string | null;
   makeCommandId?: (eventName: string) => string;
@@ -240,6 +241,7 @@ export function createClientCommandTransport(options: CreateClientCommandTranspo
     if (command.retries >= maxRetries) {
       command.exhausted = true;
       options.onNotice?.(timeoutNotice(command.eventName));
+      options.onCommandResult?.({ ...result, status: 'timeout' });
       return;
     }
 
@@ -259,6 +261,7 @@ export function createClientCommandTransport(options: CreateClientCommandTranspo
 
   const handleResult = (result: ClientCommandResult) => {
     if (completed.has(result.commandId)) return;
+    options.onCommandResult?.(result);
     const command = pending.get(result.commandId);
 
     if (result.status === 'accepted') {

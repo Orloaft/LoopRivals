@@ -331,11 +331,13 @@ function eventImpact(event: string) {
   if (lower.includes('briar warden')) return { tone: 'danger', title: 'ACT BOSS', detail: event };
   if (lower.includes('crown sentinel')) return { tone: 'danger', title: 'ACT BOSS', detail: event };
   if (lower.includes('loop tyrant')) return { tone: 'danger', title: 'TYRANT', detail: event };
+  if (lower.includes('out of lives')) return { tone: 'danger', title: 'ELIMINATED', detail: event };
   if (/(failed|broken|defeated|died|knock)/.test(lower)) return { tone: 'danger', title: 'DOWN', detail: event };
   return null;
 }
 
 function runnerStatusLabel(player: Player) {
+  if (player.eliminated) return 'Eliminated';
   if (player.combat) return 'Combat';
   if ((player.stunRemainingMs ?? 0) > 0) return 'Stunned';
   const currentTile = player.board[player.position] ?? player.board[0];
@@ -692,6 +694,10 @@ function tierLoopTarget(config: GameConfig, player: Player) {
   const nextTier = config.matchTiers.find((tier) => tier.id > player.loopTier);
   if (nextTier) return { label: `Act ${nextTier.id} Boss`, target: nextTier.minLoops, remaining: Math.max(0, nextTier.minLoops - player.laps) };
   return { label: 'Tyrant', target: (player.tierStartLap ?? 0) + bossLoopRequirement, remaining: Math.max(0, (player.tierStartLap ?? 0) + bossLoopRequirement - player.laps) };
+}
+
+function livesLeft(game: GameState, player: Player) {
+  return player.livesLeft ?? Math.max(0, (game.maxLives ?? 3) - (player.deaths ?? 0));
 }
 
 function tierLoopProgress(config: GameConfig, player: Player) {
@@ -1381,6 +1387,12 @@ function PlayerSideDock({
               <strong>{Math.ceil(player.hp)}</strong>
               <span>/{player.maxHp}</span>
               <InfoPopover title="Health" body={`${Math.ceil(player.hp)}/${player.maxHp} HP`} />
+            </div>
+            <div className="rail-lives" role="img" aria-label={`${livesLeft(game, player)} of ${game.maxLives ?? 3} lives left`}>
+              {Array.from({ length: game.maxLives ?? 3 }, (_, index) => (
+                <span key={index} className={`life-pip ${index < livesLeft(game, player) ? 'alive' : 'spent'}`}>♥</span>
+              ))}
+              <InfoPopover title="Lives" body={`Hitting 0 HP spends a life. Lose all ${game.maxLives ?? 3} and the run is over for good.`} />
             </div>
             <div className="rail-stat-grid">
               <span className="rail-stat-tile"><Swords size={14} /><b>{player.power}</b></span>
@@ -2096,13 +2108,14 @@ export function HeroStatsDrawer({
     ['XP', player.xp],
     ['Lap', player.laps],
     ['KOs', player.kos],
+    ['Lives', player.livesLeft ?? Math.max(0, 3 - (player.deaths ?? 0))],
     ['Deaths', player.deaths],
     ['Cards', player.cardsPlayed],
     ['Tiles', player.tilesPlaced],
     ['Rival hits', player.rivalHits]
   ];
   const statHints: Record<string, string> = {
-    HP: 'Health. Hit 0 and you collapse, losing score and time.',
+    HP: 'Health. Hit 0 and you collapse, spending one of your lives. Lose all three and the run ends.',
     Power: 'Attack strength in fights.',
     Guard: 'Reduces the damage you take in fights.',
     Speed: 'How fast your runner moves between tiles.',
@@ -3078,7 +3091,7 @@ function HelpOverlay({ config, onClose }: { config: GameConfig; onClose: () => v
           </section>
           <section>
             <h2>Finale</h2>
-            <p>After four completed loops in act III, the Loop Tyrant appears. Corruption rises from laps, act clears, and deaths; dying restarts the current act board and costs gold, tempo, and sometimes loose loot.</p>
+            <p>After four completed loops in act III, the Loop Tyrant appears. Corruption rises from laps, act clears, and deaths; dying spends one of your three lives, restarts the current act board, and costs gold, tempo, and sometimes loose loot. Spend the last life and the run is lost.</p>
           </section>
           <section className="help-glossary">
             <h2>Glossary</h2>
