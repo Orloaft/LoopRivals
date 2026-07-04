@@ -2504,6 +2504,31 @@ input:focus {
   filter: brightness(1.08) saturate(1.16);
 }
 
+.combat-entry-cue.boss-combat {
+  border-color: rgba(255, 224, 138, 0.9);
+  color: #fff2be;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 224, 138, 0.28), transparent 62%),
+    linear-gradient(180deg, rgba(92, 35, 22, 0.94), rgba(18, 5, 5, 0.94));
+  box-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.8),
+    0 0 22px rgba(255, 187, 78, 0.42);
+  text-shadow:
+    0 2px 0 #000,
+    0 0 14px rgba(255, 188, 78, 0.76);
+}
+
+.combat-entry-cue.loop-tyrant {
+  border-color: rgba(198, 172, 255, 0.9);
+  color: #efe6ff;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(172, 127, 255, 0.3), transparent 62%),
+    linear-gradient(180deg, rgba(49, 31, 92, 0.94), rgba(8, 6, 18, 0.95));
+  box-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.82),
+    0 0 22px rgba(166, 126, 255, 0.44);
+}
+
 .event-burst.curse,
 .event-burst.meteor,
 .event-burst.rival,
@@ -3224,6 +3249,25 @@ input:focus {
     linear-gradient(180deg, rgba(81, 27, 18, 0.22), rgba(13, 6, 4, 0.58));
 }
 
+.combat-overlay.boss-combat {
+  border-color: rgba(255, 224, 138, 0.66);
+}
+
+.combat-overlay.boss-combat.act-boss {
+  --combat-grade:
+    radial-gradient(circle at 50% 20%, rgba(255, 224, 138, 0.19), transparent 34%),
+    radial-gradient(circle at 78% 64%, rgba(166, 54, 38, 0.18), transparent 36%),
+    linear-gradient(180deg, rgba(72, 30, 18, 0.24), rgba(9, 7, 5, 0.62));
+}
+
+.combat-overlay.boss-combat.loop-tyrant {
+  --combat-grade:
+    radial-gradient(circle at 50% 18%, rgba(180, 142, 255, 0.22), transparent 38%),
+    radial-gradient(circle at 72% 66%, rgba(255, 224, 138, 0.13), transparent 34%),
+    linear-gradient(180deg, rgba(35, 24, 82, 0.28), rgba(5, 5, 14, 0.66));
+  border-color: rgba(198, 172, 255, 0.68);
+}
+
 .combat-overlay.combat-beat-active {
   animation:
     combat-pop 320ms cubic-bezier(0.18, 0.9, 0.2, 1.08) var(--combat-delay, 0ms) both,
@@ -3337,6 +3381,22 @@ input:focus {
   animation: combat-result-plaque 420ms cubic-bezier(0.16, 0.86, 0.2, 1) both;
 }
 
+.combat-overlay.boss-combat.phase-result .combat-banner,
+.combat-overlay.boss-combat.phase-exit .combat-banner {
+  border-block-color: rgba(255, 224, 138, 0.66);
+  background:
+    radial-gradient(ellipse at center, rgba(255, 224, 138, 0.18), transparent 72%),
+    linear-gradient(90deg, transparent, rgba(24, 7, 5, 0.58) 16% 84%, transparent);
+}
+
+.combat-overlay.loop-tyrant.phase-result .combat-banner,
+.combat-overlay.loop-tyrant.phase-exit .combat-banner {
+  border-block-color: rgba(198, 172, 255, 0.66);
+  background:
+    radial-gradient(ellipse at center, rgba(180, 142, 255, 0.2), transparent 72%),
+    linear-gradient(90deg, transparent, rgba(9, 7, 24, 0.62) 16% 84%, transparent);
+}
+
 .combat-announcement {
   position: absolute;
   inset: 0;
@@ -3378,6 +3438,18 @@ input:focus {
   text-overflow: ellipsis;
   text-shadow: 0 2px 0 #000;
   white-space: nowrap;
+}
+
+.combat-overlay.boss-combat .combat-announcement {
+  background:
+    radial-gradient(ellipse at center, rgba(255, 224, 138, 0.22), transparent 48%),
+    linear-gradient(90deg, transparent 0 9%, rgba(24, 7, 5, 0.84) 23% 77%, transparent 91% 100%);
+}
+
+.combat-overlay.loop-tyrant .combat-announcement {
+  background:
+    radial-gradient(ellipse at center, rgba(180, 142, 255, 0.24), transparent 48%),
+    linear-gradient(90deg, transparent 0 9%, rgba(8, 6, 24, 0.86) 23% 77%, transparent 91% 100%);
 }
 
 .combat-vignette {
@@ -3863,6 +3935,59 @@ input:focus {
   line-height: 0.88;
 }
 
+.boss-seal-progress {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+  color: #fff2be;
+  font-size: clamp(0.56rem, calc(var(--board-size) * 0.018), 0.76rem);
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.boss-seal-progress b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boss-seal-progress div {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.boss-seal-progress i {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgba(255, 224, 138, 0.52);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.boss-seal-progress i.cleared {
+  background: rgba(154, 196, 112, 0.88);
+}
+
+.boss-seal-progress i.active {
+  border-color: rgba(255, 242, 190, 0.92);
+  background: #f0c66d;
+}
+
+.combat-overlay.loop-tyrant .boss-seal-progress i {
+  border-color: rgba(198, 172, 255, 0.58);
+}
+
+.combat-overlay.loop-tyrant .boss-seal-progress i.active {
+  border-color: rgba(239, 230, 255, 0.94);
+  background: #bca4ff;
+}
+
 .combat-damage-float {
   position: absolute;
   z-index: 2;
@@ -4126,6 +4251,16 @@ input:focus {
     min-width: 0;
     padding: 7px 10px 8px;
     transform: none;
+  }
+
+  .boss-seal-progress {
+    gap: 6px;
+    font-size: 0.56rem;
+  }
+
+  .boss-seal-progress i {
+    width: 7px;
+    height: 7px;
   }
 
   .combat-overlay.phase-entry .combat-banner {

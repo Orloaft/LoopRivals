@@ -233,6 +233,120 @@ function tileDescription(tile: Tile) {
   return descriptions[tile.type] ?? 'Unknown loop tile.';
 }
 
+type BossCombatPresentation = {
+  kind: 'act' | 'loop';
+  className: string;
+  cue: string;
+  entryTitle: string;
+  bossName: string;
+  progressLabel: string;
+  currentSeal: number;
+  totalSeals: number;
+  clearedSeals: number;
+  remainingAfterWin: number;
+  finalClearDetail: string;
+};
+
+const bossNameByLabel: Record<string, string> = {
+  'briar warden': 'Briar Warden',
+  'crown sentinel': 'Crown Sentinel',
+  'loop tyrant': 'Loop Tyrant'
+};
+
+function normalizeBossLabel(value?: string | null) {
+  return String(value ?? '').trim().toLowerCase().replace(/^the\s+/, '');
+}
+
+function displayBossName(label?: string | null) {
+  const normalized = normalizeBossLabel(label);
+  if (bossNameByLabel[normalized]) return bossNameByLabel[normalized];
+  return normalized
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ') || 'Boss';
+}
+
+function boardTileAtCursor(board: Tile[], cursor: number) {
+  if (!board.length) return null;
+  const index = Math.floor(((cursor % board.length) + board.length) % board.length);
+  return board[index] ?? null;
+}
+
+function bossTileMatchesPhase(phase: NonNullable<Player['bossPhase']>, tile?: Tile | null) {
+  if (!tile) return false;
+  if (tile.bossPhaseId && tile.bossPhaseId === phase.id) return true;
+  return typeof tile.bossChunkIndex === 'number' && phase.tileTypes.includes(tile.type);
+}
+
+function deriveBossCombatPresentation(player: Player, combat?: Combat | null, tile?: Tile | null): BossCombatPresentation | null {
+  const phase = player.bossPhase;
+  if (!phase) return null;
+
+  const phaseLabel = normalizeBossLabel(phase.label);
+  const combatLabelMatches = Boolean(combat && (
+    normalizeBossLabel(combat.label) === phaseLabel ||
+    normalizeBossLabel(combat.enemyName) === phaseLabel
+  ));
+  const tileMatches = bossTileMatchesPhase(phase, tile);
+  if (!tileMatches && !combatLabelMatches) return null;
+
+  const totalSeals = Math.max(1, phase.totalChunks || phase.tileTypes.length || 4);
+  const remainingBefore = Math.max(0, Math.min(totalSeals, phase.remainingChunks ?? totalSeals));
+  const currentSeal = typeof tile?.bossChunkIndex === 'number'
+    ? Math.max(1, Math.min(totalSeals, tile.bossChunkIndex + 1))
+    : Math.max(1, Math.min(totalSeals, totalSeals - remainingBefore + 1));
+  const remainingAfterWin = Math.max(0, remainingBefore - 1);
+  const kind = phase.kind === 'loop' ? 'loop' : 'act';
+  const bossName = displayBossName(phase.label || combat?.enemyName || combat?.label);
+
+  return {
+    kind,
+    className: `boss-combat ${kind === 'loop' ? 'loop-tyrant' : 'act-boss'}`,
+    cue: kind === 'loop' ? 'tyrant!' : 'boss!',
+    entryTitle: kind === 'loop' ? 'Loop Tyrant' : 'Act Boss',
+    bossName,
+    progressLabel: `Seal ${currentSeal}/${totalSeals}`,
+    currentSeal,
+    totalSeals,
+    clearedSeals: Math.max(0, totalSeals - remainingBefore),
+    remainingAfterWin,
+    finalClearDetail: kind === 'loop'
+      ? 'The loop is claimed'
+      : phase.nextTier
+        ? `Act ${phase.nextTier} opens`
+        : 'The next act opens'
+  };
+}
+
+function bossSealNoun(count: number) {
+  return `seal${count === 1 ? '' : 's'}`;
+}
+
+function bossResultTitle(bossInfo: BossCombatPresentation, combat: Combat) {
+  if (combat.heroHpAfter <= 0) return 'Boss Holds';
+  if (bossInfo.remainingAfterWin > 0) return 'Seal Broken';
+  return `${bossInfo.bossName} Broken`;
+}
+
+function bossResultValue(bossInfo: BossCombatPresentation, combat: Combat) {
+  if (combat.heroHpAfter <= 0 || bossInfo.remainingAfterWin === 0) return bossInfo.progressLabel;
+  return `${bossInfo.remainingAfterWin} ${bossSealNoun(bossInfo.remainingAfterWin)} remain`;
+}
+
+function bossResultDetail(bossInfo: BossCombatPresentation, combat: Combat) {
+  if (combat.heroHpAfter <= 0) return 'Retreat and recover';
+  if (bossInfo.remainingAfterWin > 0) return `+${combat.reward} XP - ${bossInfo.remainingAfterWin} ${bossSealNoun(bossInfo.remainingAfterWin)} remain`;
+  return bossInfo.finalClearDetail;
+}
+
+function bossSealPipClass(bossInfo: BossCombatPresentation, index: number) {
+  const seal = index + 1;
+  if (seal === bossInfo.currentSeal) return 'active';
+  if (seal <= bossInfo.clearedSeals) return 'cleared';
+  return 'pending';
+}
+
 const dangerousTileTypes = new Set(['grove', 'bloomgrove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'ransackedvillage', 'bloodmoon', 'wyrmgate', 'embergate', 'obelisk', 'spidernest', 'tollgate', 'thornmaze', 'graveyard', 'reliquary', 'dragonroost', 'ambush', 'scorch']);
 const combatPlacementTileTypes = new Set(['grove', 'bloomgrove', 'crypt', 'wolfden', 'bonepit', 'ruinedkeep', 'ransackedvillage', 'bloodmoon', 'wyrmgate', 'embergate', 'spidernest', 'tollgate', 'thornmaze', 'graveyard', 'dragonroost', 'ambush']);
 const stabilizerTileTypes = new Set(['camp', 'meadow', 'village', 'forge', 'shrine', 'mire', 'orchard', 'chapel', 'armory', 'waystone']);
@@ -2597,6 +2711,10 @@ const PlayerPanel = memo(function PlayerPanel({
     : pendingCombatCursor !== null
       ? pointAlongBoard(player.board, pendingCombatCursor)
       : runnerPoint;
+  const pendingCombatTile = pendingCombatCursor !== null ? boardTileAtCursor(player.board, pendingCombatCursor) : null;
+  const combatCueBossInfo = player.combat
+    ? deriveBossCombatPresentation(player, player.combat, player.board[player.position] ?? null)
+    : deriveBossCombatPresentation(player, null, pendingCombatTile);
   const pendingCombatCueIsReady = pendingCombatCursor !== null && reachedPendingCombatCursor !== null && Math.abs(reachedPendingCombatCursor - pendingCombatCursor) < 0.001;
   const combatCueKey = player.combat
     ? `combat-cue-${player.combat.startedAt}`
@@ -2755,7 +2873,7 @@ const PlayerPanel = memo(function PlayerPanel({
         {combatCueKey && (
           <div
             key={combatCueKey}
-            className={`combat-entry-cue active ${player.combat ? 'confirmed' : 'pending'}`}
+            className={`combat-entry-cue active ${player.combat ? 'confirmed' : 'pending'} ${combatCueBossInfo?.className ?? ''}`}
             style={{
               '--cue-left': `${combatCuePoint.left}%`,
               '--cue-top': `${combatCuePoint.top}%`,
@@ -2763,7 +2881,7 @@ const PlayerPanel = memo(function PlayerPanel({
             } as CSSProperties}
             aria-hidden="true"
           >
-            <span>fight!</span>
+            <span>{combatCueBossInfo?.cue ?? 'fight!'}</span>
           </div>
         )}
         {player.combat && <CombatOverlay key={player.combat.startedAt} player={player} audible={active} />}
@@ -2802,7 +2920,10 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
   const lastBeatAtMs = Math.max(0, ...beats.map((beat) => beat.atMs));
   const resultAtMs = Math.min(Math.max(lastBeatAtMs + 220, visibleDurationMs - 560), Math.max(0, visibleDurationMs - 260));
   const exitAtMs = Math.max(resultAtMs + 180, visibleDurationMs - 220);
-  const combatOutcome = combat.heroHpAfter <= 0 ? 'Hero Fell' : combat.enemyCount > 1 ? 'Loot Found' : 'Victory';
+  const bossInfo = deriveBossCombatPresentation(player, combat, player.board[player.position] ?? null);
+  const combatOutcome = bossInfo
+    ? bossResultTitle(bossInfo, combat)
+    : combat.heroHpAfter <= 0 ? 'Hero Fell' : combat.enemyCount > 1 ? 'Loot Found' : 'Victory';
   const logFocusIndex = Math.max(0, activeBeatIndex);
   const logStart = Math.max(0, Math.min(logFocusIndex - 1, Math.max(0, beats.length - 2)));
   const combatLog = beats.slice(logStart, logStart + 2).map((beat, offset) => {
@@ -2833,14 +2954,19 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
   const activeEnemyName = enemyLineup[activeEnemyIndex]?.name ?? combat.enemyName;
   const attackerName = activeBeat?.attacker === 'enemy' ? activeEnemyName : player.name;
   const defenderName = activeBeat?.attacker === 'enemy' ? player.name : activeEnemyName;
-  const impactTitle = presentationPhase === 'result' || presentationPhase === 'exit' ? combatOutcome : activeBeat ? `${attackerName} strikes ${defenderName}` : 'Fight!';
-  const impactValue = presentationPhase === 'result' || presentationPhase === 'exit' ? `+${combat.reward} XP` : activeBeat ? `-${activeBeat.damage} HP` : combat.label;
+  const resultPhase = presentationPhase === 'result' || presentationPhase === 'exit';
+  const impactTitle = resultPhase ? combatOutcome : activeBeat ? `${attackerName} strikes ${defenderName}` : bossInfo?.entryTitle ?? 'Fight!';
+  const impactValue = resultPhase
+    ? bossInfo ? bossResultValue(bossInfo, combat) : `+${combat.reward} XP`
+    : activeBeat ? `-${activeBeat.damage} HP` : bossInfo?.progressLabel ?? combat.label;
   const impactDetail = presentationPhase === 'result' || presentationPhase === 'exit'
-    ? combat.heroHpAfter <= 0 ? 'Retreat and recover' : `${combat.enemyName} cleared`
-    : activeBeat?.text ?? `${combat.label} vs ${combat.enemyName}`;
+    ? bossInfo ? bossResultDetail(bossInfo, combat) : combat.heroHpAfter <= 0 ? 'Retreat and recover' : `${combat.enemyName} cleared`
+    : activeBeat?.text ?? (bossInfo ? `${bossInfo.bossName} vs ${combat.enemyName}` : `${combat.label} vs ${combat.enemyName}`);
   const impactMeta = presentationPhase === 'result' || presentationPhase === 'exit'
-    ? `${combat.rounds} clashes resolved`
-    : combat.enemyCount > 1 ? `${combat.enemyCount} foes · ${combat.rounds} clashes` : combat.label;
+    ? bossInfo ? `${bossInfo.bossName} - ${combat.rounds} clashes resolved` : `${combat.rounds} clashes resolved`
+    : bossInfo
+      ? `${bossInfo.bossName} - ${combat.enemyCount > 1 ? `${combat.enemyCount} foes - ` : ''}${combat.rounds} clashes`
+      : combat.enemyCount > 1 ? `${combat.enemyCount} foes · ${combat.rounds} clashes` : combat.label;
 
   useEffect(() => {
     const timers = beats.map((beat, index) => window.setTimeout(() => {
@@ -2888,7 +3014,7 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
   }, [presentation, beats, resultAtMs, exitAtMs, audible]);
 
   return (
-    <div ref={overlayRef} className={`combat-overlay phase-${presentationPhase} combat-bg-${combat.backgroundId} combat-effect-${combat.effect} enemy-stage-${largestEnemySize} ${activeBeat ? 'combat-beat-active' : ''} ${hitStop ? 'hit-stop' : ''} ${logOpen ? 'log-open' : ''}`} style={{
+    <div ref={overlayRef} className={`combat-overlay phase-${presentationPhase} combat-bg-${combat.backgroundId} combat-effect-${combat.effect} enemy-stage-${largestEnemySize} ${bossInfo?.className ?? ''} ${activeBeat ? 'combat-beat-active' : ''} ${hitStop ? 'hit-stop' : ''} ${logOpen ? 'log-open' : ''}`} style={{
       '--combat-bg': `url(${combatBackgroundUrl(combat.backgroundId)})`,
       '--combat-duration': `${visibleDurationMs}ms`,
       '--combat-delay': '0ms'
@@ -2908,8 +3034,8 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
       </button>
       <div className="combat-announcement" aria-hidden="true">
         <span>
-          Fight!
-          <small>{combat.label} vs {combat.enemyName}</small>
+          {bossInfo?.entryTitle ?? 'Fight!'}
+          <small>{bossInfo ? `${bossInfo.progressLabel} - ${bossInfo.bossName}` : `${combat.label} vs ${combat.enemyName}`}</small>
         </span>
       </div>
       <div className={`combatant hero-combat ${activeBeat?.attacker === 'hero' ? 'combat-attacking' : ''} ${activeBeat?.attacker === 'enemy' ? 'combat-taking-hit' : ''}`}>
@@ -2934,6 +3060,16 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
       <div className="combat-banner">
         <em>{impactMeta}</em>
         <strong>{impactTitle}</strong>
+        {bossInfo && (
+          <div className="boss-seal-progress" aria-hidden="true">
+            <b>{bossInfo.progressLabel}</b>
+            <div>
+              {Array.from({ length: bossInfo.totalSeals }, (_, index) => (
+                <i key={index} className={bossSealPipClass(bossInfo, index)} />
+              ))}
+            </div>
+          </div>
+        )}
         <span>{impactValue}</span>
         <small>{impactDetail}</small>
         {activeBeat && (
