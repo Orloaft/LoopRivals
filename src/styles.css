@@ -402,6 +402,16 @@ h1 {
   line-height: 0.78;
 }
 
+.title-logo {
+  display: block;
+  width: min(900px, 88vw);
+  max-height: clamp(170px, 28vh, 330px);
+  object-fit: contain;
+  filter:
+    drop-shadow(0 14px 18px rgba(0, 0, 0, 0.72))
+    drop-shadow(0 0 18px rgba(214, 137, 44, 0.28));
+}
+
 .title-copy p {
   max-width: 52ch;
   color: var(--parchment-strong);
@@ -410,8 +420,8 @@ h1 {
   line-height: 1.32;
 }
 
-/* Front title screen (traditional RPG): wordmark centered over the painterly
-   stage, vertical menu, blinking press-enter hint. */
+/* Front title screen (traditional RPG): generated wordmark centered over the
+   painterly stage with a vertical menu. */
 .lobby-shell.title-screen.title-front {
   grid-template-rows: minmax(0, 1fr);
 }
@@ -464,26 +474,6 @@ h1 {
   font-size: 0.78rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-.title-press-hint {
-  color: var(--gold-bright);
-  font-size: clamp(0.78rem, 1.15vw, 0.92rem);
-  font-weight: 900;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  animation: title-hint-blink 1.5s steps(2, jump-none) infinite;
-}
-
-@keyframes title-hint-blink {
-  0% { opacity: 1; }
-  100% { opacity: 0.22; }
-}
-
-.title-front-footer {
-  color: var(--parchment-strong);
-  opacity: 0.72;
-  font-weight: 700;
 }
 
 .title-hero-showcase {
@@ -9575,6 +9565,11 @@ body.loot-drag-active * {
 
   .title-front .title-copy h1 {
     font-size: clamp(3.25rem, 19vw, 4.8rem);
+  }
+
+  .title-front .title-logo {
+    width: min(96vw, 620px);
+    max-height: min(25svh, 210px);
   }
 
   .title-copy {

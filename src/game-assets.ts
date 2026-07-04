@@ -245,6 +245,7 @@ function warmCriticalGameImages(config: Pick<GameConfig, 'heroes'> | null | unde
     '/assets/background/loopduel-parallax-graves-v3.png',
     '/assets/background/loopduel-parallax-brambles-v3.png',
     '/assets/ui/loopduel-title-stage-painterly-v1.png',
+    '/assets/ui/loop-rivals-title-logo-painterly-v1.png',
     '/assets/ui/loopduel-guide-codex-frame-v1.png',
     '/assets/ui/loopduel-ui-row-plaque-v1.png'
   ];

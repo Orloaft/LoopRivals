@@ -889,9 +889,11 @@ function App() {
         <GothicParallaxBackdrop />
         <section className="title-front-stage">
           <div className="title-copy title-front-copy">
-            <span className="title-kicker">Retro gothic loop combat</span>
-            <h1>Loop Rivals</h1>
-            <p>Shape the road, outlast the boss loop, and break rival runners before the Tyrant answers.</p>
+            <img
+              className="title-logo"
+              src="/assets/ui/loop-rivals-title-logo-painterly-v1.png"
+              alt="Loop Rivals"
+            />
           </div>
           <nav
             className="title-menu"
@@ -927,10 +929,6 @@ function App() {
             {bgmOn ? <Volume2 size={17} /> : <VolumeX size={17} />}
             Music {bgmOn ? 'On' : 'Off'}
           </button>
-          <span className="title-press-hint" aria-hidden="true">Press Enter</span>
-          <small className="title-front-footer">
-            {profile.matches} matches · {profile.wins} wins · {profile.bestScore} best score
-          </small>
         </section>
         {showHelp && <HelpOverlay config={config} onClose={() => setShowHelp(false)} />}
       </main>
