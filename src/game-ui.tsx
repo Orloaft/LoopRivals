@@ -1712,9 +1712,16 @@ function MobileDrawer({
 
       {mode === 'menu' && (
         <div className="mobile-drawer-body mobile-menu-grid">
-          <button className="menu-item" onClick={onMenu}>
-            <Bot size={19} />
-            Room Menu
+          <div className="mobile-menu-note">
+            <strong>Quick controls</strong>
+            <span>Full settings hold audio, rules, and reset.</span>
+          </div>
+          <button className="menu-item mobile-full-settings" onClick={onMenu}>
+            <Settings size={19} />
+            <span>
+              <strong>Full Settings</strong>
+              <small>Rules · audio · reset</small>
+            </span>
           </button>
           <button className="menu-item" onClick={onAddBot} disabled={!isHost}>
             <Bot size={19} />
@@ -1734,7 +1741,7 @@ function MobileDrawer({
             disabled={!isHost || game.status !== 'lobby'}
           >
             <Settings size={19} />
-            {game.settings.pace}
+            Pace: {game.settings.pace}
           </button>
           <div className="mobile-profile-summary">
             <strong>{profile.bestScore}</strong>
@@ -1742,7 +1749,7 @@ function MobileDrawer({
           </div>
           <button className="menu-item" onClick={onToggleBgm}>
             {bgmOn ? <Volume2 size={19} /> : <VolumeX size={19} />}
-            BGM
+            Music {bgmOn ? 'On' : 'Off'}
           </button>
         </div>
       )}

@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
-import { Activity, Bot, Crown, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield, ShoppingBag, Sparkles } from 'lucide-react';
+import { Activity, Bot, Crown, Eye, GitBranch, HelpCircle, Play, RotateCcw, ScrollText, Share2, Shield, ShoppingBag, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { isAuthorityStateStale } from './authority-timeline';
 import { createRoomAuthorityBatcher } from './client-authority-batcher';
 import { createClientCommandTransport } from './client-command-transport';
@@ -918,6 +918,15 @@ function App() {
               Rules
             </button>
           </nav>
+          <button
+            className="icon-action title-audio-action"
+            onClick={() => setBgmOn((on) => !on)}
+            aria-pressed={bgmOn}
+            title="Music preference carries into the room"
+          >
+            {bgmOn ? <Volume2 size={17} /> : <VolumeX size={17} />}
+            Music {bgmOn ? 'On' : 'Off'}
+          </button>
           <span className="title-press-hint" aria-hidden="true">Press Enter</span>
           <small className="title-front-footer">
             {profile.matches} matches · {profile.wins} wins · {profile.bestScore} best score
@@ -1006,6 +1015,7 @@ function App() {
             <span><strong>{profile.bestLevel}</strong> best level</span>
           </div>
 
+          <div className="hero-carousel-cue" aria-hidden="true">Swipe runners</div>
           <div className="hero-grid">
             {config.heroes.map((hero) => (
               <button

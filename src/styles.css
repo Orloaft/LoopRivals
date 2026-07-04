@@ -453,6 +453,19 @@ h1 {
   letter-spacing: 0.05em;
 }
 
+.title-audio-action {
+  min-height: 34px;
+  padding-inline: 12px;
+  border-color: rgba(210, 177, 92, 0.32);
+  color: var(--parchment-strong);
+  background:
+    linear-gradient(180deg, rgba(255, 232, 169, 0.08), rgba(6, 5, 4, 0.62)),
+    rgba(9, 8, 7, 0.82);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .title-press-hint {
   color: var(--gold-bright);
   font-size: clamp(0.78rem, 1.15vw, 0.92rem);
@@ -617,6 +630,10 @@ h1 {
 
 .title-control-panel .profile-strip {
   margin: 0;
+}
+
+.hero-carousel-cue {
+  display: none;
 }
 
 .title-control-panel .profile-strip span,
@@ -9098,7 +9115,7 @@ body.loot-drag-active * {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     gap: 9px;
-    max-height: max(96px, min(42vh, calc(100svh - 530px)));
+    max-height: max(96px, min(48vh, calc(100svh - 486px)));
     overflow: hidden;
     padding: 10px;
     border: 2px solid color-mix(in srgb, var(--hero-color) 50%, var(--line));
@@ -9327,10 +9344,58 @@ body.loot-drag-active * {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .mobile-menu-note {
+    display: grid;
+    grid-column: 1 / -1;
+    gap: 2px;
+    padding: 7px 9px;
+    border: 1px solid rgba(210, 177, 92, 0.18);
+    border-radius: 4px;
+    color: var(--muted);
+    background:
+      linear-gradient(180deg, rgba(255, 224, 138, 0.055), rgba(0, 0, 0, 0.12)),
+      rgba(0, 0, 0, 0.2);
+    font-size: 0.66rem;
+    font-weight: 850;
+    line-height: 1.22;
+  }
+
+  .mobile-menu-note strong {
+    color: var(--gold-bright);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+  }
+
+  .mobile-menu-grid .mobile-full-settings {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .mobile-menu-grid .mobile-full-settings span {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .mobile-menu-grid .mobile-full-settings strong,
+  .mobile-menu-grid .mobile-full-settings small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-menu-grid .mobile-full-settings small {
+    color: var(--muted);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.64rem;
+    font-weight: 850;
+    text-transform: uppercase;
+  }
+
   .mobile-menu-grid .menu-item {
-    min-height: 48px;
-    padding: 10px;
-    font-size: 0.86rem;
+    min-height: 43px;
+    padding: 8px 10px;
+    font-size: 0.82rem;
   }
 
   .paper-slot {
@@ -9490,7 +9555,7 @@ body.loot-drag-active * {
 @media (max-width: 680px) {
   .lobby-shell.title-screen {
     min-height: 100svh;
-    gap: 8px;
+    gap: 6px;
     padding: 8px;
   }
 
@@ -9499,50 +9564,59 @@ body.loot-drag-active * {
   }
 
   .title-stage {
-    min-height: min(46svh, 390px);
-    gap: 10px;
-    padding: 18px 4px 0;
+    min-height: min(36svh, 310px);
+    gap: 8px;
+    padding: 12px 4px 0;
+  }
+
+  .title-front .title-front-stage {
+    min-height: calc(100svh - 16px);
+  }
+
+  .title-front .title-copy h1 {
+    font-size: clamp(3.25rem, 19vw, 4.8rem);
   }
 
   .title-copy {
-    gap: 7px;
+    gap: 5px;
     padding-bottom: 0;
   }
 
   .title-copy h1 {
-    font-size: clamp(3.25rem, 19vw, 4.8rem);
+    font-size: clamp(3rem, 17vw, 4.4rem);
   }
 
   .title-copy p {
     max-width: 34ch;
-    font-size: 0.96rem;
+    font-size: 0.88rem;
+    line-height: 1.24;
   }
 
   .title-hero-showcase {
-    grid-template-columns: 58px minmax(0, 1fr);
-    gap: 9px;
-    padding: 10px;
+    grid-template-columns: 50px minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px;
   }
 
   .title-hero-frame {
-    width: 58px;
-    min-height: 80px;
+    width: 50px;
+    min-height: 68px;
   }
 
   .title-hero-showcase p {
-    -webkit-line-clamp: 2;
+    display: none;
   }
 
   .title-control-panel {
-    gap: 8px;
-    padding: 12px 10px 14px;
+    gap: 6px;
+    padding: 10px 9px 12px;
     background-size: cover;
   }
 
   .name-row.title-action-rail {
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    padding: 10px;
+    gap: 6px;
+    padding: 8px;
   }
 
   .title-field,
@@ -9551,13 +9625,19 @@ body.loot-drag-active * {
   }
 
   .title-action-rail .primary-action {
-    min-height: 42px;
+    min-height: 39px;
   }
 
   .title-secondary-actions {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
+    gap: 5px;
+  }
+
+  .title-secondary-actions .icon-action {
+    min-height: 36px;
+    padding-inline: 8px;
+    font-size: 0.74rem;
   }
 
   .title-screen .join-qr {
@@ -9566,41 +9646,62 @@ body.loot-drag-active * {
 
   .title-control-panel .profile-strip {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 5px;
+    gap: 4px;
   }
 
   .title-control-panel .profile-strip span {
-    min-height: 44px;
-    padding: 7px 5px;
-    font-size: 0.58rem;
+    min-height: 37px;
+    padding: 5px 4px;
+    font-size: 0.55rem;
     text-align: center;
   }
 
   .title-control-panel .profile-strip strong {
-    font-size: 0.86rem;
+    font-size: 0.78rem;
+  }
+
+  .hero-carousel-cue {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--gold-bright);
+    font-size: 0.62rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .hero-carousel-cue::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(210, 177, 92, 0.42), transparent);
   }
 
   .title-control-panel .hero-grid {
     display: flex;
-    gap: 8px;
+    gap: 7px;
     overflow-x: auto;
-    padding: 1px 1px 4px;
+    padding: 1px 18px 3px 1px;
     scrollbar-width: none;
+    mask-image: linear-gradient(90deg, #000 calc(100% - 38px), transparent);
   }
 
   .title-control-panel .hero-card {
-    grid-template-columns: 74px minmax(0, 1fr);
-    flex: 0 0 min(82vw, 310px);
-    min-height: 148px;
+    grid-template-columns: 64px minmax(0, 1fr);
+    flex: 0 0 min(76vw, 286px);
+    min-height: 126px;
+    padding: 8px;
   }
 
   .title-control-panel .hero-portrait-wrap {
-    width: 74px;
-    height: 122px;
+    width: 64px;
+    height: 108px;
   }
 
   .title-control-panel .hero-card strong {
-    font-size: 1rem;
+    font-size: 0.94rem;
   }
 
   .title-control-panel .hero-card p {
