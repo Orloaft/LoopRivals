@@ -3,7 +3,7 @@
 ## Status
 
 Complete. This was a read-only mechanics/data/flow audit. No source, asset, package, config, or test files were edited. No build or tests were run because this lane only needed code/data inspection.
-The target report already existed as an untracked file at startup; this pass verified it against source and refreshed the allowed report path only.
+The target report existed at startup; this pass verified it against `cb59209` source and refreshed the allowed report path only.
 
 ## Repo HEAD From Preflight
 
@@ -42,6 +42,7 @@ Evidence:
 - Boss configs and boss tile type set are in `server/rules.mjs:67` through `server/rules.mjs:102`.
 - Boss gate promotion is lap-driven, not score-driven: `loopTierForLaps` checks only laps, then `promotePlayerIfReady` gates promotion on act-boss clear. Evidence: `server/rules.mjs:2379` through `server/rules.mjs:2382`, `server/rules.mjs:2492` through `server/rules.mjs:2500`.
 - Combat encounter assets/lineups for the three staged bosses are in `server/rules.mjs:353` through `server/rules.mjs:376`.
+- Encounter lineups repeat listed enemy IDs up to the requested enemy count, capped at 5. Evidence: `server/rules.mjs:3152` through `server/rules.mjs:3160`.
 - Tests confirm the three staged rosters and tile sequences at `test/rules.test.mjs:1421`, `test/rules.test.mjs:1670`, and `test/rules.test.mjs:1701`.
 
 ### Boss-class placed tiles/enemies
@@ -101,6 +102,7 @@ Client-facing evidence:
 - The top phase strip can show loop countdowns to `Act N Boss` or `Tyrant` before the phase spawns. Evidence: `src/game-ui.tsx:693` through `src/game-ui.tsx:708`, `src/game-ui.tsx:806` through `src/game-ui.tsx:820`.
 - The mechanics hint can show `Boss wager` with remaining seals while `player.bossPhase` exists. Evidence: `src/game-ui.tsx:517` through `src/game-ui.tsx:522`.
 - Board tile popovers show tile name, combat stop, charges/permanence, and loop path, but not boss name, seal index, or phase progress. Evidence: `src/game-ui.tsx:2320` through `src/game-ui.tsx:2330`.
+- Staged boss tile names/glyphs exist, but staged boss tile descriptions are missing from `tileDescription`, so those popovers fall back to `Unknown loop tile.` Evidence: `src/game-ui.tsx:72` through `src/game-ui.tsx:121`, `src/game-ui.tsx:197` through `src/game-ui.tsx:233`.
 - Combat entry cue is always just `fight!`. Evidence: `src/game-ui.tsx:2755` through `src/game-ui.tsx:2767`.
 - Combat outcome text is generic: `Hero Fell`, `Loot Found`, or `Victory`; there is no boss-specific `Seal broken`, `Boss enraged`, or `Tyrant defeated` state in the overlay. Evidence: `src/game-ui.tsx:2805` through `src/game-ui.tsx:2843`.
 - Help/tutorial copy says bosses have an ante/wager, but server implementation has only a TODO for a real boss ante. Evidence: `src/App.tsx:1435` through `src/App.tsx:1439`, `src/game-ui.tsx:3110` through `src/game-ui.tsx:3112`, `server/rules.mjs:2542`.
@@ -127,6 +129,7 @@ Client-facing evidence:
 
 3. Boss phase progress is under-signaled on the board/HUD once the phase has spawned.
    - `bossPhase` is tracked in type/projection, but board tile popovers do not expose boss phase ID, chunk index, seal order, or remaining chunks. Evidence: `src/types.ts:277` through `src/types.ts:308`, `src/room-projection.ts:481` through `src/room-projection.ts:495`, `src/game-ui.tsx:2320` through `src/game-ui.tsx:2330`.
+   - The staged boss tile popover has a readable title and glyph, but no staged boss description, so its body falls through to `Unknown loop tile.` Evidence: `src/game-ui.tsx:72` through `src/game-ui.tsx:121`, `src/game-ui.tsx:197` through `src/game-ui.tsx:233`.
    - A loop-tier card exists in JSX, but CSS hides it with `display: none !important`; the separate phase strip covers pre-spawn loop countdown, but not spawned boss seal/chunk progress. Evidence: `src/game-ui.tsx:1407` through `src/game-ui.tsx:1423`, `src/styles.css:6645` through `src/styles.css:6648`.
 
 4. Terminology drifts between "chunk," "seal," and tile names.
@@ -155,7 +158,7 @@ Client-facing evidence:
 
 2. High impact, low risk: surface boss progress on the board before combat.
    - Add a compact spawned-boss target card or extend the existing phase strip with seal/chunk progress.
-   - Add boss tile popover lines like `Briar Warden seal 1/4` and `3 seals remain`.
+   - Add boss tile descriptions and popover lines like `Briar Warden seal 1/4` and `3 seals remain`.
    - Add a one-lap Tyrant warning event/log instead of the current no-op precheck.
    - Verification: projection tests for boss phase display inputs, Playwright screenshots for boss phase board state.
 
@@ -179,13 +182,8 @@ Client-facing evidence:
 `git status --short` after this audit:
 
 ```text
-?? runs/boss-fight-excitement-stocktake-2026-07-04.assets-runtime.prompt.md
-?? runs/boss-fight-excitement-stocktake-2026-07-04.assets-runtime.report.md
-?? runs/boss-fight-excitement-stocktake-2026-07-04.excitement.prompt.md
-?? runs/boss-fight-excitement-stocktake-2026-07-04.excitement.report.md
-?? runs/boss-fight-excitement-stocktake-2026-07-04.md
-?? runs/boss-fight-excitement-stocktake-2026-07-04.mechanics.prompt.md
-?? runs/boss-fight-excitement-stocktake-2026-07-04.mechanics.report.md
+ M runs/boss-fight-excitement-stocktake-2026-07-04.assets-runtime.report.md
+ M runs/boss-fight-excitement-stocktake-2026-07-04.mechanics.report.md
 ```
 
-Only the allowed mechanics report path was modified by this audit. Existing untracked run/prompt/report files were preserved. Nothing was staged, committed, or pushed.
+Only the allowed mechanics report path was modified by this mechanics audit. The modified assets-runtime report was already present or changed outside this pass and was not touched here. Nothing was staged, committed, or pushed.

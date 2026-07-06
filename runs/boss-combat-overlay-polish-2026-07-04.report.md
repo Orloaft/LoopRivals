@@ -2,51 +2,56 @@
 
 ## Status
 
-Implemented and locally verified. This slice is limited to boss combat presentation in the existing combat overlay.
+Implemented, verified, and committed.
 
-Repo preflight HEAD: `9b81e06`.
+- Repo preflight HEAD: `9b81e06`.
+- Implementation commit: `98a1294` (`Polish boss combat overlay`).
+- Session key: `agent:codex-dev:mgr-loopduel-boss-combat-overlay-polish-2026-07-04`.
 
 ## Dirty State Boundary
 
-Pre-existing tracked modifications were present before this slice:
+Pre-existing tracked modifications were present before this slice and were preserved:
 
 - `runs/boss-fight-excitement-stocktake-2026-07-04.assets-runtime.report.md`
 - `runs/boss-fight-excitement-stocktake-2026-07-04.mechanics.report.md`
 
-These are unrelated stocktake/report dirt and will not be edited, staged, or reverted by this slice.
+These unrelated stocktake/report files were not edited, staged, reverted, or committed by this slice.
 
-## Planned Scope
+## Implementation Confirmation
 
-- Add localized boss combat presentation inference in `src/game-ui.tsx`.
-- Change boss combat cues, title/meta/result copy, and overlay classes without changing combat mechanics or protocol.
-- Add lightweight boss overlay styling in `src/styles.css`.
-- Keep normal combat copy and layout unchanged.
-
-## Proof Artifacts
-
-Artifacts will be written under:
-
-- `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/`
-
-## Implementation
-
-- Added boss-combat presentation inference in `src/game-ui.tsx`.
-- Changed boss entry cues from ordinary `fight!` to `boss!` or `tyrant!`.
-- Changed boss overlay titles/meta/results to `Act Boss`, `Loop Tyrant`, `Seal Broken`, `Boss Holds`, and final boss-broken copy.
+- Added localized boss combat presentation inference in `src/game-ui.tsx`.
+- Changed boss combat entry cues and overlay copy to use `boss!`, `tyrant!`, `Act Boss`, `Loop Tyrant`, `Seal Broken`, `Boss Holds`, and final boss-broken copy.
 - Added seal progress copy and pips such as `Seal 1/4`.
 - Added boss-specific overlay color treatment in `src/styles.css`.
-- Preserved normal combat copy and classes when no boss phase is active.
+- Preserved ordinary combat copy/classes when no boss phase is active.
+- No combat mechanics, protocol, or asset changes were made.
 
 ## Verification
 
-- Pass: `npm run lint`.
-- Pass: `npm run build`.
 - Pass: `git diff --check`.
-- Pass: desktop boss entry/result Playwright captures.
-- Pass: mobile boss entry/result Playwright captures.
-- Pass: Loop Tyrant entry Playwright capture.
-- Pass: normal combat regression capture still shows `fight!`.
-- Pass: no listener left on ports `5200-5219`.
+- Pass: `npm run lint` (`eslint . && node scripts/check-keyframe-purity.mjs`).
+- Pass: `npm run build` (`tsc -b && vite build`).
+- Pass: desktop boss entry/result proof artifacts inspected.
+- Pass: mobile boss entry/result proof artifacts inspected.
+- Pass: Loop Tyrant entry proof artifact inspected.
+- Pass: normal combat regression proof artifact shows `fight!` and no boss overlay class.
+- Pass: no listener left on ports `5200-5219` (`lsof -nP -iTCP:5200-5219 -sTCP:LISTEN` produced no output).
+
+## Proof Artifacts
+
+Ignored proof artifacts remain on disk under `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/`:
+
+- `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/proof-text.json`
+- `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/proof-rooms.json`
+- `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/capture-proof.mjs`
+- `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/boss-act-desktop-entry.png`
+- `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/boss-act-desktop-result.png`
+- `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/boss-act-mobile-entry.png`
+- `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/boss-act-mobile-result.png`
+- `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/boss-final-desktop-entry.png`
+- `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/boss-final-desktop-result.png`
+- `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/boss-tyrant-desktop-entry.png`
+- `.openclaw-artifacts/boss-combat-overlay-polish-2026-07-04/normal-combat-desktop-entry.png`
 
 ## Proof Notes
 
@@ -55,6 +60,18 @@ Artifacts will be written under:
 - Loop tyrant: `tyrant!`, `Loop Tyrant`, `Seal 1/4`.
 - Normal combat: `fight!`, `Fight!`, no boss overlay class.
 
-## Final Status
+## Final Git Status
 
-Implemented and verified locally. Not committed or pushed yet.
+Final `git status --short --branch` after this report update:
+
+```text
+## main...origin/main [ahead 1]
+ M runs/boss-combat-overlay-polish-2026-07-04.report.md
+ M runs/boss-fight-excitement-stocktake-2026-07-04.assets-runtime.report.md
+ M runs/boss-fight-excitement-stocktake-2026-07-04.mechanics.report.md
+```
+
+## Caveats
+
+- The implementation commit was created before this final report hash/status update, so this report is expected to remain modified in the working tree.
+- No push was performed.

@@ -2,130 +2,147 @@
 
 ## Status
 
-Complete by manager recovery. The `assets-runtime` worker wrapper was lost, but the lane had written the early report stub and the manager recovered the visual proof locally without editing source code, assets, package files, or config.
+Complete, with caveats.
 
-Preflight HEAD: `cb59209`.
+- Repo HEAD preflight: `cb59209`
+- Scope honored: read-only source audit plus allowed writes to this report and proof artifacts under `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/`
+- No source files, committed assets, package files, config, or tests were edited by this audit.
+- Boss combat was reachable through the normal app surface. Desktop proof is clean. Mobile proof is reachable through the normal joined app flow, but the Loop Tyrant five-enemy lineup slightly clips at the right edge.
+- After capture, an unrelated dirty `src/game-ui.tsx` boss-overlay polish change appeared in the worktree. It is preserved and listed in final repo status; the findings and screenshots below describe the stock `cb59209` runtime captured for this read-only audit.
 
-Allowed writes from this lane:
+## Source Reference Map
 
-- this report
-- proof artifacts under `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/`
+Line references are from the preflight `cb59209` stock scan.
 
-## Method And Caveats
-
-Two kinds of proof were captured:
-
-1. Normal guided combat from the current dev server. This confirms the current overlay still presents combat as generic `Fight!` copy on desktop and mobile.
-2. Deterministic boss fixture captures created through the normal app surface with `testApi` and `createRoomRuntime`, then loaded through `?skiptitle=1&room=<room>`.
-
-Caveat: the boss fixture script defaulted to `production-existing-dist` because ignored `dist/index.html` already existed. Those screenshots are still useful for inspecting boss assets in the normal app layout, but the source-of-truth generic-copy finding is backed by the dev guided captures and source inspection in `src/game-ui.tsx`.
-
-No page errors were recorded in the guided captures. Console output was limited to Vite/React dev messages.
+- Combat enemy URL, size classes, and prewarmed enemy list: `src/game-assets.ts:26`, `src/game-assets.ts:30`, `src/game-assets.ts:140`
+- Boss loop tile art list: `src/game-assets.ts:100`
+- Boss phase configs: `server/rules.mjs:67`
+- Boss combat encounter lineups/backgrounds/effects: `server/rules.mjs:353`
+- Boss board staging and boss-tile resolution: `server/rules.mjs:2529`, `server/rules.mjs:2613`
+- Normal combat overlay lineup/rendering: `src/game-ui.tsx:2816`, `src/game-ui.tsx:2891`, `src/game-ui.tsx:2958`
+- Enemy layout/scale CSS: `src/styles.css:3194`, `src/styles.css:3471`, `src/styles.css:4115`
+- Boss tile CSS mappings: `src/styles.css:4980`
 
 ## Boss Asset Inventory
 
-Staged boss combat sprites:
+### Boss Combat Sprites
 
-- Briar Warden: `/assets/combat/enemy-briar-warden.png`
-- Crown Sentinel: `/assets/combat/enemy-crown-sentinel.png`
-- Loop Tyrant: `/assets/combat/enemy-loop-tyrant.png`
+All three act/final bosses use unique combat sprite files and are marked `large` by `combatEnemyPresentation`.
 
-Boss-class support sprites:
+| Boss | Runtime lineup | Sprite | Size | Background/effect | Boss tiles |
+| --- | --- | --- | --- | --- | --- |
+| Briar Warden | `briar-warden` only | `public/assets/combat/enemy-briar-warden.png` | 416x472, large | `bg-grove.png`, claw | `rootwall`, `bramblebloom`, `wardensheart`, `oldgrowth` |
+| Crown Sentinel | `crown-sentinel`, `gate-wyrm` | `public/assets/combat/enemy-crown-sentinel.png` | 416x472, large | `bg-forge.png`, ember | `guardstance`, `markedchallenge`, `retaliation`, `executionstance` |
+| Loop Tyrant | `loop-tyrant`, `briar-warden`, `crown-sentinel`, then repeats | `public/assets/combat/enemy-loop-tyrant.png` | 352x472, large | `bg-crypt.png`, spectral | `seal1`, `seal2`, `seal3`, `innergate` |
 
-- Gate Wyrm: `/assets/combat/enemy-gate-wyrm.png`
-- Crown Gate: `/assets/combat/enemy-crown-gate.png`
-- Ash Imp: `/assets/combat/enemy-ash-imp.png`
+### Boss-Class / Large Enemy Assets Referenced By The App
 
-Large normal comparison sprites included in the contact sheet because they compete visually with bosses:
+These are not all act bosses, but they share boss-scale treatment or appear in boss-class encounters and are referenced by the app's combat asset list.
 
-- Dire Thorn
-- Grave Knight
-- Bone Host
-- Keep Reaver
-- Moon Fiend
-- Loop Warden
+- `public/assets/combat/enemy-gate-wyrm.png` - large; appears as Crown Sentinel helper and in Wyrm Gate/Ember Gate/Dragon Roost encounters.
+- `public/assets/combat/enemy-crown-gate.png` - large; used in Wyrm Gate/Ember Gate/Dragon Roost encounters.
+- `public/assets/combat/enemy-loop-warden.png` - large; prewarmed/sized by `src/game-assets.ts`, but I found no current `server/rules.mjs` encounter that emits it.
+- Other large normal enemies that reduce boss distinctiveness by sharing the same large-stage treatment: `enemy-bone-host.png`, `enemy-dire-thorn.png`, `enemy-grave-knight.png`, `enemy-keep-reaver.png`, `enemy-moon-fiend.png`.
 
-Staged boss tile/seal assets:
+### Boss Loop / Seal Tile Assets
 
-- Briar Warden: `rootwall`, `bramblebloom`, `wardensheart`, `oldgrowth`
-- Crown Sentinel: `guardstance`, `markedchallenge`, `retaliation`, `executionstance`
-- Loop Tyrant: `seal1`, `seal2`, `seal3`, `innergate`
+Current boss phases use 12 tile assets:
 
-Boss-class tile assets:
+- Act I: `rootwall`, `bramblebloom`, `wardensheart`, `oldgrowth`
+- Act II: `guardstance`, `markedchallenge`, `retaliation`, `executionstance`
+- Final: `seal1`, `seal2`, `seal3`, `innergate`
 
-- `wyrmgate`
-- `dragonroost`
-- `embergate`
+Four more boss-loop tile assets are referenced/prewarmed and mapped in CSS but are not used by current boss configs: `wyrmhead`, `wyrmclaw`, `wyrmcoil`, `wyrmtail`.
 
-Registered but not current staged boss config:
+## Runtime Capture Method
 
-- `wyrmhead`
-- `wyrmclaw`
-- `wyrmcoil`
-- `wyrmtail`
+I used the normal app surface, not a standalone art harness, for combat screenshots.
 
-## Visual Findings
+Because reaching all three boss fights through real-time lap play would be slow and nondeterministic, I seeded rooms with the existing repo rules API and server persistence path:
 
-The tile/seal assets are the strongest part of the current boss presentation. They read as authored boss objects, stay distinct in grayscale, and fit the dark fantasy board language.
+- Generated combat states with `testApi.createRoom`, `testApi.createPlayer`, `testApi.checkWinner`, and `testApi.triggerTile` from `server/rules.mjs`.
+- Persisted those rooms to `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/boss-combat-seeded-rooms.persistence.json`.
+- Loaded them through `server/index.mjs` using `LOOPDUEL_PERSISTENCE_PATH`.
+- Served the normal dev app on `PORT=5200`, `LOOPDUEL_VITE_HMR_PORT=5201`.
+- Captured desktop through the built-in `Watch` spectator flow.
+- Captured mobile through the normal joined player flow, then focused the boss runner via the mobile rival chip. This was cleaner than spectator mobile, which clipped the combat panel badly.
 
-The staged boss sprites are good enough to keep. Briar Warden and Crown Sentinel read clearly as named threats. Gate Wyrm is also strong. Loop Tyrant has the right ornate/final-boss concept, but it does not dominate the five-enemy Tyrant lineup by itself; in runtime captures, the repeated Briar/Tyrant/Crown group can make the final boss feel like a party of large enemies rather than one commanding enemy.
+This proves the current React/CSS combat surface using real server combat payloads. It does not prove the full hand-played progression path from a fresh run to each boss.
 
-The live combat-view weakness is presentation hierarchy, not raw asset quality. Boss fights still use the same combat shell, result language, and beat framing as normal fights. The proof captures show large boss sprites, but the headline moment is still ordinary attack text such as `The Crown Sentinel strikes Player` rather than `Loop Tyrant`, `Seal 3/4`, or `Boss Holds`.
+## Proof Artifacts
 
-Mobile is readable but tight. The 390px-wide boss overlay fits, but a five-enemy Tyrant lineup crowds the enemy side, and the boss identity depends heavily on tiny name/pip text. Any new boss UI should be compact: one boss title, one seal row, and result copy that replaces generic text instead of adding large extra panels.
+Runtime screenshots:
 
-## Runtime Proof Artifacts
+- Desktop Briar Warden: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-briar-warden-desktop.png`
+- Desktop Briar Warden grayscale: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-briar-warden-desktop-grayscale.png`
+- Desktop Crown Sentinel: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-crown-sentinel-desktop.png`
+- Desktop Crown Sentinel grayscale: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-crown-sentinel-desktop-grayscale.png`
+- Desktop Loop Tyrant: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-loop-tyrant-desktop.png`
+- Desktop Loop Tyrant grayscale: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-loop-tyrant-desktop-grayscale.png`
+- Mobile joined Briar Warden: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-briar-warden-mobile-joined.png`
+- Mobile joined Briar Warden grayscale: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-briar-warden-mobile-joined-grayscale.png`
+- Mobile joined Crown Sentinel: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-crown-sentinel-mobile-joined.png`
+- Mobile joined Crown Sentinel grayscale: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-crown-sentinel-mobile-joined-grayscale.png`
+- Mobile joined Loop Tyrant: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-loop-tyrant-mobile-joined.png`
+- Mobile joined Loop Tyrant grayscale: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-loop-tyrant-mobile-joined-grayscale.png`
 
-Root:
+Contact sheets and metadata:
 
-`.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/`
+- Full combat enemy contact sheet: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/combat-enemy-contact-sheet-color.png`
+- Full combat enemy grayscale sheet: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/combat-enemy-contact-sheet-grayscale.png`
+- Boss/boss-class lineup sheet: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/boss-lineup-contact-sheet-color.png`
+- Boss/boss-class grayscale sheet: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/boss-lineup-contact-sheet-grayscale.png`
+- Boss tile sheet: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/boss-tile-contact-sheet-color.png`
+- Boss tile grayscale sheet: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/boss-tile-contact-sheet-grayscale.png`
+- Runtime capture manifest: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-screenshot-manifest.json`
+- Mobile joined manifest: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/runtime-mobile-joined-manifest.json`
+- Seeded room summary: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/boss-combat-seeded-rooms.summary.json`
+- Readability metrics: `.openclaw-artifacts/boss-fight-excitement-stocktake-2026-07-04/assets-runtime/asset-readability-metrics.json`
 
-Contact sheets:
+## What Looks Exciting Now
 
-- `boss-enemy-contact-sheet.png`
-- `boss-enemy-contact-sheet-gray.png`
-- `boss-tile-contact-sheet.png`
-- `boss-tile-contact-sheet-gray.png`
+- The three boss sprite files are unique, high-effort art, not palette swaps.
+- The boss tile/seal symbols stay readable in grayscale. The seal row especially reads as deliberate boss progression.
+- The combat overlay has good moment-to-moment energy: damage banner, attack text, animated hit/strike state, stage hit, HP pips, and per-theme background/effect.
+- Loop Tyrant is mechanically and visually the most intense because the payload creates five enemies and a stacked HP display.
+- The normal runtime view clearly names the boss in the combat banner and enemy nameplate.
 
-Current dev guided combat:
+## Visual / Readability / Staging Gaps
 
-- `desktop-guided-combat.png`
-- `desktop-guided-combat-gray.png`
-- `mobile-guided-combat.png`
-- `mobile-guided-combat-gray.png`
+- Bosses are rendered through the same `enemy-party` layout as normal enemies. Aside from `large` sizing and different background/effect, there is no boss-specific composition, intro, camera, frame, or stage treatment.
+- Crown Sentinel is visually demoted by its own runtime lineup: `gate-wyrm` is large, central, and more massive, while `enemy-kind-crown-sentinel` has a CSS scale of `0.92`.
+- Loop Tyrant repeats boss sprites in a five-enemy lineup. The repeated Tyrant/Briar bodies create pressure, but also clutter the silhouette and make the final boss feel like a mob pack instead of one dominant entity.
+- Mobile joined proof reaches the boss combat view, but the 390px layout is dense. In the Loop Tyrant capture, the rightmost enemy extends a little past the viewport. Spectator mobile is worse and clips the focused combat panel, so it is not a good proof surface.
+- The boss banner often covers the upper torso/head area during beat captures. This adds drama, but it also hides silhouette detail at the exact moment the screenshot should sell the boss.
+- The board-side boss tiles are readable, but their runtime use is quiet: boss phase staging swaps in four special tiles without a strong reveal, seal-breaking effect, or direct visual connection to the combat overlay.
+- Restored seeded rooms show an authority/waiting-for-host panel outside the combat overlay. It does not block the combat proof, but it is a capture-method artifact.
 
-Boss runtime fixture captures:
+## Opportunities For More Exciting Bosses
 
-- `runtime-briar-warden-desktop.png`
-- `runtime-briar-warden-mobile.png`
-- `runtime-crown-sentinel-desktop.png`
-- `runtime-crown-sentinel-mobile.png`
-- `runtime-loop-tyrant-desktop.png`
-- `runtime-loop-tyrant-mobile.png`
-- `runtime-wyrm-gate-desktop.png`
-- `runtime-wyrm-gate-mobile.png`
-- `runtime-dragon-roost-desktop.png`
-- `runtime-dragon-roost-mobile.png`
-
-Supporting proof files:
-
-- `capture-boss-runtime.mjs`
-- `runtime-rooms.json`
-- `capture-summary.json`
-- `visual-observations.json`
-
-## Recommendation
-
-Do not start with new boss art. Start with a boss presentation pass in `CombatOverlay`:
-
-- boss-specific entry cue: `boss!` / `tyrant!`
-- boss title: `Act Boss` / `Loop Tyrant`
-- seal progress: `Seal X/4` or compact pips
-- result copy: `Seal Broken`, `Briar Warden Broken`, `Loop Tyrant Broken`, `Boss Holds`
-- subtle static frame treatment for boss combats only
-
-This should make the existing assets feel more authored while avoiding the risk of spending time replacing sprites that are already serviceable.
+- Give each boss a bespoke combat stage layout. Briar can loom low and wide with root silhouettes; Crown Sentinel should stand central/taller than helpers; Loop Tyrant should dominate the scene as one primary body with minions pushed smaller and farther back.
+- Add a boss-only intro beat before normal combat: name slam, boss portrait/sigil, background color shift, and short screen shake.
+- Replace repeated Loop Tyrant copies with one oversized Tyrant plus spectral echoes, chains, seals, or orbiting defeated-boss silhouettes. Keep the five-foe mechanics, but do not make the visual read as duplicate bodies.
+- Rebalance Crown Sentinel's visual hierarchy: remove the `0.92` boss scale reduction, shrink/offset Gate Wyrm, or frame Sentinel with a crown/shield aura so the boss is the first read.
+- Push boss-specific VFX: bramble lash/root burst for Briar, crown beam/shield flare for Sentinel, seal fracture/loop distortion for Tyrant.
+- Improve mobile boss layout: cap enemy party width to the overlay, collapse five HP rows more aggressively, reduce banner height during beats, and ensure all enemy sprites remain inside the viewport.
+- Make boss tiles part of the show: pulse the active boss tile, crack seals as chunks clear, and echo the active tile symbol into the combat background/nameplate.
+- Consider art passes that strengthen grayscale silhouettes: Briar already reads best as a squat thorn mass; Sentinel needs a clearer crown/shield outline at small sizes; Tyrant needs brighter face/halo/loop anchors so the robe mass does not disappear into crypt backgrounds.
 
 ## Server Cleanup Status
 
-Clean. A final port check showed no listeners on `5200-5219`.
+- First standalone server attempt on `5200/5201` exited before capture and left no listeners.
+- Runtime capture then used owned subprocesses on `5200` and `5201`, stopped them in `finally`, and verified cleanup.
+- Final listener check for `5200` and `5201`: no listeners remained.
+
+## Final Repo Status
+
+`git status --short` at report time:
+
+```text
+ M runs/boss-fight-excitement-stocktake-2026-07-04.assets-runtime.report.md
+ M runs/boss-fight-excitement-stocktake-2026-07-04.mechanics.report.md
+ M src/game-ui.tsx
+?? runs/boss-combat-overlay-polish-2026-07-04.report.md
+```
+
+Only this report was intentionally edited by this audit. The other dirty entries were not part of this work and were preserved.
