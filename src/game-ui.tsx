@@ -38,6 +38,13 @@ type RunnerFloater = {
   lane: number;
 };
 
+type PlacementFeedback = {
+  playerId: string;
+  tileIndex: number;
+  commandId: string;
+  tileType: string;
+};
+
 type LiveFloater = {
   node: HTMLElement;
   value: number;
@@ -54,6 +61,60 @@ const maxFloaterNodes = 4;
 
 function formatFloaterText(value: number, suffix: string) {
   return `${value > 0 ? '+' : ''}${value}${suffix}`;
+}
+
+function trimRunnerEffectNodes(container: HTMLElement) {
+  while (container.childElementCount > maxFloaterNodes) {
+    container.firstElementChild?.remove();
+  }
+}
+
+function appendOneShotRunnerNode(container: HTMLElement, node: HTMLElement) {
+  node.addEventListener('animationend', () => node.remove(), { once: true });
+  container.append(node);
+  trimRunnerEffectNodes(container);
+}
+
+function spawnTileArrivalPulse(highlight: HTMLElement | null) {
+  if (!highlight || typeof document === 'undefined') return;
+  if (prefersReducedMotion() || document.documentElement.classList.contains('quality-low')) return;
+  const node = document.createElement('span');
+  node.className = 'tile-arrival-pulse';
+  appendOneShotRunnerNode(highlight, node);
+}
+
+function spawnLapSweep(board: HTMLElement | null) {
+  if (!board || typeof document === 'undefined') return;
+  const node = document.createElement('span');
+  node.className = 'lap-sweep-ring';
+  node.addEventListener('animationend', () => node.remove(), { once: true });
+  board.append(node);
+  board.querySelectorAll('.lap-sweep-ring').forEach((sweep, index, sweeps) => {
+    if (index < sweeps.length - 2) sweep.remove();
+  });
+}
+
+function spawnLootPickup(container: HTMLElement | null, item: Loot) {
+  if (!container || typeof document === 'undefined') return;
+  const node = document.createElement('span');
+  node.className = `loot-pickup ${item.rarity}`;
+  const src = itemSpriteUrl(item.name);
+  if (src) {
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = '';
+    node.append(img);
+  } else {
+    const glyph = document.createElement('b');
+    glyph.textContent = '◆';
+    node.append(glyph);
+  }
+  if (item.rarity === 'relic') {
+    const plaque = document.createElement('em');
+    plaque.textContent = 'RELIC';
+    node.append(plaque);
+  }
+  appendOneShotRunnerNode(container, node);
 }
 
 const equipmentSlots: EquipmentSlot[] = ['weapon', 'shield', 'helm', 'armor', 'gloves', 'boots', 'ring', 'charm'];
@@ -340,8 +401,9 @@ function bossResultDetail(bossInfo: BossCombatPresentation, combat: Combat) {
   return bossInfo.finalClearDetail;
 }
 
-function bossSealPipClass(bossInfo: BossCombatPresentation, index: number) {
+function bossSealPipClass(bossInfo: BossCombatPresentation, index: number, breakingSeal = false) {
   const seal = index + 1;
+  if (breakingSeal && seal === bossInfo.currentSeal) return 'active breaking';
   if (seal === bossInfo.currentSeal) return 'active';
   if (seal <= bossInfo.clearedSeals) return 'cleared';
   return 'pending';
@@ -838,6 +900,7 @@ function useRunnerMotion(
   onCombatStopReached?: (cursor: number | null) => void
 ) {
   const cursorRef = useRef<number | null>(null);
+  const arrivalTileRef = useRef<number | null>(null);
   const lastFrameAtRef = useRef<number | null>(null);
   const clockRef = useRef({ serverNow, receivedAt });
   const playerRef = useRef(player);
@@ -861,6 +924,7 @@ function useRunnerMotion(
     if (!moving || authorityPaused) {
       const cursor = visualCursorForPlayer(player, serverNow, receivedAt, authorityPaused);
       cursorRef.current = cursor;
+      arrivalTileRef.current = player.board.length ? Math.floor(cursor) % player.board.length : null;
       lastFrameAtRef.current = null;
       setRunnerMotionTransform(runnerRef.current, highlightRef.current, pointAlongBoard(player.board, cursor));
       onCombatStopReached?.(null);
@@ -873,6 +937,7 @@ function useRunnerMotion(
     if (authorityPaused) return undefined;
     if (!moving || !currentPlayer.board.length || !currentTile) {
       cursorRef.current = authoritativeCursor(currentPlayer);
+      arrivalTileRef.current = currentPlayer.board.length ? currentPlayer.position : null;
       lastFrameAtRef.current = null;
       setRunnerMotionTransform(runnerRef.current, highlightRef.current, tileCenter(currentTile ?? currentPlayer.board[0]));
       return undefined;
@@ -905,6 +970,11 @@ function useRunnerMotion(
       lastFrameAtRef.current = frameAt;
       cursorRef.current = nextCursor;
       setRunnerMotionTransform(runnerRef.current, highlightRef.current, pointAlongBoard(currentPlayer.board, nextCursor));
+      const tileIndex = currentPlayer.board.length ? Math.floor(nextCursor) % currentPlayer.board.length : null;
+      if (tileIndex !== null && arrivalTileRef.current !== null && tileIndex !== arrivalTileRef.current) {
+        spawnTileArrivalPulse(highlightRef.current);
+      }
+      arrivalTileRef.current = tileIndex;
 
       const pendingCursor = pendingCombatStopCursor(currentPlayer, clock.serverNow, clock.receivedAt, authorityPaused);
       onCombatStopReached?.(pendingCursor !== null && nextCursor >= pendingCursor - 0.001 ? pendingCursor : null);
@@ -978,10 +1048,12 @@ function MobileRivalStrip({
       {players.map((player) => {
         const hpRatio = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
         const plan = tacticalLabel(player);
+        const impact = eventImpact(player.event);
         return (
           <button
             key={player.id}
-            className={`mobile-rival-chip ${focusedId === player.id ? 'selected' : ''} ${activeCard ? 'armed' : ''}`}
+            className={`mobile-rival-chip ${focusedId === player.id ? 'selected' : ''} ${activeCard ? 'armed' : ''} ${impact ? 'event-pulse' : ''}`}
+            data-player-id={player.id}
             style={{ '--hero-color': player.color, '--hp-ratio': `${hpRatio}%` } as CSSProperties}
             onClick={() => activeCard ? onTarget(player.id) : onFocus(player.id)}
           >
@@ -991,6 +1063,7 @@ function MobileRivalStrip({
               <small>{activeCard ? (activeCard.kind === 'bonk' ? 'bonk target' : 'target') : `${player.score} pts · ${plan}`}</small>
             </span>
             {player.rank === 1 && <Crown size={13} />}
+            {impact && <i key={`${player.lastEventAt ?? 0}-${player.event}`} className="mobile-rival-impact" aria-hidden="true" />}
           </button>
         );
       })}
@@ -2375,6 +2448,7 @@ type BoardTileButtonProps = {
   placementHint?: string;
   placementBlocked: boolean;
   recommended: boolean;
+  placementFeedback?: PlacementFeedback | null;
   draggingCard: Card | null;
   rivalTargetCard: Card | null;
   onTile?: (tile: Tile, cardId?: string) => void;
@@ -2390,11 +2464,15 @@ const BoardTileButton = memo(function BoardTileButton({
   placementHint,
   placementBlocked,
   recommended,
+  placementFeedback,
   draggingCard,
   rivalTargetCard,
   onTile,
   onRivalTile
 }: BoardTileButtonProps) {
+  const placedFeedbackKey = placementFeedback?.tileIndex === tile.index
+    ? `${placementFeedback.commandId}:${placementFeedback.tileType}`
+    : null;
   return (
     <button
       className={`tile ${tile.type} ${canPlaceTerrain ? 'placement-available' : ''} ${canPlaceRivalTile ? 'rival-tile-target' : ''} ${placementBlocked ? 'placement-blocked' : ''} ${recommended ? 'coach-recommended' : ''}`}
@@ -2431,6 +2509,11 @@ const BoardTileButton = memo(function BoardTileButton({
     >
       {tile.type === 'road' && <span className={`road-shape ${roadShapeClass(board, tile)}`} aria-hidden="true" />}
       <span className="tile-glyph">{tileGlyphs[tile.type] ?? '?'}</span>
+      {placedFeedbackKey && (
+        <span key={placedFeedbackKey} className="tile-placement-stamp" aria-hidden="true">
+          <b>{tileGlyphs[placementFeedback?.tileType ?? tile.type] ?? '✦'}</b>
+        </span>
+      )}
       <InfoPopover
         title={tileNames[tile.type] ?? tile.type}
         eyebrow={`Tile ${tile.index}`}
@@ -2462,6 +2545,9 @@ const BoardTileButton = memo(function BoardTileButton({
     previous.placementHint === next.placementHint &&
     previous.placementBlocked === next.placementBlocked &&
     previous.recommended === next.recommended &&
+    previous.placementFeedback?.commandId === next.placementFeedback?.commandId &&
+    previous.placementFeedback?.tileIndex === next.placementFeedback?.tileIndex &&
+    previous.placementFeedback?.tileType === next.placementFeedback?.tileType &&
     previous.draggingCard?.instanceId === next.draggingCard?.instanceId &&
     previous.rivalTargetCard?.instanceId === next.rivalTargetCard?.instanceId;
 });
@@ -2479,6 +2565,7 @@ type PlayerPanelProps = {
   selectedCard: Card | null;
   draggingCard: Card | null;
   rivalTargetCard: Card | null;
+  placementFeedback?: PlacementFeedback | null;
   recommendedTileIndexes?: number[];
   onTile?: (tile: Tile, cardId?: string) => void;
   onRivalTarget?: (cardId?: string) => void;
@@ -2510,6 +2597,10 @@ function playerPanelPropsEqual(previous: PlayerPanelProps, next: PlayerPanelProp
     cardRenderKey(previous.selectedCard) === cardRenderKey(next.selectedCard) &&
     cardRenderKey(previous.draggingCard) === cardRenderKey(next.draggingCard) &&
     cardRenderKey(previous.rivalTargetCard) === cardRenderKey(next.rivalTargetCard) &&
+    previous.placementFeedback?.commandId === next.placementFeedback?.commandId &&
+    previous.placementFeedback?.playerId === next.placementFeedback?.playerId &&
+    previous.placementFeedback?.tileIndex === next.placementFeedback?.tileIndex &&
+    previous.placementFeedback?.tileType === next.placementFeedback?.tileType &&
     sameNumberList(previous.recommendedTileIndexes, next.recommendedTileIndexes) &&
     Boolean(previous.onTile) === Boolean(next.onTile) &&
     Boolean(previous.onRivalTarget) === Boolean(next.onRivalTarget) &&
@@ -2531,6 +2622,7 @@ const PlayerPanel = memo(function PlayerPanel({
   selectedCard,
   draggingCard,
   rivalTargetCard,
+  placementFeedback,
   recommendedTileIndexes = [],
   onTile,
   onRivalTarget,
@@ -2550,7 +2642,7 @@ const PlayerPanel = memo(function PlayerPanel({
   const panelRef = useRef<HTMLElement | null>(null);
   const panelHitRef = useRef<HTMLSpanElement | null>(null);
   const [reachedPendingCombatCursor, setReachedPendingCombatCursor] = useState<number | null>(null);
-  const previousRunnerStatsRef = useRef<{ hp: number; score: number; gold: number; xp: number; level: number; laps: number } | null>(null);
+  const previousRunnerStatsRef = useRef<{ hp: number; score: number; gold: number; xp: number; level: number; laps: number; lootIds: string[] } | null>(null);
   const onCombatStopReached = useCallback((cursor: number | null) => {
     setReachedPendingCombatCursor((previous) => (previous === cursor ? previous : cursor));
   }, []);
@@ -2575,7 +2667,8 @@ const PlayerPanel = memo(function PlayerPanel({
       gold: player.gold ?? 0,
       xp: player.xp,
       level: player.level,
-      laps: player.laps
+      laps: player.laps,
+      lootIds: player.loot.map((item) => item.id)
     };
     const previous = previousRunnerStatsRef.current;
     previousRunnerStatsRef.current = current;
@@ -2596,6 +2689,8 @@ const PlayerPanel = memo(function PlayerPanel({
     const xpDelta = current.xp - previous.xp;
     const levelDelta = current.level - previous.level;
     const lapDelta = current.laps - previous.laps;
+    const previousLootIds = new Set(previous.lootIds);
+    const newLoot = player.loot.filter((item) => !previousLootIds.has(item.id)).slice(-2);
 
     if (hpDelta !== 0) addFloater(hpDelta, ' HP', hpDelta > 0 ? 'health' : 'loss');
     if (scoreDelta !== 0) addFloater(scoreDelta, ' score', scoreDelta > 0 ? 'gain' : 'loss');
@@ -2608,7 +2703,7 @@ const PlayerPanel = memo(function PlayerPanel({
     // overlay's per-beat sounds, so this layer covers reward moments only.
     if (active) {
       if (levelDelta > 0) sfx.levelUp();
-      if (goldDelta > 0) sfx.loot();
+      if (goldDelta > 0 || newLoot.length > 0) sfx.loot();
     }
 
     // Taking damage on the open board: a red flash plus a small decaying shake.
@@ -2634,7 +2729,7 @@ const PlayerPanel = memo(function PlayerPanel({
     }
 
     const container = runnerFloatersRef.current;
-    if (!container || nextFloaters.length === 0) return;
+    if (!container || (nextFloaters.length === 0 && levelDelta <= 0 && goldDelta <= 0 && lapDelta <= 0 && newLoot.length === 0)) return;
 
     window.requestAnimationFrame(() => {
       const live = liveFloatersRef.current;
@@ -2678,12 +2773,12 @@ const PlayerPanel = memo(function PlayerPanel({
         toss.addEventListener('animationend', () => toss.remove(), { once: true });
         container.append(toss);
       }
+      newLoot.forEach((item) => spawnLootPickup(container, item));
+      if (lapDelta > 0) spawnLapSweep(boardRef.current);
 
-      while (container.childElementCount > maxFloaterNodes) {
-        container.firstElementChild?.remove();
-      }
+      trimRunnerEffectNodes(container);
     });
-  }, [active, player.gold, player.hp, player.laps, player.level, player.score, player.xp]);
+  }, [active, player.gold, player.hp, player.laps, player.level, player.loot, player.score, player.xp]);
   const stunSeconds = Math.ceil((player.stunRemainingMs ?? 0) / 1000);
   const compactRival = !active && !focused;
   const impact = eventImpact(player.event);
@@ -2773,6 +2868,7 @@ const PlayerPanel = memo(function PlayerPanel({
               placementHint={placementHint}
               placementBlocked={placementBlocked}
               recommended={recommended}
+              placementFeedback={placementFeedback?.playerId === player.id ? placementFeedback : null}
               draggingCard={draggingCard}
               rivalTargetCard={rivalTargetCard}
               onTile={onTile}
@@ -2955,6 +3051,14 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
   const attackerName = activeBeat?.attacker === 'enemy' ? activeEnemyName : player.name;
   const defenderName = activeBeat?.attacker === 'enemy' ? player.name : activeEnemyName;
   const resultPhase = presentationPhase === 'result' || presentationPhase === 'exit';
+  const activeBeatIsFinisher = Boolean(activeBeat && (activeBeat.attacker === 'enemy' ? activeBeat.heroHp : activeBeat.enemyHp) <= 0);
+  const activeBeatImpactClass = activeBeat
+    ? `${activeBeat.damage >= Math.max(6, combat.damage) ? 'combat-fx-heavy' : 'combat-fx-quick'} ${activeBeatIsFinisher ? 'combat-fx-finisher' : ''}`
+    : '';
+  const resultClass = resultPhase
+    ? combat.heroHpAfter <= 0 ? 'result-defeat' : combat.enemyCount > 1 || combat.reward > 0 ? 'result-reward' : 'result-victory'
+    : '';
+  const bossSealBreaking = Boolean(resultPhase && bossInfo && combat.heroHpAfter > 0);
   const impactTitle = resultPhase ? combatOutcome : activeBeat ? `${attackerName} strikes ${defenderName}` : bossInfo?.entryTitle ?? 'Fight!';
   const impactValue = resultPhase
     ? bossInfo ? bossResultValue(bossInfo, combat) : `+${combat.reward} XP`
@@ -3014,7 +3118,7 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
   }, [presentation, beats, resultAtMs, exitAtMs, audible]);
 
   return (
-    <div ref={overlayRef} className={`combat-overlay phase-${presentationPhase} combat-bg-${combat.backgroundId} combat-effect-${combat.effect} enemy-stage-${largestEnemySize} ${bossInfo?.className ?? ''} ${activeBeat ? 'combat-beat-active' : ''} ${hitStop ? 'hit-stop' : ''} ${logOpen ? 'log-open' : ''}`} style={{
+    <div ref={overlayRef} className={`combat-overlay phase-${presentationPhase} combat-bg-${combat.backgroundId} combat-effect-${combat.effect} enemy-stage-${largestEnemySize} ${bossInfo?.className ?? ''} ${resultClass} ${activeBeat ? 'combat-beat-active' : ''} ${hitStop ? 'hit-stop' : ''} ${logOpen ? 'log-open' : ''}`} style={{
       '--combat-bg': `url(${combatBackgroundUrl(combat.backgroundId)})`,
       '--combat-duration': `${visibleDurationMs}ms`,
       '--combat-delay': '0ms'
@@ -3043,7 +3147,7 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
         <div className="combat-ground-shadow" aria-hidden="true" />
         <CombatSpriteImg src={heroSpriteUrl(player.heroId)} alt="" />
         {activeBeat?.attacker === 'enemy' && (
-          <div key={`fx-hero-${activeBeatIndex}`} className={`${combatFxClass(combat.effect)} combat-fx-on-hero`} aria-hidden="true" />
+          <div key={`fx-hero-${activeBeatIndex}`} className={`${combatFxClass(combat.effect)} ${activeBeatImpactClass} combat-fx-on-hero`} aria-hidden="true" />
         )}
         <div className="combat-nameplate">
           <div className="combat-name-row">
@@ -3062,18 +3166,25 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
         <strong>{impactTitle}</strong>
         {bossInfo && (
           <div className="boss-seal-progress" aria-hidden="true">
-            <b>{bossInfo.progressLabel}</b>
+            <b className={bossSealBreaking ? 'seal-label-breaking' : undefined}>{bossInfo.progressLabel}</b>
             <div>
               {Array.from({ length: bossInfo.totalSeals }, (_, index) => (
-                <i key={index} className={bossSealPipClass(bossInfo, index)} />
+                <i key={index} className={bossSealPipClass(bossInfo, index, bossSealBreaking)} />
               ))}
             </div>
           </div>
         )}
         <span>{impactValue}</span>
         <small>{impactDetail}</small>
+        {resultPhase && (
+          <span key={`combat-reward-${combat.startedAt}-${presentationPhase}`} className="combat-result-burst" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        )}
         {activeBeat && (
-          <b key={`${activeBeatIndex}-${activeBeat.attacker}`} className={`combat-damage-float ${activeBeat.attacker}`}>
+          <b key={`${activeBeatIndex}-${activeBeat.attacker}`} className={`combat-damage-float ${activeBeat.attacker} ${activeBeatImpactClass}`}>
             -{activeBeat.damage}
           </b>
         )}
@@ -3103,7 +3214,7 @@ function CombatOverlayBody({ player, combat, audible }: { player: Player; combat
           ))}
         </div>
         {activeBeat?.attacker === 'hero' && (
-          <div key={`fx-enemy-${activeBeatIndex}`} className={`${combatFxClass(combat.effect)} combat-fx-on-enemy combat-fx-flip`} aria-hidden="true" />
+          <div key={`fx-enemy-${activeBeatIndex}`} className={`${combatFxClass(combat.effect)} ${activeBeatImpactClass} combat-fx-on-enemy combat-fx-flip`} aria-hidden="true" />
         )}
         <div className="combat-nameplate">
           <div className="combat-name-row">

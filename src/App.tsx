@@ -70,6 +70,50 @@ function spawnCardExit(cardId: string) {
   document.body.append(ghost);
 }
 
+function selectorValue(value: string) {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function firstVisibleElement(selectors: string[]) {
+  for (const selector of selectors) {
+    const nodes = Array.from(document.querySelectorAll(selector));
+    const match = nodes.find((node): node is HTMLElement => {
+      if (!(node instanceof HTMLElement)) return false;
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+    if (match) return match;
+  }
+  return null;
+}
+
+function spawnRivalCommandLine(cardId: string, targetId: string, tileIndex?: number) {
+  if (typeof document === 'undefined') return;
+  const source = firstVisibleElement([`[data-card-id="${selectorValue(cardId)}"]`]);
+  const targetSelector = tileIndex !== undefined
+    ? `[data-player-id="${selectorValue(targetId)}"][data-tile-index="${tileIndex}"]`
+    : `[data-loopduel-drop="rival-target"][data-player-id="${selectorValue(targetId)}"], .mobile-rival-chip[data-player-id="${selectorValue(targetId)}"], .rival-intel-card[data-player-id="${selectorValue(targetId)}"]`;
+  const target = firstVisibleElement([targetSelector, `.player-panel[data-player-id="${selectorValue(targetId)}"]`]);
+  if (!target) return;
+  target.classList.add('rival-command-impact');
+  window.setTimeout(() => target.classList.remove('rival-command-impact'), 520);
+  if (!source || prefersReducedMotion()) return;
+  const sourceRect = source.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const startX = sourceRect.left + sourceRect.width / 2;
+  const startY = sourceRect.top + sourceRect.height / 2;
+  const endX = targetRect.left + targetRect.width / 2;
+  const endY = targetRect.top + targetRect.height / 2;
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const distance = Math.max(24, Math.hypot(dx, dy));
+  const line = document.createElement('span');
+  line.className = 'rival-command-line';
+  line.style.cssText = `position:fixed;left:${startX}px;top:${startY}px;width:${distance}px;--attack-angle:${Math.atan2(dy, dx)}rad;z-index:66;pointer-events:none;`;
+  line.addEventListener('animationend', () => line.remove(), { once: true });
+  document.body.append(line);
+}
+
 function initialRoomId() {
   const params = new URLSearchParams(window.location.search);
   return params.get('room') ?? localStorage.getItem('loopduel.roomId') ?? 'main';
@@ -272,6 +316,7 @@ function App() {
   const [recordedFinishId, setRecordedFinishId] = useState<string | null>(null);
   const [mobileDrawer, setMobileDrawer] = useState<'loot' | 'talents' | 'log' | 'menu' | null>(null);
   const [pendingTerrainPlacement, setPendingTerrainPlacement] = useState<PendingTerrainPlacement | null>(null);
+  const [placementFeedback, setPlacementFeedback] = useState<{ playerId: string; tileIndex: number; commandId: string; tileType: string } | null>(null);
   const commandTransportRef = useRef<ReturnType<typeof createClientCommandTransport> | null>(null);
   const roomAuthorityBatcherRef = useRef<ReturnType<typeof createRoomAuthorityBatcher> | null>(null);
   const me = game?.players.find((player) => player.id === playerId) ?? null;
@@ -456,6 +501,16 @@ function App() {
     }, remainingMs);
     return () => window.clearTimeout(timer);
   }, [pendingTerrainPlacement]);
+
+  useEffect(() => {
+    if (!placementFeedback) return undefined;
+    const timer = window.setTimeout(() => {
+      setPlacementFeedback((current) => (
+        current?.commandId === placementFeedback.commandId ? null : current
+      ));
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [placementFeedback]);
 
   // Esc toggles the game menu (and closes the rules overlay first if it's open).
   useEffect(() => {
@@ -705,8 +760,17 @@ function App() {
     if (!card || card.kind !== 'terrain') return;
     const commandId = emitAuthoritative('placeCard', { cardId: card.instanceId, tileIndex: tile.index });
     if (!commandId) return;
+    const placementCommandId = typeof commandId === 'string' ? commandId : `local-${card.instanceId}-${tile.index}-${currentTimeMs()}`;
     if (me && typeof commandId === 'string') {
       setPendingTerrainPlacement(createPendingTerrainPlacement(me, card, tile, commandId, currentTimeMs()));
+    }
+    if (me) {
+      setPlacementFeedback({
+        playerId: me.id,
+        tileIndex: tile.index,
+        commandId: placementCommandId,
+        tileType: card.tile ?? tile.type
+      });
     }
     sfx.cardPlay();
     spawnCardExit(card.instanceId);
@@ -718,6 +782,7 @@ function App() {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'rival') return;
     if (!emitAuthoritative('playRivalCard', { cardId: card.instanceId, targetId })) return;
+    spawnRivalCommandLine(card.instanceId, targetId);
     sfx.cardPlay();
     spawnCardExit(card.instanceId);
     setSelectedCardId(null);
@@ -728,6 +793,7 @@ function App() {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'bonk') return;
     if (!emitAuthoritative('playBonkCard', { cardId: card.instanceId, targetId })) return;
+    if (targetId) spawnRivalCommandLine(card.instanceId, targetId);
     sfx.cardPlay();
     spawnCardExit(card.instanceId);
     setSelectedCardId(null);
@@ -738,6 +804,7 @@ function App() {
     const card = me?.hand.find((item) => item.instanceId === cardId) ?? null;
     if (!card || card.kind !== 'rival') return;
     if (!emitAuthoritative('playRivalCard', { cardId: card.instanceId, targetId, tileIndex })) return;
+    spawnRivalCommandLine(card.instanceId, targetId, tileIndex);
     sfx.cardPlay();
     spawnCardExit(card.instanceId);
     setSelectedCardId(null);
@@ -1181,6 +1248,7 @@ function App() {
               focused={player.id === focusedPlayerId}
               selectedCard={player.id === renderedMe.id ? activeCard : null}
               draggingCard={player.id === renderedMe.id ? activeCard : null}
+              placementFeedback={placementFeedback}
               rivalTargetCard={player.id === renderedMe.id && purgeTargetCard
                 ? purgeTargetCard
                 : player.id !== renderedMe.id && (!bonkTargetCard || bonkTargetCard.targetMode === 'chosen' || player.id === highestScoreRival?.id)

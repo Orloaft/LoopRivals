@@ -264,6 +264,7 @@ html.quality-low .runner-floater {
 
 html.quality-low .phase-strip.claiming .phase-meter i,
 html.quality-low .player-panel.rival-drop-target::after,
+html.quality-low .lap-sweep-ring,
 html.quality-low .tactical-preview span.danger,
 html.quality-low .drag-card-ghost,
 html.quality-low .drag-loot-ghost,
@@ -1975,6 +1976,37 @@ input:focus {
     0 0 34px rgba(255, 224, 138, 0.1);
 }
 
+.tile-arrival-pulse {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc((100% - 48px) / 5);
+  aspect-ratio: 1;
+  border: 2px solid color-mix(in srgb, var(--hero-color, var(--gold)) 68%, rgba(255, 242, 190, 0.5));
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(-50%, -50%, 0) scale(0.72);
+  animation: tile-arrival-pulse 240ms cubic-bezier(0.18, 0.86, 0.2, 1) both;
+}
+
+@keyframes tile-arrival-pulse {
+  0% {
+    opacity: 0;
+    transform: translate3d(-50%, -50%, 0) scale(0.72);
+  }
+
+  34% {
+    opacity: 0.88;
+    transform: translate3d(-50%, -50%, 0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(-50%, -50%, 0) scale(1.28);
+  }
+}
+
 .tile-glyph {
   position: absolute;
   right: 5px;
@@ -2003,6 +2035,77 @@ input:focus {
 
 .tile-glyph:empty {
   display: none;
+}
+
+.tile-placement-stamp {
+  position: absolute;
+  inset: -10%;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(255, 229, 142, 0.86);
+  border-radius: 6px;
+  color: #fff1b8;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.78);
+  animation: tile-placement-stamp 620ms cubic-bezier(0.16, 0.86, 0.2, 1) both;
+}
+
+.tile-placement-stamp b {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 242, 190, 0.7);
+  border-radius: 50%;
+  background: rgba(20, 11, 5, 0.82);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.9rem;
+  font-weight: 950;
+  line-height: 1;
+  text-shadow: 0 1px 0 #000;
+  transform: scale(0.74);
+  animation: tile-placement-glyph-pop 420ms cubic-bezier(0.18, 0.86, 0.2, 1.2) both;
+}
+
+@keyframes tile-placement-stamp {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+
+  20% {
+    opacity: 1;
+    transform: scale(0.98);
+  }
+
+  64% {
+    opacity: 0.72;
+    transform: scale(1.13);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.22);
+  }
+}
+
+@keyframes tile-placement-glyph-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.52) rotate(-8deg);
+  }
+
+  40% {
+    opacity: 1;
+    transform: scale(1.16) rotate(3deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(0.92) rotate(0deg);
+  }
 }
 
 /* Runner: centered on its tile, slides smoothly tile-to-tile (Loop Hero style). */
@@ -2231,6 +2334,186 @@ input:focus {
   }
 }
 
+.loot-pickup {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  aspect-ratio: 1;
+  color: #ffe08a;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 0) scale(0.7);
+  animation: loot-pickup-pop 760ms cubic-bezier(0.18, 0.86, 0.2, 1) both;
+}
+
+.loot-pickup img,
+.loot-pickup > b {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.loot-pickup > b {
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 224, 138, 0.58);
+  border-radius: 50%;
+  background: rgba(18, 10, 5, 0.9);
+  line-height: 1;
+}
+
+.loot-pickup.rare {
+  width: 30px;
+  color: #91d4ff;
+  animation-name: loot-pickup-rare;
+}
+
+.loot-pickup.relic {
+  width: 34px;
+  color: #efe6ff;
+  animation-name: loot-pickup-relic;
+}
+
+.loot-pickup em {
+  position: absolute;
+  left: 50%;
+  bottom: 88%;
+  padding: 2px 6px;
+  border: 1px solid rgba(218, 200, 255, 0.76);
+  border-radius: 4px;
+  color: #f1e8ff;
+  background: rgba(20, 10, 38, 0.9);
+  font-size: 0.54rem;
+  font-style: normal;
+  font-weight: 1000;
+  line-height: 1;
+  text-shadow: 0 1px 0 #000;
+  transform: translateX(-50%) scale(0.82);
+  animation: relic-plaque-pop 760ms cubic-bezier(0.18, 0.86, 0.2, 1) both;
+}
+
+@keyframes loot-pickup-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.62) rotate(-5deg);
+  }
+
+  26% {
+    opacity: 1;
+    transform: translate(-50%, -8px) scale(1.08) rotate(3deg);
+  }
+
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -18px) scale(1) rotate(0deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -28px) scale(0.9) rotate(0deg);
+  }
+}
+
+@keyframes loot-pickup-rare {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.62) rotate(-7deg);
+  }
+
+  24% {
+    opacity: 1;
+    transform: translate(-50%, -10px) scale(1.22) rotate(4deg);
+  }
+
+  68% {
+    opacity: 1;
+    transform: translate(-50%, -22px) scale(1.06) rotate(0deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -34px) scale(0.92) rotate(0deg);
+  }
+}
+
+@keyframes loot-pickup-relic {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.5) rotate(-9deg);
+  }
+
+  22% {
+    opacity: 1;
+    transform: translate(-50%, -11px) scale(1.34) rotate(5deg);
+  }
+
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -24px) scale(1.08) rotate(0deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -38px) scale(0.9) rotate(0deg);
+  }
+}
+
+@keyframes relic-plaque-pop {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(5px) scale(0.72);
+  }
+
+  22%,
+  72% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px) scale(0.92);
+  }
+}
+
+.lap-sweep-ring {
+  position: absolute;
+  inset: 4px;
+  z-index: 5;
+  border: 2px solid color-mix(in srgb, var(--hero-color, var(--gold)) 58%, rgba(255, 242, 190, 0.5));
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.76);
+  animation: lap-sweep-ring 780ms cubic-bezier(0.16, 0.86, 0.22, 1) both;
+}
+
+@keyframes lap-sweep-ring {
+  0% {
+    opacity: 0;
+    transform: scale(0.72) rotate(-8deg);
+  }
+
+  22% {
+    opacity: 0.9;
+    transform: scale(0.94) rotate(0deg);
+  }
+
+  72% {
+    opacity: 0.62;
+    transform: scale(1.04) rotate(12deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.12) rotate(18deg);
+  }
+}
+
 /* Board-hit flash overlay; opacity is driven by WAAPI on hpDelta < 0. */
 .panel-hit-flash {
   position: absolute;
@@ -2247,6 +2530,57 @@ input:focus {
 .card-exit-ghost {
   animation: card-burn-exit 260ms cubic-bezier(0.4, 0, 0.8, 0.4) both !important;
   filter: brightness(1.25);
+}
+
+.rival-command-line {
+  height: 3px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(255, 229, 142, 0), rgba(255, 229, 142, 0.92) 42%, rgba(255, 97, 78, 0.88));
+  opacity: 0;
+  transform-origin: left center;
+  transform: rotate(var(--attack-angle, 0rad)) scaleX(0);
+  animation: rival-command-line 420ms cubic-bezier(0.18, 0.86, 0.2, 1) both;
+}
+
+.rival-command-impact {
+  animation: rival-command-impact 420ms cubic-bezier(0.18, 0.86, 0.2, 1) both;
+}
+
+@keyframes rival-command-line {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--attack-angle, 0rad)) scaleX(0);
+  }
+
+  18% {
+    opacity: 1;
+    transform: rotate(var(--attack-angle, 0rad)) scaleX(0.28);
+  }
+
+  76% {
+    opacity: 1;
+    transform: rotate(var(--attack-angle, 0rad)) scaleX(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: rotate(var(--attack-angle, 0rad)) scaleX(1);
+  }
+}
+
+@keyframes rival-command-impact {
+  0% {
+    transform: scale(1);
+  }
+
+  35% {
+    transform: scale(1.05);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 @keyframes card-burn-exit {
@@ -3397,6 +3731,59 @@ input:focus {
     linear-gradient(90deg, transparent, rgba(9, 7, 24, 0.62) 16% 84%, transparent);
 }
 
+.combat-overlay.result-defeat.phase-result .combat-banner,
+.combat-overlay.result-defeat.phase-exit .combat-banner {
+  border-block-color: rgba(255, 112, 86, 0.72);
+  background:
+    radial-gradient(ellipse at center, rgba(159, 61, 53, 0.2), transparent 72%),
+    linear-gradient(90deg, transparent, rgba(24, 5, 5, 0.64) 16% 84%, transparent);
+}
+
+.combat-overlay.result-reward.phase-result .combat-banner,
+.combat-overlay.result-reward.phase-exit .combat-banner {
+  border-block-color: rgba(145, 212, 255, 0.66);
+  background:
+    radial-gradient(ellipse at center, rgba(145, 212, 255, 0.16), transparent 72%),
+    linear-gradient(90deg, transparent, rgba(7, 19, 28, 0.58) 16% 84%, transparent);
+}
+
+.combat-result-burst {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.combat-result-burst i {
+  position: absolute;
+  left: calc(50% + var(--spark-x, 0px));
+  top: calc(50% + var(--spark-y, 0px));
+  width: 7px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.4);
+  animation: combat-result-spark 640ms cubic-bezier(0.16, 0.86, 0.2, 1) both;
+}
+
+.combat-result-burst i:nth-child(1) {
+  --spark-x: -54px;
+  --spark-y: -8px;
+}
+
+.combat-result-burst i:nth-child(2) {
+  --spark-x: 0px;
+  --spark-y: 14px;
+  animation-delay: 60ms;
+}
+
+.combat-result-burst i:nth-child(3) {
+  --spark-x: 54px;
+  --spark-y: -4px;
+  animation-delay: 110ms;
+}
+
 .combat-announcement {
   position: absolute;
   inset: 0;
@@ -3860,6 +4247,12 @@ input:focus {
   animation: combat-fx-sheet 220ms steps(7, end) both;
 }
 
+.combat-fx-sprite.combat-fx-heavy,
+.combat-fx-sprite.combat-fx-finisher {
+  width: clamp(86px, 27vw, 132px);
+  animation-duration: 280ms;
+}
+
 /* Drop the slash to the sprite's center mass (the cell includes the nameplate
    below, so 46% lands near the head). */
 .combat-fx-on-hero {
@@ -3988,6 +4381,74 @@ input:focus {
   background: #bca4ff;
 }
 
+.boss-seal-progress i.breaking {
+  position: relative;
+  animation: boss-seal-break 620ms cubic-bezier(0.16, 0.86, 0.2, 1) both;
+}
+
+.boss-seal-progress i.breaking::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.55);
+  animation: boss-seal-break-ring 620ms cubic-bezier(0.16, 0.86, 0.2, 1) both;
+}
+
+.boss-seal-progress .seal-label-breaking {
+  animation: boss-seal-label-pop 520ms cubic-bezier(0.18, 0.86, 0.2, 1) both;
+}
+
+@keyframes boss-seal-break {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  36% {
+    opacity: 1;
+    transform: scale(1.42) rotate(12deg);
+  }
+
+  100% {
+    opacity: 0.72;
+    transform: scale(0.84) rotate(0deg);
+  }
+}
+
+@keyframes boss-seal-break-ring {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+
+  28% {
+    opacity: 0.86;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+
+@keyframes boss-seal-label-pop {
+  0% {
+    transform: scale(0.94);
+  }
+
+  42% {
+    transform: scale(1.08);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
 .combat-damage-float {
   position: absolute;
   z-index: 2;
@@ -4008,6 +4469,12 @@ input:focus {
 
 .combat-damage-float.enemy {
   right: -42px;
+}
+
+.combat-damage-float.combat-fx-heavy,
+.combat-damage-float.combat-fx-finisher {
+  font-size: 1.34rem;
+  animation-name: combat-damage-float-heavy;
 }
 
 .combat-banner small {
@@ -4697,6 +5164,45 @@ input:focus {
   to {
     opacity: 0;
     transform: translate3d(0, -18px, 0) scale(0.96);
+  }
+}
+
+@keyframes combat-damage-float-heavy {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.58) rotate(-4deg);
+  }
+
+  22% {
+    opacity: 1;
+    transform: translate3d(0, -5px, 0) scale(1.34) rotate(2deg);
+  }
+
+  72% {
+    opacity: 1;
+    transform: translate3d(0, -18px, 0) scale(1.04) rotate(0deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -30px, 0) scale(0.94) rotate(0deg);
+  }
+}
+
+@keyframes combat-result-spark {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translateY(8px) scale(0.42);
+  }
+
+  28% {
+    opacity: 0.92;
+    transform: translate(-50%, -50%) translateY(-3px) scale(1.18);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translateY(-24px) scale(0.72);
   }
 }
 
@@ -8839,6 +9345,34 @@ body.loot-drag-active * {
 
   .mobile-rival-chip.armed {
     border-color: color-mix(in srgb, var(--blood) 72%, var(--gold-bright));
+  }
+
+  .mobile-rival-impact {
+    position: absolute;
+    inset: 4px;
+    border: 1px solid color-mix(in srgb, var(--blood) 62%, var(--gold-bright));
+    border-radius: 6px;
+    pointer-events: none;
+    opacity: 0;
+    transform: scale(0.96);
+    animation: mobile-rival-impact 520ms cubic-bezier(0.18, 0.86, 0.2, 1) both;
+  }
+
+  @keyframes mobile-rival-impact {
+    0% {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+
+    24% {
+      opacity: 0.9;
+      transform: scale(1.01);
+    }
+
+    100% {
+      opacity: 0;
+      transform: scale(1.04);
+    }
   }
 
   .mobile-rival-chip img {
